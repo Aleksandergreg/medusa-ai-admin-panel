@@ -22,6 +22,8 @@ export function createOrdersRepo(http: Http): {
                 "+id",
                 "+created_at",
                 "+canceled_at",
+                "+payment_status",
+                "+fulfillment_status",
                 "+items",
                 "+shipping_methods",
                 "+shipping_methods.id",
@@ -46,6 +48,8 @@ export function createOrdersRepo(http: Http): {
                         id: o.id,
                         created_at: o.created_at,
                         canceled_at: o.canceled_at,
+                        payment_status: (o as any).payment_status,
+                        fulfillment_status: (o as any).fulfillment_status,
                         // Some setups return minimal items on list; still pass through whatever we got.
                         items: o.items,
                         shipping_methods: (o as any).shipping_methods

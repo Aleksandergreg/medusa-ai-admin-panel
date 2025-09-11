@@ -34,6 +34,20 @@ export function createAnalyticsService(
             value: number;
         }>
     >;
+    ordersStatusCount: (params: {
+        start?: string;
+        end?: string;
+        payment_status?: string[];
+        fulfillment_status?: string[];
+        include_canceled?: boolean;
+    }) => Promise<{
+        total: number;
+        breakdown: Array<{
+            payment_status: string | null;
+            fulfillment_status: string | null;
+            count: number;
+        }>;
+    }>;
 } {
     async function ordersCount(start: string, end: string): Promise<number> {
         const list = await orders.listInRange(start, end);
@@ -237,7 +251,184 @@ export function createAnalyticsService(
         return rows.slice(0, Math.max(1, Math.min(50, limit)));
     }
 
-    return { ordersCount, salesAggregate };
+    async function ordersStatusCount(params: {
+        start?: string;
+        end?: string;
+        payment_status?: string[];
+        fulfillment_status?: string[];
+        include_canceled?: boolean;
+    }): Promise<{
+        total: number;
+        breakdown: Array<{
+            payment_status: string | null;
+            fulfillment_status: string | null;
+            count: number;
+        }>;
+    }> {
+        const {
+            start,
+            end,
+            payment_status,
+            fulfillment_status,
+            include_canceled = false
+        } = params;
+
+        // Get orders in the date range (or all orders if no range specified)
+        const ordersList =
+            start && end
+                ? await orders.listInRange(start, end)
+                : await orders.listInRange(
+                      "1970-01-01T00:00:00Z",
+                      "2099-12-31T23:59:59Z"
+                  );
+
+
+
+        // Normalize status values to handle different API formats
+        const normalizePaymentStatus = (status: unknown): string | null => {
+            if (!status) {
+                return null;
+            }
+            const str = String(status).toLowerCase().trim();
+            if (str.includes("not paid") || str.includes("not_paid")) {
+                return "not_paid";
+            }
+            if (str.includes("awaiting")) {
+                return "awaiting";
+            }
+            if (str.includes("captured")) {
+                return "captured";
+            }
+            if (str.includes("completed")) {
+                return "completed";
+            }
+            if (str.includes("failed")) {
+                return "failed";
+            }
+            if (
+                str.includes("canceled") || str.includes("cancelled")
+            ) {
+                return "canceled";
+            }
+            if (str.includes("requires_action")) {
+                return "requires_action";
+            }
+            return String(status);
+        };
+
+        const normalizeFulfillmentStatus = (status: unknown): string | null => {
+            if (!status) {
+                return null;
+            }
+            const str = String(status).toLowerCase().trim();
+            if (
+                str.includes("not fulfilled") ||
+                str.includes("not_fulfilled")
+            ) {
+                return "not_fulfilled";
+            }
+            if (
+                str.includes("partially fulfilled") ||
+                str.includes("partially_fulfilled")
+            ) {
+                return "partially_fulfilled";
+            }
+            if (str.includes("delivered")) {
+                return "delivered";
+            }
+            if (str.includes("fulfilled")) {
+                return "fulfilled";
+            }
+            if (
+                str.includes("canceled") || str.includes("cancelled")
+            ) {
+                return "canceled";
+            }
+            return String(status);
+        };
+
+        // Filter orders by status criteria
+        const filteredOrders = ordersList.filter((order) => {
+            // Extract and normalize status fields from order
+            const rawPaymentStatus = (order as Record<string, unknown>)
+                .payment_status;
+            const rawFulfillmentStatus = (order as Record<string, unknown>)
+                .fulfillment_status;
+            const orderCanceledAt = (order as Record<string, unknown>)
+                .canceled_at;
+
+            const orderPaymentStatus = normalizePaymentStatus(rawPaymentStatus);
+            const orderFulfillmentStatus =
+                normalizeFulfillmentStatus(rawFulfillmentStatus);
+
+
+
+            // Skip canceled orders unless explicitly included
+            if (!include_canceled && orderCanceledAt) {
+                return false;
+            }
+
+            // Filter by payment status if specified
+            if (payment_status && payment_status.length > 0) {
+                if (
+                    !orderPaymentStatus ||
+                    !payment_status.includes(orderPaymentStatus)
+                ) {
+                    return false;
+                }
+            }
+
+            // Filter by fulfillment status if specified
+            if (fulfillment_status && fulfillment_status.length > 0) {
+                if (
+                    !orderFulfillmentStatus ||
+                    !fulfillment_status.includes(orderFulfillmentStatus)
+                ) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        // Create breakdown by status combinations
+        const statusMap = new Map<string, number>();
+
+        filteredOrders.forEach((order) => {
+            const rawPaymentStatus = (order as Record<string, unknown>)
+                .payment_status;
+            const rawFulfillmentStatus = (order as Record<string, unknown>)
+                .fulfillment_status;
+
+            const paymentStatus = normalizePaymentStatus(rawPaymentStatus);
+            const fulfillmentStatus =
+                normalizeFulfillmentStatus(rawFulfillmentStatus);
+            const key = `${paymentStatus}|${fulfillmentStatus}`;
+
+            statusMap.set(key, (statusMap.get(key) || 0) + 1);
+        });
+
+        // Convert to breakdown array
+        const breakdown = Array.from(statusMap.entries()).map(
+            ([key, count]) => {
+                const [paymentStatus, fulfillmentStatus] = key.split("|");
+                return {
+                    payment_status:
+                        paymentStatus === "null" ? null : paymentStatus,
+                    fulfillment_status:
+                        fulfillmentStatus === "null" ? null : fulfillmentStatus,
+                    count
+                };
+            }
+        );
+
+        return {
+            total: filteredOrders.length,
+            breakdown
+        };
+    }
+
+    return { ordersCount, salesAggregate, ordersStatusCount };
 }
 
 
