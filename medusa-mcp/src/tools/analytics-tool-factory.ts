@@ -389,10 +389,10 @@ export function createAnalyticsTools(
         }
     }));
 
-    const failed_payments_count = defineTool((z) => ({
-        name: "failed_payments_count",
+    const problematic_payments_count = defineTool((z) => ({
+        name: "problematic_payments_count",
         description:
-            "Count orders with failed or problematic payment status (not_paid, awaiting, failed, canceled, requires_action). Useful for finding payment issues and unpaid orders.",
+            "Count orders with problematic payment status including unpaid orders (not_paid, awaiting, failed, canceled, requires_action). Use this for unpaid orders, failed payments, or any payment issues.",
         inputSchema: {
             start: z.string().datetime().optional(),
             end: z.string().datetime().optional(),
@@ -420,9 +420,16 @@ export function createAnalyticsTools(
             return {
                 start,
                 end,
-                failed_payment_orders: result.total,
+                problematic_payment_orders: result.total,
                 breakdown: result.breakdown,
-                title: "Orders with Failed/Problematic Payments"
+                title: "Orders with Problematic Payments (Including Unpaid)",
+                included_statuses: [
+                    "not_paid",
+                    "awaiting",
+                    "failed",
+                    "canceled",
+                    "requires_action"
+                ]
             };
         }
     }));
@@ -545,17 +552,14 @@ export function createAnalyticsTools(
         }
     }));
 
-
-
     return [
         orders_count,
         sales_aggregate,
         orders_status_analysis,
-        failed_payments_count,
+        problematic_payments_count,
         unfulfilled_orders_count,
         all_unfulfilled_orders_count,
-        delivered_orders_count,
-        unpaid_orders_count
+        delivered_orders_count
     ];
 }
 
