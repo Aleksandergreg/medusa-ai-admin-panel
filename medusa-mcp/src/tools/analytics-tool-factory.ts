@@ -294,7 +294,10 @@ export function createAnalyticsTools(
     const orders_status_analysis = defineTool((z) => ({
         name: "orders_status_analysis",
         description:
-            "Analyze orders by payment and fulfillment status. For delivered orders use 'delivered' not 'fulfilled'. Status values: payment (awaiting, captured, completed, failed), fulfillment (not_fulfilled, partially_fulfilled, fulfilled, delivered).",
+            "Universal order analysis tool for all payment and fulfillment status combinations. " +
+            "PAYMENT STATUSES: not_paid, awaiting, captured, completed, partially_refunded, refunded, canceled, requires_action. " +
+            "FULFILLMENT STATUSES: not_fulfilled, partially_fulfilled, fulfilled, partially_shipped, shipped, partially_returned, returned, canceled, requires_action. " +
+            "Examples: unpaid orders (payment_status: 'not_paid'), delivered/shipped orders (fulfillment_status: ['shipped', 'fulfilled']), paid unfulfilled orders (payment_status: ['captured','completed'] + fulfillment_status: ['not_fulfilled','partially_fulfilled']).",
         inputSchema: {
             start: z.string().datetime().optional(),
             end: z.string().datetime().optional(),
@@ -307,7 +310,7 @@ export function createAnalyticsTools(
                 .union([z.string(), z.array(z.string())])
                 .optional()
                 .describe(
-                    "Filter by payment status: awaiting, captured, completed, failed, canceled, etc. Can be a string or array."
+                    "Filter by payment status. Available values: not_paid (items not paid), awaiting (awaiting payment), captured (payment captured), completed (payment completed), partially_refunded (partially refunded), refunded (fully refunded), canceled (payment canceled), requires_action (payment requires action). Can be a string or array."
                 ),
             payment_statuses: z
                 .union([z.string(), z.array(z.string())])
@@ -318,7 +321,7 @@ export function createAnalyticsTools(
                 .union([z.string(), z.array(z.string())])
                 .optional()
                 .describe(
-                    "Filter by fulfillment status: not_fulfilled, partially_fulfilled, fulfilled, delivered, canceled, etc. Can be a string or array."
+                    "Filter by fulfillment status. Available values: not_fulfilled (items not fulfilled), partially_fulfilled (some items fulfilled), fulfilled (all items fulfilled), partially_shipped (some items shipped), shipped (all items shipped), partially_returned (some items returned), returned (all items returned), canceled (fulfillment canceled), requires_action (fulfillment requires action). Can be a string or array."
                 ),
             fulfillment_statuses: z
                 .union([z.string(), z.array(z.string())])
@@ -333,7 +336,30 @@ export function createAnalyticsTools(
             group_by_status: z
                 .boolean()
                 .default(true)
-                .describe("Group results by status combinations")
+                .describe("Group results by status combinations"),
+
+            // Convenience shortcuts for common queries
+            preset: z
+                .enum([
+                    "problematic_payments",
+                    "unpaid_orders",
+                    "paid_unfulfilled",
+                    "all_unfulfilled",
+                    "delivered_orders",
+                    "shipped_orders",
+                    "returned_orders"
+                ])
+                .optional()
+                .describe(
+                    "Use preset filters: problematic_payments (not_paid,awaiting,canceled,requires_action), unpaid_orders (not_paid), paid_unfulfilled (captured/completed + not_fulfilled/partially_fulfilled), all_unfulfilled (not_fulfilled/partially_fulfilled), delivered_orders (fulfilled), shipped_orders (shipped/partially_shipped), returned_orders (returned/partially_returned)"
+                ),
+
+            include_partial: z
+                .boolean()
+                .default(true)
+                .describe(
+                    "For unfulfilled queries, include partially_fulfilled orders"
+                )
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const { start, end } = coerceRange(input);
@@ -352,15 +378,57 @@ export function createAnalyticsTools(
                 return undefined;
             };
 
-            const paymentStatuses =
+            // Handle preset configurations
+            let paymentStatuses =
                 normalizeStatus(input.payment_status) ||
-                normalizeStatus(input.payment_statuses) ||
-                undefined;
-
-            const fulfillmentStatuses =
+                normalizeStatus(input.payment_statuses);
+            let fulfillmentStatuses =
                 normalizeStatus(input.fulfillment_status) ||
-                normalizeStatus(input.fulfillment_statuses) ||
-                undefined;
+                normalizeStatus(input.fulfillment_statuses);
+
+            const preset = input.preset as string | undefined;
+            const includePartial = input.include_partial !== false;
+
+            // Apply preset filters
+            if (preset) {
+                switch (preset) {
+                    case "problematic_payments":
+                        paymentStatuses = [
+                            "not_paid",
+                            "awaiting",
+                            "canceled",
+                            "requires_action"
+                        ];
+                        break;
+                    case "unpaid_orders":
+                        paymentStatuses = ["not_paid"];
+                        break;
+                    case "paid_unfulfilled":
+                        paymentStatuses = ["captured", "completed"];
+                        fulfillmentStatuses = includePartial
+                            ? ["not_fulfilled", "partially_fulfilled"]
+                            : ["not_fulfilled"];
+                        break;
+                    case "all_unfulfilled":
+                        fulfillmentStatuses = includePartial
+                            ? ["not_fulfilled", "partially_fulfilled"]
+                            : ["not_fulfilled"];
+                        break;
+                    case "delivered_orders":
+                        fulfillmentStatuses = ["fulfilled"];
+                        break;
+                    case "shipped_orders":
+                        fulfillmentStatuses = includePartial
+                            ? ["shipped", "partially_shipped"]
+                            : ["shipped"];
+                        break;
+                    case "returned_orders":
+                        fulfillmentStatuses = includePartial
+                            ? ["returned", "partially_returned"]
+                            : ["returned"];
+                        break;
+                }
+            }
             
             const includeCanceled = Boolean(input.include_canceled);
             const groupByStatus = input.group_by_status !== false;
@@ -373,194 +441,60 @@ export function createAnalyticsTools(
                 include_canceled: includeCanceled
             });
 
+            // Generate descriptive title based on filters
+            const generateTitle = (): string => {
+                if (preset) {
+                    switch (preset) {
+                        case "problematic_payments":
+                            return "Orders with Problematic Payments (Including Unpaid)";
+                        case "unpaid_orders":
+                            return "Unpaid Orders";
+                        case "paid_unfulfilled":
+                            return "Paid Orders Not Fulfilled";
+                        case "all_unfulfilled":
+                            return "All Orders Not Fulfilled (Any Payment Status)";
+                        case "delivered_orders":
+                            return "Orders That Have Been Fulfilled";
+                        case "shipped_orders":
+                            return "Orders That Have Been Shipped";
+                        case "returned_orders":
+                            return "Orders That Have Been Returned";
+                    }
+                }
+                
+                const parts = [];
+                if (paymentStatuses?.length) {
+                    parts.push(`Payment: ${paymentStatuses.join(", ")}`);
+                }
+                if (fulfillmentStatuses?.length) {
+                    parts.push(
+                        `Fulfillment: ${fulfillmentStatuses.join(", ")}`
+                    );
+                }
+                return parts.length
+                    ? `Orders - ${parts.join(" | ")}`
+                    : "Order Status Analysis";
+            };
+
             return {
                 start,
                 end,
                 filters: {
                     payment_status: paymentStatuses,
                     fulfillment_status: fulfillmentStatuses,
-                    include_canceled: includeCanceled
+                    include_canceled: includeCanceled,
+                    preset: preset || null,
+                    include_partial: includePartial
                 },
                 total: result.total,
                 breakdown: groupByStatus ? result.breakdown : undefined,
                 count: result.total,
-                title: "Order Status Analysis"
+                title: generateTitle()
             };
         }
     }));
 
-    const problematic_payments_count = defineTool((z) => ({
-        name: "problematic_payments_count",
-        description:
-            "Count orders with problematic payment status including unpaid orders (not_paid, awaiting, failed, canceled, requires_action). Use this for unpaid orders, failed payments, or any payment issues.",
-        inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional()
-        },
-        handler: async (input: Record<string, unknown>): Promise<unknown> => {
-            const { start, end } = coerceRange(input);
-
-            const result = await analytics.ordersStatusCount({
-                start,
-                end,
-                payment_status: [
-                    "not_paid",
-                    "awaiting",
-                    "failed",
-                    "canceled",
-                    "requires_action"
-                ],
-                include_canceled: false
-            });
-
-            return {
-                start,
-                end,
-                problematic_payment_orders: result.total,
-                breakdown: result.breakdown,
-                title: "Orders with Problematic Payments (Including Unpaid)",
-                included_statuses: [
-                    "not_paid",
-                    "awaiting",
-                    "failed",
-                    "canceled",
-                    "requires_action"
-                ]
-            };
-        }
-    }));
-
-    const unfulfilled_orders_count = defineTool((z) => ({
-        name: "unfulfilled_orders_count",
-        description:
-            "Count paid orders that are not fulfilled or delivered. Includes partially fulfilled orders. Excludes canceled orders by default.",
-        inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional(),
-            include_partial: z
-                .boolean()
-                .default(true)
-                .describe("Include partially fulfilled orders in count")
-        },
-        handler: async (input: Record<string, unknown>): Promise<unknown> => {
-            const { start, end } = coerceRange(input);
-            const includePartial = input.include_partial !== false;
-
-            const fulfillmentStatuses = includePartial
-                ? ["not_fulfilled", "partially_fulfilled"]
-                : ["not_fulfilled"];
-
-            const result = await analytics.ordersStatusCount({
-                start,
-                end,
-                payment_status: ["captured", "completed"], // Only paid orders
-                fulfillment_status: fulfillmentStatuses,
-                include_canceled: false
-            });
-
-            return {
-                start,
-                end,
-                unfulfilled_orders: result.total,
-                includes_partial: includePartial,
-                breakdown: result.breakdown,
-                title: "Paid Orders Not Fulfilled/Delivered"
-            };
-        }
-    }));
-
-    const all_unfulfilled_orders_count = defineTool((z) => ({
-        name: "all_unfulfilled_orders_count",
-        description:
-            "Count ALL orders (paid and unpaid) that are not fulfilled or delivered. Includes orders with any payment status. Excludes canceled orders by default.",
-        inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional(),
-            include_partial: z
-                .boolean()
-                .default(true)
-                .describe("Include partially fulfilled orders in count")
-        },
-        handler: async (input: Record<string, unknown>): Promise<unknown> => {
-            const { start, end } = coerceRange(input);
-            const includePartial = input.include_partial !== false;
-
-            const fulfillmentStatuses = includePartial
-                ? ["not_fulfilled", "partially_fulfilled"]
-                : ["not_fulfilled"];
-
-            const result = await analytics.ordersStatusCount({
-                start,
-                end,
-                // No payment_status filter - include all payment statuses
-                fulfillment_status: fulfillmentStatuses,
-                include_canceled: false
-            });
-
-            return {
-                start,
-                end,
-                unfulfilled_orders: result.total,
-                includes_partial: includePartial,
-                breakdown: result.breakdown,
-                title: "All Orders Not Fulfilled/Delivered (Any Payment Status)"
-            };
-        }
-    }));
-
-    const delivered_orders_count = defineTool((z) => ({
-        name: "delivered_orders_count",
-        description:
-            "Count orders that have been delivered. This specifically looks for orders with fulfillment_status 'delivered'. Use this when asked about delivered orders.",
-        inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional()
-        },
-        handler: async (input: Record<string, unknown>): Promise<unknown> => {
-            const { start, end } = coerceRange(input);
-
-            const result = await analytics.ordersStatusCount({
-                start,
-                end,
-                fulfillment_status: ["delivered"],
-                include_canceled: false
-            });
-
-            return {
-                start,
-                end,
-                delivered_orders: result.total,
-                breakdown: result.breakdown,
-                title: "Orders That Have Been Delivered"
-            };
-        }
-    }));
-
-    return [
-        orders_count,
-        sales_aggregate,
-        orders_status_analysis,
-        problematic_payments_count,
-        unfulfilled_orders_count,
-        all_unfulfilled_orders_count,
-        delivered_orders_count
-    ];
+    return [orders_count, sales_aggregate, orders_status_analysis];
 }
 
 
