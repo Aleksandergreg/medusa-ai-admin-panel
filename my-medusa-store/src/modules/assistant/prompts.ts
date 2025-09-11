@@ -38,6 +38,29 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Optimizing order processing workflows
 - If needing to answer questions about amount of orders use the orders_count tool
 
+### PAYMENT AND FULFILLMENT STATUS SEMANTIC MATCHING
+When users ask about order statuses, intelligently expand to related statuses:
+
+**For REFUND queries** ("refunded orders", "orders with refunds"):
+- Use BOTH: ["refunded", "partially_refunded"]
+
+**For FAILED PAYMENT queries** ("failed payments", "unpaid orders"):
+- Use: ["failed", "not_paid"] (not_paid often indicates payment failure)
+
+**For PAID ORDER queries** ("paid orders", "successful payments"):
+- Use: ["captured", "completed"]
+
+**For UNFULFILLED queries** ("unfulfilled orders", "orders not shipped"):
+- Use: ["not_fulfilled", "partially_fulfilled"] (include partial if comprehensive view needed)
+
+**For SHIPPED queries** ("shipped orders"):
+- Use: ["shipped", "partially_shipped"] (include partial if comprehensive view needed)
+
+**Examples:**
+- "How many orders have been refunded?" → payment_status: ["refunded", "partially_refunded"]
+- "Show me failed payments" → payment_status: ["failed", "not_paid"]
+- "Find paid but unshipped orders" → payment_status: ["captured", "completed"], fulfillment_status: ["not_fulfilled"]
+
 ## MARKETING AND PROMOTIONS
 - Creating and managing promotional campaigns
 - Setting up discounts, coupons, and special offers
