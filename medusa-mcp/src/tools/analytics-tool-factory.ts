@@ -546,13 +546,11 @@ export function createAnalyticsTools(
           average_frequency_across_all:
             result.length > 0
               ? Math.round(
-                  (result.reduce(
+                  result.reduce(
                     (sum, c) => sum + c.average_days_between_orders,
                     0
-                  ) /
-                    result.length) *
-                    100
-                ) / 100
+                  ) / result.length
+                )
               : 0,
         },
       };

@@ -539,7 +539,7 @@ export function createAnalyticsService(
         customer_email: customerEmail,
         customer_name: customerName,
         order_count: sortedOrders.length,
-        average_days_between_orders: Math.round(averageDays * 100) / 100, // Round to 2 decimal places
+        average_days_between_orders: Math.round(averageDays), // Round to full days
         first_order_date: sortedOrders[0].created_at!,
         last_order_date: sortedOrders[sortedOrders.length - 1].created_at!,
       });
