@@ -38,6 +38,44 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Optimizing order processing workflows
 - If needing to answer questions about amount of orders use the orders_count tool
 
+### PAYMENT AND FULFILLMENT STATUS SEMANTIC MATCHING
+When users ask about order statuses using natural language, intelligently map to actual Medusa statuses:
+
+**ACTUAL Medusa Payment Statuses:** not_paid, awaiting, captured, partially_refunded, refunded, canceled, requires_action
+
+**ACTUAL Medusa Fulfillment Statuses:** not_fulfilled, partially_fulfilled, fulfilled, partially_shipped, shipped, partially_delivered, delivered, partially_returned, returned, canceled
+
+**INTELLIGENT STATUS MATCHING:**
+When users ask about orders using natural language, intelligently map their terms to the most relevant statuses from the lists above:
+
+1. **Analyze the user's intent** - What are they really asking about?
+2. **Find similar/related statuses** - Look for statuses that match or are closely related to their query
+3. **Include partial statuses when appropriate** - For comprehensive queries, consider including both full and partial statuses (e.g., "shipped" might include both "shipped" and "partially_shipped")
+4. **Consider synonyms and context** - "failed payments" could map to statuses like "not_paid", "canceled", "requires_action"
+
+**Key Principles:**
+- "refund" related queries → look for statuses containing "refund"
+- "paid/unpaid" queries → look for payment statuses related to payment completion
+- "shipped/delivered/fulfilled" queries → look for fulfillment statuses related to order completion
+- When in doubt, include both full and partial statuses for comprehensive results
+
+**Examples:**
+- "How many orders have been refunded?" → payment_status: ["refunded", "partially_refunded"]
+- "Show me failed payments" → payment_status: ["not_paid", "canceled", "requires_action"]
+- "Find unpaid orders" → payment_status: ["not_paid"]
+- "Show paid but unshipped orders" → payment_status: ["captured"], fulfillment_status: ["not_fulfilled"]
+- "How many orders have been delivered?" → fulfillment_status: ["delivered", "partially_delivered"]
+- "Find shipped but not delivered orders" → fulfillment_status: ["shipped"], not in ["delivered", "partially_delivered"]
+
+### ORDER STATUS REPORTING
+When providing counts or analysis of orders by status, ALWAYS include a breakdown of the actual statuses found:
+- Instead of: "You have 5 failed orders."
+- Say: "You have 5 orders with payment issues: 3 with status 'not_paid', 2 with status 'canceled'."
+- For fulfillment: "You have 12 unfulfilled orders: 8 with status 'not_fulfilled', 4 with status 'partially_fulfilled'."
+- Do it in new lines for clarity.
+
+This helps users understand exactly what statuses were included in the search and provides transparency about the data.
+
 ## MARKETING AND PROMOTIONS
 - Creating and managing promotional campaigns
 - Setting up discounts, coupons, and special offers
@@ -71,7 +109,8 @@ export function getCategoryPrompt(
   category: string,
   wantsChart?: boolean
 ): string {
-  console.warn('getCategoryPrompt is deprecated, use getCombinedPrompt instead');
+  console.warn(
+    "getCategoryPrompt is deprecated, use getCombinedPrompt instead"
+  );
   return getCombinedPrompt(wantsChart);
 }
-
