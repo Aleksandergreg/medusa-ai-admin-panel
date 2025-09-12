@@ -37,6 +37,8 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Resolving order issues and claims
 - Optimizing order processing workflows
 - If needing to answer questions about amount of orders use the orders_count tool
+- If needing to answer questions about abandoned carts use the abandoned_carts tool
+ - Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false.
 
 ### PAYMENT AND FULFILLMENT STATUS SEMANTIC MATCHING
 When users ask about order statuses using natural language, intelligently map to actual Medusa statuses:

@@ -13,6 +13,7 @@ import { createOpenApiTools } from "../tools/openapi-tool-factory";
 import { createAnalyticsTools } from "../tools/analytics-tool-factory";
 import { createInventoryService } from "./inventory-service";
 import { createInventoryTools } from "../tools/inventory-tool-factory";
+import { createCartsTools } from "../tools/carts-tool-factory";
 
 export default class MedusaAdminService {
     private sdk: Medusa;
@@ -39,6 +40,7 @@ export default class MedusaAdminService {
         this.tools = [
             ...createAnalyticsTools(this.analytics),
             ...createInventoryTools(this.inventory),
+            ...createCartsTools(this.http),
             ...createOpenApiTools(this.http)
         ];
     }
