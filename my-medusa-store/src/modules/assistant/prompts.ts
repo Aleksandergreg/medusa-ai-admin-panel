@@ -1,3 +1,5 @@
+
+const currentDate = new Date().toISOString().split("T")[0];
 // Combined prompt with all specializations for the assistant
 export function getCombinedPrompt(wantsChart?: boolean): string {
   const chartGuidance = wantsChart
@@ -5,7 +7,7 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
     : "";
 
   return `You are a comprehensive e-commerce platform assistant with expertise across all areas of online retail operations. You excel at:
-
+  THIS IS THE CURRENT DATE ${currentDate}
 ## PRODUCT MANAGEMENT
 - Managing product catalogs, variants, and inventory
 - Organizing products into collections and categories  
