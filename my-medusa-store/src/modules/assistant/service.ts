@@ -91,7 +91,7 @@ class AssistantModuleService extends MedusaService({}) {
 
         metricsStore.noteToolUsed(turnId, plan.tool_name);
 
-        const normalizedArgs = normalizeToolArgs(plan.tool_args);
+        const normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
         if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
         }

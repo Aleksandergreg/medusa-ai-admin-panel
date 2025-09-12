@@ -12,11 +12,11 @@ export function createCartsTools(http: Http) {
         .int()
         .nonnegative()
         .default(1440)
-        .describe("Threshold in minutes; default 1440 = 24h"),
+        .describe("Threshold in minutes; default 1440 = 24h. IMPORTANT: Always pass 'older_than_minutes' (integer). Do not use 'threshold' or synonyms."),
       require_email: z
         .boolean()
         .default(true)
-        .describe("Only include carts with an email address"),
+        .describe("Only include carts with an email address. Set false to include guest carts without email."),
       min_items: z
         .number()
         .int()
@@ -30,7 +30,10 @@ export function createCartsTools(http: Http) {
         .max(100)
         .default(50),
       offset: z.number().int().min(0).default(0),
-      with_customer: z.boolean().default(true),
+      with_customer: z
+        .boolean()
+        .default(true)
+        .describe("Include customer fields when available"),
     },
     handler: async (input: Record<string, unknown>): Promise<unknown> => {
       // Helpers to coerce natural language inputs --------------------------------
@@ -81,7 +84,7 @@ export function createCartsTools(http: Http) {
         return undefined;
       };
 
-      // Pull values with aliases --------------------------------------------------
+      // Pull values with aliases (handler remains tolerant, even if schema omits aliases)
       const getAlias = (obj: Record<string, unknown>, keys: string[]) => {
         for (const k of keys) {
           if (isDefined(obj[k])) return obj[k];
@@ -99,31 +102,33 @@ export function createCartsTools(http: Http) {
         "min_age",
       ]);
       let older_than_minutes: number | undefined;
-      older_than_minutes =
-        (typeof olderRaw === "number" && Number.isFinite(olderRaw)
+      const unitRaw = getAlias(input, ["threshold_unit", "unit"]);
+      const unitStr = typeof unitRaw === "string" ? unitRaw.toLowerCase().trim() : undefined;
+      const numericOlder =
+        typeof olderRaw === "number" && Number.isFinite(olderRaw)
           ? Math.max(0, Math.trunc(olderRaw))
-          : undefined) ?? parseDurationToMinutes(olderRaw);
+          : coerceInt(olderRaw);
+      if (typeof numericOlder === "number") {
+        if (!unitStr) {
+          older_than_minutes = numericOlder; // assume minutes if no unit
+        } else if (["m", "min", "minute", "minutes"].includes(unitStr)) {
+          older_than_minutes = numericOlder;
+        } else if (["h", "hour", "hours"].includes(unitStr)) {
+          older_than_minutes = numericOlder * 60;
+        } else if (["d", "day", "days"].includes(unitStr)) {
+          older_than_minutes = numericOlder * 1440;
+        }
+      }
+      older_than_minutes = older_than_minutes ?? parseDurationToMinutes(olderRaw);
       if (older_than_minutes === undefined) {
         older_than_minutes = 1440; // default 24h
       }
 
-      // require_email: inverted by include_email_less / even_without_email / without_email
-      const requireEmailRaw = getAlias(input, [
-        "require_email",
-        "with_email",
-      ]);
-      const includeEmailLessRaw = getAlias(input, [
-        "include_email_less",
-        "include_emailless",
-        "include_without_email",
-        "without_email",
-        "even_without_email",
-      ]);
+      // require_email
+      const requireEmailRaw = getAlias(input, ["require_email", "with_email"]);
       let require_email: boolean = true; // default
-      const includeEmailLess = coerceBoolean(includeEmailLessRaw);
       const reqEmail = coerceBoolean(requireEmailRaw);
-      if (includeEmailLess === true) require_email = false;
-      else if (typeof reqEmail === "boolean") require_email = reqEmail;
+      if (typeof reqEmail === "boolean") require_email = reqEmail;
 
       // min_items
       const minItemsRaw = getAlias(input, [
@@ -139,12 +144,7 @@ export function createCartsTools(http: Http) {
       const offset = Math.max(0, coerceInt(getAlias(input, ["offset", "skip", "page"])) ?? 0);
 
       // with_customer
-      const withCustomerRaw = getAlias(input, [
-        "with_customer",
-        "include_customer",
-        "expand_customer",
-        "customer",
-      ]);
+      const withCustomerRaw = getAlias(input, ["with_customer"]);
       const with_customer = coerceBoolean(withCustomerRaw);
 
       const params: Record<string, unknown> = {
