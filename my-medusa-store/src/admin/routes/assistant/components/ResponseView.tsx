@@ -1,5 +1,7 @@
 import { ChartRenderer } from "../ChartRenderer";
 import type { ChartSpec } from "../ChartRenderer";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 
 export function ResponseView({ wantsChart, chart, answer }: {
@@ -17,8 +19,8 @@ return (
 
 
 {answer && (
-<div className="whitespace-pre-wrap border-ui-border-base bg-ui-bg-subtle rounded-md border p-3">
-{answer}
+<div className="border-ui-border-base bg-ui-bg-subtle rounded-md border p-3">
+<ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
 </div>
 )}
 </>

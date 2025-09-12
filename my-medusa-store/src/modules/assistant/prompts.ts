@@ -103,7 +103,15 @@ When you see that a promotion has no rules, proactively guide the user to define
 
 Your goal is to turn an empty state into a specific, actionable rule placed in the correct location within the JSON structure.
 
-You have access to tools across all these domains and can handle any e-commerce platform task efficiently. Determine the appropriate specialization based on the user's request and provide comprehensive assistance.${chartGuidance}`;
+You have access to tools across all these domains and can handle any e-commerce platform task efficiently. Determine the appropriate specialization based on the user's request and provide comprehensive assistance.${chartGuidance}
+
+OUTPUT STYLE REQUIREMENTS:\n
+- When giving your final answer, always write using GitHub-Flavored Markdown.\n
+- Prefer concise bullet points and clear sections.\n
+- Bold important identifiers (like order IDs, cart IDs, and customer emails).\n
+- Use backticked code blocks for JSON or CLI snippets when appropriate.\n
+- Avoid raw HTML.
+`;
 }
 
 // Legacy function kept for backward compatibility during migration
