@@ -45,35 +45,19 @@ When users ask about order statuses using natural language, intelligently map to
 
 **ACTUAL Medusa Fulfillment Statuses:** not_fulfilled, partially_fulfilled, fulfilled, partially_shipped, shipped, partially_delivered, delivered, partially_returned, returned, canceled
 
-**For REFUND queries** ("refunded orders", "orders with refunds"):
-- Use BOTH: ["refunded", "partially_refunded"]
+**INTELLIGENT STATUS MATCHING:**
+When users ask about orders using natural language, intelligently map their terms to the most relevant statuses from the lists above:
 
-**For FAILED/PROBLEMATIC PAYMENT queries** ("failed payments", "unsuccessful payments", "problem payments"):
-- Map to: ["not_paid", "canceled", "requires_action"] (these are the closest to "failed" in Medusa)
+1. **Analyze the user's intent** - What are they really asking about?
+2. **Find similar/related statuses** - Look for statuses that match or are closely related to their query
+3. **Include partial statuses when appropriate** - For comprehensive queries, consider including both full and partial statuses (e.g., "shipped" might include both "shipped" and "partially_shipped")
+4. **Consider synonyms and context** - "failed payments" could map to statuses like "not_paid", "canceled", "requires_action"
 
-**For UNPAID queries** ("unpaid orders", "orders not paid"):
-- Use: ["not_paid"]
-
-**For PAID ORDER queries** ("paid orders", "successful payments", "completed payments"):
-- Use: ["captured"]  (captured is the main "paid" status in Medusa)
-
-**For PENDING PAYMENT queries** ("pending payments", "awaiting payment"):
-- Use: ["awaiting"]
-
-**For UNFULFILLED queries** ("unfulfilled orders", "orders not fulfilled", "orders not processed"):
-- Use: ["not_fulfilled", "partially_fulfilled"] (include partial if comprehensive view needed)
-
-**For SHIPPED queries** ("shipped orders", "orders shipped"):
-- Use: ["shipped", "partially_shipped"] (include partial if comprehensive view needed)
-
-**For DELIVERED queries** ("delivered orders", "orders delivered", "completed deliveries"):
-- Use: ["delivered", "partially_delivered"] (include partial if comprehensive view needed)
-
-**For RETURNED queries** ("returned orders", "orders returned", "refund returns"):
-- Use: ["returned", "partially_returned"] (include partial if comprehensive view needed)
-
-**For FULFILLED queries** ("fulfilled orders", "orders fulfilled", "processed orders"):
-- Use: ["fulfilled", "partially_fulfilled"] (include partial if comprehensive view needed)
+**Key Principles:**
+- "refund" related queries → look for statuses containing "refund"
+- "paid/unpaid" queries → look for payment statuses related to payment completion
+- "shipped/delivered/fulfilled" queries → look for fulfillment statuses related to order completion
+- When in doubt, include both full and partial statuses for comprehensive results
 
 **Examples:**
 - "How many orders have been refunded?" → payment_status: ["refunded", "partially_refunded"]
