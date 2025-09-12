@@ -32,23 +32,22 @@ type PromotionAnalyticsService = {
 export function createPromotionAnalyticsTools(
   promotionAnalytics: PromotionAnalyticsService
 ): Array<ReturnType<typeof defineTool>> {
-  
   // Helper function to coerce date range input
   const coerceRange = (
     input: Record<string, unknown>
   ): { start?: string; end?: string } => {
     // Try different possible field names for start
-    const start = 
+    const start =
       (input.start as string) ||
       (input.start_date as string) ||
       (input.from as string);
-    
+
     // Try different possible field names for end
-    const end = 
+    const end =
       (input.end as string) ||
       (input.end_date as string) ||
       (input.to as string);
-    
+
     return { start, end };
   };
 
@@ -89,8 +88,14 @@ export function createPromotionAnalyticsTools(
         end,
         promotion_code,
         total_orders: orders.length,
-        total_discount_amount: orders.reduce((sum, order) => sum + order.discount_total, 0),
-        total_revenue: orders.reduce((sum, order) => sum + order.order_total, 0),
+        total_discount_amount: orders.reduce(
+          (sum, order) => sum + order.discount_total,
+          0
+        ),
+        total_revenue: orders.reduce(
+          (sum, order) => sum + order.order_total,
+          0
+        ),
         orders,
       };
     },
@@ -127,7 +132,10 @@ export function createPromotionAnalyticsTools(
         end,
         promotion_code,
         total_products: products.length,
-        total_quantity_sold: products.reduce((sum, p) => sum + p.total_quantity_sold, 0),
+        total_quantity_sold: products.reduce(
+          (sum, p) => sum + p.total_quantity_sold,
+          0
+        ),
         total_revenue: products.reduce((sum, p) => sum + p.total_revenue, 0),
         products,
       };
@@ -186,13 +194,14 @@ export function createPromotionAnalyticsTools(
       const sort_order = input.sort_order as "asc" | "desc";
       const limit = input.limit as number;
 
-      const products = await promotionAnalytics.getProductsByPromotionPerformance(
-        start,
-        end,
-        sort_by,
-        sort_order,
-        limit
-      );
+      const products =
+        await promotionAnalytics.getProductsByPromotionPerformance(
+          start,
+          end,
+          sort_by,
+          sort_order,
+          limit
+        );
 
       return {
         start,

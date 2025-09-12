@@ -28,6 +28,13 @@ export type AdminShippingMethodMaybe = {
   shipping_option?: { id?: string; name?: string | null } | null;
 };
 
+export type AdminPromotionMaybe = {
+  id?: string;
+  code?: string;
+  type?: string;
+  is_automatic?: boolean;
+};
+
 export type AdminOrderMinimal = {
   id?: string;
   created_at?: string;
@@ -43,6 +50,7 @@ export type AdminOrderMinimal = {
   } | null;
   items?: AdminOrderItemMaybe[]; // present on detail; sometimes on list depending on setup
   shipping_methods?: AdminShippingMethodMaybe[]; // present on detail
+  promotions?: AdminPromotionMaybe[]; // present when promotions are expanded
 };
 
 export type VariantResolution = {

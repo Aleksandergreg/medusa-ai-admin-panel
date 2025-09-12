@@ -74,7 +74,6 @@ export function createPromotionAnalyticsService(http: Http): {
     limit?: number
   ) => Promise<PromotionProductStats[]>;
 } {
-  
   async function getOrdersInRange(
     fromIso: string,
     toIso: string
@@ -82,7 +81,7 @@ export function createPromotionAnalyticsService(http: Http): {
     const limit = 200;
     let offset = 0;
     const acc: AdminOrderMinimal[] = [];
-    
+
     // Use simplified fields that we know exist
     const base = {
       created_at: { gte: fromIso, lt: toIso },
@@ -114,6 +113,11 @@ export function createPromotionAnalyticsService(http: Http): {
         "+shipping_methods.id",
         "+shipping_methods.name",
         "+shipping_methods.shipping_option_id",
+        "+promotions",
+        "+promotions.id",
+        "+promotions.code",
+        "+promotions.type",
+        "+promotions.is_automatic",
       ].join(","),
     } as const;
 
@@ -124,7 +128,7 @@ export function createPromotionAnalyticsService(http: Http): {
         q
       );
       const batch = Array.isArray(data?.orders) ? data.orders : [];
-      
+
       for (const o of batch) {
         if (o?.canceled_at || !o?.created_at) {
           continue;
@@ -133,7 +137,7 @@ export function createPromotionAnalyticsService(http: Http): {
           acc.push(o);
         }
       }
-      
+
       if (batch.length < limit) {
         break;
       }
@@ -152,31 +156,50 @@ export function createPromotionAnalyticsService(http: Http): {
 
     for (const order of orders) {
       const discount_total = (order as any).discount_total || 0;
-      
+
       // Only include orders that have discounts applied
       if (discount_total <= 0) {
         continue;
       }
 
-      // For now, we'll use a simple approach since detailed promotion data 
-      // isn't easily accessible through the standard order fields
-      let promotion_codes: string[] = ["DISCOUNT_APPLIED"];
-      let promotion_ids: string[] = ["unknown"];
+      // Extract actual promotion data from the order
+      const orderPromotions = (order as any).promotions || [];
+      let promotion_codes: string[] = [];
+      let promotion_ids: string[] = [];
 
-      // If a specific promotion code is being filtered for, 
+      if (orderPromotions.length > 0) {
+        promotion_codes = orderPromotions
+          .map((promo: any) => promo.code)
+          .filter(Boolean);
+        promotion_ids = orderPromotions
+          .map((promo: any) => promo.id)
+          .filter(Boolean);
+      } else if (discount_total > 0) {
+        // Fallback if promotions data is not available but discount exists
+        promotion_codes = ["DISCOUNT_APPLIED"];
+        promotion_ids = ["unknown"];
+      }
+
+      // If a specific promotion code is being filtered for,
       // only include if it matches (case-insensitive)
       if (promotion_code) {
-        const codeMatches = promotion_code.toLowerCase() === "discount_applied" || 
-                           promotion_code.toLowerCase() === "unknown";
+        const codeMatches = promotion_codes.some(
+          (code) => code.toLowerCase() === promotion_code.toLowerCase()
+        );
         if (!codeMatches) {
           continue; // Skip this order as it doesn't match the filter
         }
       }
 
       const items = (order.items || []).map((item: any) => ({
-        product_id: item.variant?.product_id || item.variant?.product?.id || null,
+        product_id:
+          item.variant?.product_id || item.variant?.product?.id || null,
         variant_id: item.variant_id || item.variant?.id || null,
-        title: item.title || item.variant?.title || item.variant?.product?.title || null,
+        title:
+          item.title ||
+          item.variant?.title ||
+          item.variant?.product?.title ||
+          null,
         sku: item.variant?.sku || null,
         quantity: item.quantity || 0,
         unit_price: item.unit_price || 0,
@@ -220,8 +243,8 @@ export function createPromotionAnalyticsService(http: Http): {
       if (orderPromotionCodes.length === 0) continue;
 
       for (const item of order.items) {
-        const key = item.product_id || item.variant_id || 'unknown';
-        
+        const key = item.product_id || item.variant_id || "unknown";
+
         if (!productStats.has(key)) {
           productStats.set(key, {
             product_id: item.product_id,
@@ -238,7 +261,7 @@ export function createPromotionAnalyticsService(http: Http): {
         }
 
         const stats = productStats.get(key)!;
-        
+
         // Add unique promotion codes
         for (const code of orderPromotionCodes) {
           if (!stats.promotion_codes.includes(code)) {
@@ -256,9 +279,10 @@ export function createPromotionAnalyticsService(http: Http): {
     // Calculate averages
     const results = Array.from(productStats.values());
     for (const stats of results) {
-      stats.average_order_quantity = stats.total_orders > 0 
-        ? stats.total_quantity_sold / stats.total_orders 
-        : 0;
+      stats.average_order_quantity =
+        stats.total_orders > 0
+          ? stats.total_quantity_sold / stats.total_orders
+          : 0;
     }
 
     return results;
@@ -276,7 +300,7 @@ export function createPromotionAnalyticsService(http: Http): {
         if (!promotionSummaries.has(code)) {
           promotionSummaries.set(code, {
             promotion_code: code,
-            promotion_id: order.promotion_ids.find(id => id) || null,
+            promotion_id: order.promotion_ids.find((id) => id) || null,
             total_orders: 0,
             total_discount_amount: 0,
             total_revenue: 0,
@@ -320,11 +344,12 @@ export function createPromotionAnalyticsService(http: Http): {
   ): Promise<PromotionProductStats[]> {
     const productStats = await getPromotionProductStats(start, end);
 
-    const sortField = sort_by === "quantity" 
-      ? "total_quantity_sold"
-      : sort_by === "revenue"
-      ? "total_revenue"
-      : "total_orders";
+    const sortField =
+      sort_by === "quantity"
+        ? "total_quantity_sold"
+        : sort_by === "revenue"
+        ? "total_revenue"
+        : "total_orders";
 
     productStats.sort((a, b) => {
       const aVal = (a as any)[sortField];
