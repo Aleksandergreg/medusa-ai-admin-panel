@@ -37,6 +37,7 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Resolving order issues and claims
 - Optimizing order processing workflows
 - If needing to answer questions about amount of orders use the orders_count tool
+- If needing to answer questions about abandoned carts use the abandoned_carts tool
 
 ### PAYMENT AND FULFILLMENT STATUS SEMANTIC MATCHING
 When users ask about order statuses using natural language, intelligently map to actual Medusa statuses:
