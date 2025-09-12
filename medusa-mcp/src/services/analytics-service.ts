@@ -48,6 +48,21 @@ export function createAnalyticsService(
       count: number;
     }>;
   }>;
+  customerOrderFrequency: (params: {
+    start?: string;
+    end?: string;
+    min_orders?: number;
+  }) => Promise<
+    Array<{
+      customer_id: string;
+      customer_email: string | null;
+      customer_name: string | null;
+      order_count: number;
+      average_days_between_orders: number;
+      first_order_date: string;
+      last_order_date: string;
+    }>
+  >;
 } {
   async function ordersCount(start: string, end: string): Promise<number> {
     const list = await orders.listInRange(start, end);
@@ -431,5 +446,117 @@ export function createAnalyticsService(
     };
   }
 
-  return { ordersCount, salesAggregate, ordersStatusCount };
+  async function customerOrderFrequency(params: {
+    start?: string;
+    end?: string;
+    min_orders?: number;
+  }): Promise<
+    Array<{
+      customer_id: string;
+      customer_email: string | null;
+      customer_name: string | null;
+      order_count: number;
+      average_days_between_orders: number;
+      first_order_date: string;
+      last_order_date: string;
+    }>
+  > {
+    const defaultStart = new Date(
+      Date.now() - 365 * 24 * 60 * 60 * 1000
+    ).toISOString(); // 1 year ago
+    const defaultEnd = new Date().toISOString();
+
+    const start = params.start || defaultStart;
+    const end = params.end || defaultEnd;
+    const minOrders = params.min_orders || 2;
+
+    // Get all orders in the date range
+    const allOrders = await orders.listInRange(start, end);
+
+    // Group orders by customer
+    const customerOrders = new Map<string, typeof allOrders>();
+
+    for (const order of allOrders) {
+      const customerId = order.customer_id || order.customer?.id;
+      if (!customerId) continue; // Skip orders without customer info
+
+      if (!customerOrders.has(customerId)) {
+        customerOrders.set(customerId, []);
+      }
+      customerOrders.get(customerId)!.push(order);
+    }
+
+    const results: Array<{
+      customer_id: string;
+      customer_email: string | null;
+      customer_name: string | null;
+      order_count: number;
+      average_days_between_orders: number;
+      first_order_date: string;
+      last_order_date: string;
+    }> = [];
+
+    // Calculate frequency for each customer
+    for (const [customerId, customerOrderList] of customerOrders.entries()) {
+      if (customerOrderList.length < minOrders) continue;
+
+      // Sort orders by date
+      const sortedOrders = customerOrderList
+        .filter((o) => o.created_at)
+        .sort(
+          (a, b) =>
+            new Date(a.created_at!).getTime() -
+            new Date(b.created_at!).getTime()
+        );
+
+      if (sortedOrders.length < minOrders) continue;
+
+      // Calculate time differences between consecutive orders
+      const timeDiffs: number[] = [];
+      for (let i = 1; i < sortedOrders.length; i++) {
+        const prevDate = new Date(sortedOrders[i - 1].created_at!).getTime();
+        const currDate = new Date(sortedOrders[i].created_at!).getTime();
+        const diffDays = (currDate - prevDate) / (1000 * 60 * 60 * 24);
+        timeDiffs.push(diffDays);
+      }
+
+      // Calculate average
+      const averageDays =
+        timeDiffs.reduce((sum, diff) => sum + diff, 0) / timeDiffs.length;
+
+      // Get customer info from the first order
+      const firstOrder = sortedOrders[0];
+      const customerEmail = firstOrder.customer?.email || null;
+      const customerName =
+        firstOrder.customer?.first_name && firstOrder.customer?.last_name
+          ? `${firstOrder.customer.first_name} ${firstOrder.customer.last_name}`.trim()
+          : firstOrder.customer?.first_name ||
+            firstOrder.customer?.last_name ||
+            null;
+
+      results.push({
+        customer_id: customerId,
+        customer_email: customerEmail,
+        customer_name: customerName,
+        order_count: sortedOrders.length,
+        average_days_between_orders: Math.round(averageDays), // Round to full days
+        first_order_date: sortedOrders[0].created_at!,
+        last_order_date: sortedOrders[sortedOrders.length - 1].created_at!,
+      });
+    }
+
+    // Sort by average days between orders (ascending)
+    results.sort(
+      (a, b) => a.average_days_between_orders - b.average_days_between_orders
+    );
+
+    return results;
+  }
+
+  return {
+    ordersCount,
+    salesAggregate,
+    ordersStatusCount,
+    customerOrderFrequency,
+  };
 }

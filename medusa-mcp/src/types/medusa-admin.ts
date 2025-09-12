@@ -34,6 +34,13 @@ export type AdminOrderMinimal = {
   canceled_at?: string | null;
   payment_status?: string | null;
   fulfillment_status?: string | null;
+  customer_id?: string | null;
+  customer?: {
+    id?: string;
+    email?: string;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
   items?: AdminOrderItemMaybe[]; // present on detail; sometimes on list depending on setup
   shipping_methods?: AdminShippingMethodMaybe[]; // present on detail
 };
