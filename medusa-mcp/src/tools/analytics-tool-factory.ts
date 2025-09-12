@@ -37,6 +37,21 @@ type AnalyticsService = {
       count: number;
     }>;
   }>;
+  customerOrderFrequency: (params: {
+    start?: string;
+    end?: string;
+    min_orders?: number;
+  }) => Promise<
+    Array<{
+      customer_id: string;
+      customer_email: string | null;
+      customer_name: string | null;
+      order_count: number;
+      average_days_between_orders: number;
+      first_order_date: string;
+      last_order_date: string;
+    }>
+  >;
 };
 
 export function createAnalyticsTools(
@@ -483,5 +498,71 @@ export function createAnalyticsTools(
     },
   }));
 
-  return [orders_count, sales_aggregate, orders_status_analysis];
+  const customer_order_frequency = defineTool((z) => ({
+    name: "customer_order_frequency",
+    description:
+      "Calculate average time between orders for customers who have made multiple orders. Shows how frequently each customer places orders.",
+    inputSchema: {
+      start: z
+        .string()
+        .datetime()
+        .optional()
+        .describe(
+          "Start date for analysis (ISO 8601 format). Defaults to 1 year ago."
+        ),
+      end: z
+        .string()
+        .datetime()
+        .optional()
+        .describe("End date for analysis (ISO 8601 format). Defaults to now."),
+      min_orders: z
+        .number()
+        .int()
+        .min(2)
+        .default(2)
+        .describe(
+          "Minimum number of orders required to include a customer in results"
+        ),
+    },
+    handler: async (input: Record<string, unknown>): Promise<unknown> => {
+      const result = await analytics.customerOrderFrequency({
+        start: input.start as string | undefined,
+        end: input.end as string | undefined,
+        min_orders: input.min_orders as number | undefined,
+      });
+
+      return {
+        customers: result.map((customer) => ({
+          customer_id: customer.customer_id,
+          customer_email: customer.customer_email || "Unknown",
+          customer_name: customer.customer_name || "Unknown",
+          order_count: customer.order_count,
+          average_days_between_orders: customer.average_days_between_orders,
+          first_order_date: customer.first_order_date,
+          last_order_date: customer.last_order_date,
+        })),
+        summary: {
+          total_customers_analyzed: result.length,
+          average_frequency_across_all:
+            result.length > 0
+              ? Math.round(
+                  (result.reduce(
+                    (sum, c) => sum + c.average_days_between_orders,
+                    0
+                  ) /
+                    result.length) *
+                    100
+                ) / 100
+              : 0,
+        },
+      };
+    },
+  }));
+
+  return [
+    orders_count,
+    sales_aggregate,
+    orders_status_analysis,
+    customer_order_frequency,
+  ];
 }
