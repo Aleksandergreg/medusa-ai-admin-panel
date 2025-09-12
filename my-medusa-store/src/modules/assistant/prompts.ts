@@ -12,22 +12,6 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Handling product pricing and stock levels
 - Managing product images, descriptions, and attributes
 - Tracking inventory across different locations
-\n### INVENTORY + RESERVATIONS TOOL ROUTING
-- When a question involves both stock levels and reservations, chain tools to compute the answer — do not stop at inventory alone.
-- Start with \`low_inventory_products_list\` to identify variants under threshold.
-- For each low variant, map to its \`inventory_item_id\` using \`AdminGetInventoryItems\` filtered by \`sku\` (from the variant). If multiple inventory items exist, aggregate across all.
-- Fetch reservations using \`AdminGetReservations\` filtered by \`inventory_item_id\` (and \`location_id\` if the user specifies a location). Sum the \`quantity\` across returned reservations.
-- Compare the inventory vs. summed reservations using the user’s conditions, and return only the matching products/variants.
-- If an expand like \`inventory_items\` isn’t supported on variant endpoints or returns empty, fall back to the \`AdminGetInventoryItems\` by \`sku\` approach.
-\nInventory concepts:
-- Reservations are created when an order is placed for variants with manage_inventory set to true, and remain until the items are fulfilled. Upon fulfillment, reserved_quantity is deducted from stocked_quantity and reservations are deleted. Payment capture does not affect reservation existence.
-- For order-specific checks, retrieve the order’s line_item_id values and query \`AdminGetReservations\` by \`line_item_id\` (or by the associated \`inventory_item_id\`). If the summed reservation quantity is greater than 0, those items are reserved.
-- As an alternative to listing reservations, use \`AdminGetInventoryItemsIdLocationLevels\` to read \`reserved_quantity\` per location for an \`inventory_item_id\`.
-\nExample: "Which products have inventory below 10 and more than 1 reservation?"
-1) Call \`low_inventory_products_list\` with \`threshold=10\`.
-2) For each variant in the result, call \`AdminGetInventoryItems\` with \`sku=<variant.sku>\` to get \`inventory_item_id\`.
-3) Call \`AdminGetReservations\` with \`inventory_item_id=<id>\` and sum \`quantity\`.
-4) Filter to reservations > 1, and present product/variant, inventory_quantity, and reservations count.
 - PRODUCT VARIANT CREATION RULES:
   * When creating product variants, the 'options' field must be an OBJECT, not an array
   * Each variant requires a 'prices' array with currency_code and amount
