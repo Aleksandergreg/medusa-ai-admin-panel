@@ -39,16 +39,24 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - If needing to answer questions about amount of orders use the orders_count tool
 
 ### PAYMENT AND FULFILLMENT STATUS SEMANTIC MATCHING
-When users ask about order statuses, intelligently expand to related statuses:
+When users ask about order statuses using natural language, intelligently map to actual Medusa statuses:
+
+**ACTUAL Medusa Payment Statuses:** not_paid, awaiting, captured, partially_refunded, refunded, canceled, requires_action
 
 **For REFUND queries** ("refunded orders", "orders with refunds"):
 - Use BOTH: ["refunded", "partially_refunded"]
 
-**For FAILED PAYMENT queries** ("failed payments", "unpaid orders"):
-- Use: ["failed", "not_paid"] (not_paid often indicates payment failure)
+**For FAILED/PROBLEMATIC PAYMENT queries** ("failed payments", "unsuccessful payments", "problem payments"):
+- Map to: ["not_paid", "canceled", "requires_action"] (these are the closest to "failed" in Medusa)
 
-**For PAID ORDER queries** ("paid orders", "successful payments"):
-- Use: ["captured", "completed"]
+**For UNPAID queries** ("unpaid orders", "orders not paid"):
+- Use: ["not_paid"]
+
+**For PAID ORDER queries** ("paid orders", "successful payments", "completed payments"):
+- Use: ["captured"]  (captured is the main "paid" status in Medusa)
+
+**For PENDING PAYMENT queries** ("pending payments", "awaiting payment"):
+- Use: ["awaiting"]
 
 **For UNFULFILLED queries** ("unfulfilled orders", "orders not shipped"):
 - Use: ["not_fulfilled", "partially_fulfilled"] (include partial if comprehensive view needed)
@@ -58,8 +66,9 @@ When users ask about order statuses, intelligently expand to related statuses:
 
 **Examples:**
 - "How many orders have been refunded?" → payment_status: ["refunded", "partially_refunded"]
-- "Show me failed payments" → payment_status: ["failed", "not_paid"]
-- "Find paid but unshipped orders" → payment_status: ["captured", "completed"], fulfillment_status: ["not_fulfilled"]
+- "Show me failed payments" → payment_status: ["not_paid", "canceled", "requires_action"]
+- "Find unpaid orders" → payment_status: ["not_paid"]
+- "Show paid but unshipped orders" → payment_status: ["captured"], fulfillment_status: ["not_fulfilled"]
 
 ## MARKETING AND PROMOTIONS
 - Creating and managing promotional campaigns
@@ -94,7 +103,8 @@ export function getCategoryPrompt(
   category: string,
   wantsChart?: boolean
 ): string {
-  console.warn('getCategoryPrompt is deprecated, use getCombinedPrompt instead');
+  console.warn(
+    "getCategoryPrompt is deprecated, use getCombinedPrompt instead"
+  );
   return getCombinedPrompt(wantsChart);
 }
-

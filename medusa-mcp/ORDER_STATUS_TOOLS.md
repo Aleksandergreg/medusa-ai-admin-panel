@@ -154,27 +154,28 @@ Count orders that are not paid.
 When using the MCP tools with natural language queries, consider these related status combinations:
 
 ### For Refund Queries
+
 - **"refunded orders"** → Use `["refunded", "partially_refunded"]`
 - **"orders with refunds"** → Use `["refunded", "partially_refunded"]`
 
 ### For Failed Payment Queries  
-- **"failed payments"** → Use `["failed", "not_paid"]` (not_paid often indicates payment failure)
+
+- **"failed payments"** → Use `["not_paid", "canceled", "requires_action"]` (these are the closest to "failed" in Medusa)
+- **"problematic payments"** → Use `["not_paid", "canceled", "requires_action"]`
 - **"unpaid orders"** → Use `["not_paid"]`
 
 ### For Paid Order Queries
-- **"paid orders"** → Use `["captured", "completed"]`
-- **"successful payments"** → Use `["captured", "completed"]`
 
-### For Fulfillment Queries
+- **"paid orders"** → Use `["captured"]` (captured is the main "paid" status in Medusa)
+- **"successful payments"** → Use `["captured"]`### For Fulfillment Queries
+
 - **"unfulfilled orders"** → Use `["not_fulfilled", "partially_fulfilled"]` (if you want to include partial)
 - **"shipped orders"** → Use `["shipped", "partially_shipped"]` (if you want to include partial)
 
-**Example**: When asked "how many orders have been refunded?", use:
-```javascript
-{
-  "payment_status": ["refunded", "partially_refunded"]
-}
-```
+**Examples**: 
+- "How many orders have been refunded?" → `{"payment_status": ["refunded", "partially_refunded"]}`
+- "Show me failed payments" → `{"payment_status": ["not_paid", "canceled", "requires_action"]}`
+- "Find paid orders" → `{"payment_status": ["captured"]}`
 
 ## Use Cases
 
@@ -183,7 +184,7 @@ When using the MCP tools with natural language queries, consider these related s
 ```javascript
 // Use orders_status_analysis or failed_payments_count
 {
-  "payment_status": ["failed", "awaiting", "requires_action"],
+  "payment_status": ["not_paid", "canceled", "requires_action"],
   "start": "2024-12-01T00:00:00Z",
   "end": "2025-01-01T00:00:00Z"
 }

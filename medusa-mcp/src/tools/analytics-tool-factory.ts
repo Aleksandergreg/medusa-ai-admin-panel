@@ -285,10 +285,10 @@ export function createAnalyticsTools(
     name: "orders_status_analysis",
     description:
       "Universal order analysis tool for all payment and fulfillment status combinations. " +
-      "PAYMENT STATUSES: not_paid, awaiting, captured, completed, partially_refunded, refunded, canceled, requires_action. " +
+      "PAYMENT STATUSES: not_paid, awaiting, captured, partially_refunded, refunded, canceled, requires_action. " +
       "FULFILLMENT STATUSES: not_fulfilled, partially_fulfilled, fulfilled, partially_shipped, shipped, partially_returned, returned, canceled, requires_action. " +
-      "IMPORTANT: When user asks about 'refunds', consider BOTH 'refunded' AND 'partially_refunded'. When asked about 'failed payments', consider BOTH 'failed' AND 'not_paid'. When asked about 'paid orders', use ['captured', 'completed']. " +
-      "Examples: unpaid orders (payment_status: 'not_paid'), delivered/shipped orders (fulfillment_status: ['shipped', 'fulfilled']), paid unfulfilled orders (payment_status: ['captured','completed'] + fulfillment_status: ['not_fulfilled','partially_fulfilled']).",
+      "IMPORTANT: When user asks about 'refunds', consider BOTH 'refunded' AND 'partially_refunded'. When asked about 'failed payments', map to ['not_paid', 'canceled', 'requires_action']. When asked about 'paid orders', use ['captured']. " +
+      "Examples: unpaid orders (payment_status: 'not_paid'), delivered/shipped orders (fulfillment_status: ['shipped', 'fulfilled']), paid unfulfilled orders (payment_status: ['captured'] + fulfillment_status: ['not_fulfilled','partially_fulfilled']).",
     inputSchema: {
       start: z.string().datetime().optional(),
       end: z.string().datetime().optional(),
@@ -301,7 +301,7 @@ export function createAnalyticsTools(
         .union([z.string(), z.array(z.string())])
         .optional()
         .describe(
-          "Filter by payment status. Available values: not_paid (items not paid), awaiting (awaiting payment), captured (payment captured), completed (payment completed), partially_refunded (partially refunded), refunded (fully refunded), canceled (payment canceled), requires_action (payment requires action). IMPORTANT: For refund queries, use BOTH 'refunded' and 'partially_refunded'. For failed payment queries, use BOTH 'failed' and 'not_paid'. Can be a string or array."
+          "Filter by payment status. Available values: not_paid (items not paid), awaiting (awaiting payment), captured (payment captured), partially_refunded (partially refunded), refunded (fully refunded), canceled (payment canceled), requires_action (payment requires action). IMPORTANT: For refund queries, use BOTH 'refunded' and 'partially_refunded'. For failed payment queries, map to ['not_paid', 'canceled', 'requires_action']. Can be a string or array."
         ),
       payment_statuses: z
         .union([z.string(), z.array(z.string())])
@@ -342,7 +342,7 @@ export function createAnalyticsTools(
         ])
         .optional()
         .describe(
-          "Use preset filters: problematic_payments (not_paid,awaiting,canceled,requires_action), unpaid_orders (not_paid), paid_unfulfilled (captured/completed + not_fulfilled/partially_fulfilled), all_unfulfilled (not_fulfilled/partially_fulfilled), delivered_orders (fulfilled), shipped_orders (shipped/partially_shipped), returned_orders (returned/partially_returned)"
+          "Use preset filters: problematic_payments (not_paid,awaiting,canceled,requires_action), unpaid_orders (not_paid), paid_unfulfilled (captured + not_fulfilled/partially_fulfilled), all_unfulfilled (not_fulfilled/partially_fulfilled), delivered_orders (fulfilled), shipped_orders (shipped/partially_shipped), returned_orders (returned/partially_returned)"
         ),
 
       include_partial: z
@@ -395,7 +395,7 @@ export function createAnalyticsTools(
             paymentStatuses = ["not_paid"];
             break;
           case "paid_unfulfilled":
-            paymentStatuses = ["captured", "completed"];
+            paymentStatuses = ["captured"];
             fulfillmentStatuses = includePartial
               ? ["not_fulfilled", "partially_fulfilled"]
               : ["not_fulfilled"];

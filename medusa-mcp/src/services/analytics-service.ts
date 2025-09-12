@@ -288,14 +288,14 @@ export function createAnalyticsService(
       if (str.includes("completed")) {
         return "completed";
       }
-      if (str.includes("partially_refunded") || str.includes("partially refunded")) {
+      if (
+        str.includes("partially_refunded") ||
+        str.includes("partially refunded")
+      ) {
         return "partially_refunded";
       }
       if (str.includes("refunded")) {
         return "refunded";
-      }
-      if (str.includes("failed")) {
-        return "failed";
       }
       if (str.includes("canceled") || str.includes("cancelled")) {
         return "canceled";
