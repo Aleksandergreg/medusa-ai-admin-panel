@@ -144,7 +144,12 @@ Count orders that are not paid.
 - `not_fulfilled`: No items have been fulfilled (matches "Not fulfilled", "not_fulfilled")
 - `partially_fulfilled`: Some items have been fulfilled (matches "Partially fulfilled", "partially_fulfilled")
 - `fulfilled`: All items have been fulfilled (matches "Fulfilled")
-- `delivered`: Order has been delivered (matches "Delivered")
+- `partially_shipped`: Some items have been shipped (matches "Partially shipped", "partially_shipped")
+- `shipped`: All items have been shipped (matches "Shipped")
+- `partially_delivered`: Some items have been delivered (matches "Partially delivered", "partially_delivered")
+- `delivered`: All items have been delivered (matches "Delivered")
+- `partially_returned`: Some items have been returned (matches "Partially returned", "partially_returned")
+- `returned`: All items have been returned (matches "Returned")
 - `canceled`: Fulfillment was canceled (matches "Canceled", "Cancelled")
 
 **Note**: The system automatically normalizes different status formats from the Medusa API, so you can use the standard values above regardless of how they appear in the admin interface.
@@ -158,7 +163,7 @@ When using the MCP tools with natural language queries, consider these related s
 - **"refunded orders"** → Use `["refunded", "partially_refunded"]`
 - **"orders with refunds"** → Use `["refunded", "partially_refunded"]`
 
-### For Failed Payment Queries  
+### For Failed Payment Queries
 
 - **"failed payments"** → Use `["not_paid", "canceled", "requires_action"]` (these are the closest to "failed" in Medusa)
 - **"problematic payments"** → Use `["not_paid", "canceled", "requires_action"]`
@@ -167,15 +172,23 @@ When using the MCP tools with natural language queries, consider these related s
 ### For Paid Order Queries
 
 - **"paid orders"** → Use `["captured"]` (captured is the main "paid" status in Medusa)
-- **"successful payments"** → Use `["captured"]`### For Fulfillment Queries
+- **"successful payments"** → Use `["captured"]`
+
+### For Fulfillment Queries
 
 - **"unfulfilled orders"** → Use `["not_fulfilled", "partially_fulfilled"]` (if you want to include partial)
 - **"shipped orders"** → Use `["shipped", "partially_shipped"]` (if you want to include partial)
+- **"delivered orders"** → Use `["delivered", "partially_delivered"]` (if you want to include partial)
+- **"returned orders"** → Use `["returned", "partially_returned"]` (if you want to include partial)
+- **"fulfilled orders"** → Use `["fulfilled", "partially_fulfilled"]` (if you want to include partial)
 
-**Examples**: 
+**Examples**:
+
 - "How many orders have been refunded?" → `{"payment_status": ["refunded", "partially_refunded"]}`
 - "Show me failed payments" → `{"payment_status": ["not_paid", "canceled", "requires_action"]}`
 - "Find paid orders" → `{"payment_status": ["captured"]}`
+- "How many orders have been delivered?" → `{"fulfillment_status": ["delivered", "partially_delivered"]}`
+- "Show shipped but not delivered orders" → `{"fulfillment_status": ["shipped"], "exclude_fulfillment": ["delivered", "partially_delivered"]}`
 
 ## Use Cases
 

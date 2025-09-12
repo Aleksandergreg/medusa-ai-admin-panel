@@ -320,8 +320,32 @@ export function createAnalyticsService(
       ) {
         return "partially_fulfilled";
       }
+      if (
+        str.includes("partially shipped") ||
+        str.includes("partially_shipped")
+      ) {
+        return "partially_shipped";
+      }
+      if (
+        str.includes("partially delivered") ||
+        str.includes("partially_delivered")
+      ) {
+        return "partially_delivered";
+      }
+      if (
+        str.includes("partially returned") ||
+        str.includes("partially_returned")
+      ) {
+        return "partially_returned";
+      }
       if (str.includes("delivered")) {
         return "delivered";
+      }
+      if (str.includes("shipped")) {
+        return "shipped";
+      }
+      if (str.includes("returned")) {
+        return "returned";
       }
       if (str.includes("fulfilled")) {
         return "fulfilled";

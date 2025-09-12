@@ -286,9 +286,9 @@ export function createAnalyticsTools(
     description:
       "Universal order analysis tool for all payment and fulfillment status combinations. " +
       "PAYMENT STATUSES: not_paid, awaiting, captured, partially_refunded, refunded, canceled, requires_action. " +
-      "FULFILLMENT STATUSES: not_fulfilled, partially_fulfilled, fulfilled, partially_shipped, shipped, partially_returned, returned, canceled, requires_action. " +
+      "FULFILLMENT STATUSES: not_fulfilled, partially_fulfilled, fulfilled, partially_shipped, shipped, partially_delivered, delivered, partially_returned, returned, canceled. " +
       "IMPORTANT: When user asks about 'refunds', consider BOTH 'refunded' AND 'partially_refunded'. When asked about 'failed payments', map to ['not_paid', 'canceled', 'requires_action']. When asked about 'paid orders', use ['captured']. " +
-      "Examples: unpaid orders (payment_status: 'not_paid'), delivered/shipped orders (fulfillment_status: ['shipped', 'fulfilled']), paid unfulfilled orders (payment_status: ['captured'] + fulfillment_status: ['not_fulfilled','partially_fulfilled']).",
+      "Examples: unpaid orders (payment_status: 'not_paid'), delivered/shipped orders (fulfillment_status: ['shipped', 'delivered']), paid unfulfilled orders (payment_status: ['captured'] + fulfillment_status: ['not_fulfilled','partially_fulfilled']).",
     inputSchema: {
       start: z.string().datetime().optional(),
       end: z.string().datetime().optional(),
@@ -312,7 +312,7 @@ export function createAnalyticsTools(
         .union([z.string(), z.array(z.string())])
         .optional()
         .describe(
-          "Filter by fulfillment status. Available values: not_fulfilled (items not fulfilled), partially_fulfilled (some items fulfilled), fulfilled (all items fulfilled), partially_shipped (some items shipped), shipped (all items shipped), partially_returned (some items returned), returned (all items returned), canceled (fulfillment canceled), requires_action (fulfillment requires action). Can be a string or array."
+          "Filter by fulfillment status. Available values: not_fulfilled (items not fulfilled), partially_fulfilled (some items fulfilled), fulfilled (all items fulfilled), partially_shipped (some items shipped), shipped (all items shipped), partially_delivered (some items delivered), delivered (all items delivered), partially_returned (some items returned), returned (all items returned), canceled (fulfillment canceled). Can be a string or array."
         ),
       fulfillment_statuses: z
         .union([z.string(), z.array(z.string())])
