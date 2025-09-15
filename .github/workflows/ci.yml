@@ -5,10 +5,6 @@ on:
     branches: [ main ]
     paths:
       - 'my-medusa-store/**'
-  push:
-    branches: [ main ]
-    paths:
-      - 'my-medusa-store/**'
 
 jobs:
   test-unit:
