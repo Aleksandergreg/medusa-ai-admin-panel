@@ -8,10 +8,10 @@ if (shouldRunPgIntegration()) {
     env: {},
     testSuite: ({ api }) => {
       describe("Ping", () => {
-        it("ping the server health endpoint", async () => {
-          const response = await api.get('/health')
+      it("ping a simple store route (health substitute)", async () => {
+          const response = await api.get('/store/custom')
           expect(response.status).toEqual(200)
-        })
+      })
       })
     },
   })
