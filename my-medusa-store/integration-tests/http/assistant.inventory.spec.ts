@@ -79,14 +79,23 @@ if (shouldRunPgIntegration()) {
       const attachAdminKey = async () => {
         const { createApiKeysWorkflow } = require("@medusajs/core-flows");
         const container = await getContainer();
-        const { result } = await createApiKeysWorkflow(container).run({
-          input: { api_keys: [{ type: "secret", title: "CI Admin Key", created_by: "ci" }] },
-        });
-        const token = result?.[0]?.token;
-        if (!token || !String(token).startsWith("sk_")) {
-          throw new Error("Failed to create admin API key for test auth");
+        try {
+          const { result } = await createApiKeysWorkflow(container).run({
+            input: { api_keys: [{ type: "secret", title: "CI Admin Key", created_by: "ci" }] },
+          });
+          const token = result?.[0]?.token;
+          if (!token || !String(token).startsWith("sk_")) {
+            throw new Error("Failed to create admin API key for test auth");
+          }
+          api.defaults.headers.common["Authorization"] = `Basic ${token}`;
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          if (msg.includes("one active secret key")) {
+            // Key already exists (from beforeAll). Keep existing header.
+            return;
+          }
+          throw e;
         }
-        api.defaults.headers.common["Authorization"] = `Basic ${token}`;
       };
 
       beforeAll(async () => {

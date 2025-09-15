@@ -60,7 +60,7 @@ if (shouldRunPgIntegration()) {
         const authIdentityId: string | undefined = decoded?.auth_identity_id;
         if (!authIdentityId) throw new Error("Missing auth_identity_id in registration token");
 
-        const { createUserAccountWorkflow } = require("@medusajs/core-flows/dist/user/workflows/create-user-account.js");
+        const { createUserAccountWorkflow } = require("@medusajs/core-flows");
         await createUserAccountWorkflow(container).run({
           input: {
             authIdentityId,
