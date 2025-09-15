@@ -96,6 +96,7 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_USERNAME: postgres
           DB_PASSWORD: postgres
+          PGSSLMODE: disable
         run: npm run test:integration:http -- --watchman=false
 
   live-llm:
