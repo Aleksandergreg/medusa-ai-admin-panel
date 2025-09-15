@@ -63,7 +63,20 @@ if (shouldRunPgIntegration()) {
       ADMIN_CORS: "*",
       AUTH_CORS: "*",
     },
-    testSuite: ({ api }) => {
+    testSuite: ({ api, getContainer }) => {
+      beforeAll(async () => {
+        // Create a temporary secret admin API key and attach it as Basic auth
+        const { createApiKeysWorkflow } = require("@medusajs/core-flows");
+        const container = await getContainer();
+        const { result } = await createApiKeysWorkflow(container).run({
+          input: { api_keys: [{ type: "secret", title: "CI Admin Key", created_by: "ci" }] },
+        });
+        const token = result?.[0]?.token;
+        if (!token || !String(token).startsWith("sk_")) {
+          throw new Error("Failed to create admin API key for test auth");
+        }
+        api.defaults.headers.common["Authorization"] = `Basic ${token}`;
+      });
       describe("Assistant orders_count (stubbed planner + MCP)", () => {
         it("invokes orders_count with July range and returns 8", async () => {
           const res = await api.post("/admin/assistant", {
