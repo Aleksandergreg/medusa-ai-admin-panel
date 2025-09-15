@@ -49,10 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUN_PG_TESTS: '1'
-      DB_HOST: 127.0.0.1
+      DB_HOST: localhost
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
-      PGHOST: 127.0.0.1
+      PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
       PGPORT: 5432
@@ -101,7 +101,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           for i in {1..60}; do
-            if psql -h 127.0.0.1 -U postgres -d postgres -c 'select 1' >/dev/null 2>&1; then
+            if psql -h localhost -U postgres -d postgres -c 'select 1' >/dev/null 2>&1; then
               echo "Postgres is ready"
               break
             fi
@@ -118,7 +118,7 @@ jobs:
           ADMIN_CORS: '*'
           AUTH_CORS: '*'
           LOG_LEVEL: error
-          DB_HOST: 127.0.0.1
+          DB_HOST: localhost
           DB_USERNAME: postgres
           DB_PASSWORD: postgres
         run: npm run test:integration:http -- --watchman=false
