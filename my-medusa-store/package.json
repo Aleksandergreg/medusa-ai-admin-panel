@@ -15,6 +15,7 @@
   "scripts": {
     "build": "medusa build",
     "seed": "medusa exec ./src/scripts/seed.ts",
+    "seed:products": "medusa exec ./src/scripts/seed-additional-products.ts",
     "nuke:preserve-admins": "set NUKE_ALL=1 && set NUKE_PRESERVE_ADMINS=1 && medusa exec ./src/scripts/nuke-db.ts",
     "nuke:preserve-admins:store": "set NUKE_ALL=1 && set NUKE_PRESERVE_ADMINS=1 && set NUKE_PRESERVE_STORE=1 && medusa exec ./src/scripts/nuke-db.ts",
     "nuke:orders": "set NUKE_ORDERS=1 && medusa exec ./src/scripts/nuke-orders.ts",
