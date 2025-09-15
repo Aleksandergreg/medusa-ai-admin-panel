@@ -118,11 +118,17 @@ if (shouldRunPgIntegration()) {
                   title: "Test Product (analytics seed)",
                   status: ProductStatus.PUBLISHED,
                   shipping_profile_id: shippingProfile.id,
+                  options: [
+                    {
+                      title: "Title",
+                      values: ["Default"],
+                    },
+                  ],
                   variants: [
                     {
                       title: "Default",
                       sku: `tp-${Date.now()}`,
-                      options: {},
+                      options: { Title: "Default" },
                       prices: currencies.map((c) => ({ currency_code: c, amount: 1500 })),
                     },
                   ],
