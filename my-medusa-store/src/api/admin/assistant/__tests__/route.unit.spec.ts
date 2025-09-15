@@ -44,5 +44,20 @@ describe("admin/assistant POST route", () => {
     });
     expect(res.body).toEqual({ answer: "ok", chart: null, data: null, history: [] });
   });
-});
 
+  it("returns 500 when assistant.ask throws", async () => {
+    const fakeAssistant = {
+      ask: jest.fn().mockRejectedValue(new Error("Tool failed")),
+    };
+    const req = {
+      body: { prompt: "hi" },
+      scope: { resolve: jest.fn().mockReturnValue(fakeAssistant) },
+    } as unknown as AuthenticatedMedusaRequest;
+    const res = buildRes();
+
+    await POST(req, res);
+
+    expect(res.code).toBe(500);
+    expect(String(res.body?.error || "")).toContain("Tool failed");
+  });
+});

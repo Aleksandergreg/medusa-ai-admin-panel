@@ -41,3 +41,37 @@ jobs:
           AUTH_CORS: '*'
           DATABASE_URL: file:./.tmp/test.sqlite
         run: npm run test:unit -- --watchman=false
+
+  live-llm:
+    name: Live Gemini (label-gated)
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'live-llm')
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    defaults:
+      run:
+        working-directory: my-medusa-store
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: my-medusa-store/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run live planner check
+        if: env.GEMINI_API_KEY != ''
+        run: npm run test:live
+
+      - name: Fail if secret missing
+        if: env.GEMINI_API_KEY == ''
+        run: |
+          echo "GEMINI_API_KEY is not configured; skipping live test" >&2
+          exit 1
+
