@@ -55,10 +55,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUN_PG_TESTS: '1'
-      DB_HOST: 127.0.0.1
+      DB_HOST: localhost
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
-      PGHOST: 127.0.0.1
+      PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
       PGPORT: 5432
