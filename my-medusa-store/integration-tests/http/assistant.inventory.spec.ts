@@ -76,8 +76,7 @@ if (shouldRunPgIntegration()) {
       AUTH_CORS: "*",
     },
     testSuite: ({ api, getContainer }) => {
-      beforeAll(async () => {
-        // Create a temporary secret admin API key and attach it as Basic auth
+      const attachAdminKey = async () => {
         const { createApiKeysWorkflow } = require("@medusajs/core-flows");
         const container = await getContainer();
         const { result } = await createApiKeysWorkflow(container).run({
@@ -88,6 +87,15 @@ if (shouldRunPgIntegration()) {
           throw new Error("Failed to create admin API key for test auth");
         }
         api.defaults.headers.common["Authorization"] = `Basic ${token}`;
+      };
+
+      beforeAll(async () => {
+        await attachAdminKey();
+      });
+
+      // medusaIntegrationTestRunner resets DB between tests; refresh key each time
+      beforeEach(async () => {
+        await attachAdminKey();
       });
 
       const { planNextStepWithGemini } = require(plannerPath);
