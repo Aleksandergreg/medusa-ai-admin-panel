@@ -96,6 +96,14 @@ jobs:
         run: npm run build
         working-directory: medusa-mcp
 
+      - name: Wait for Postgres to accept connections
+        run: |
+          for i in {1..60}; do
+            (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1 && echo "Postgres is accepting TCP connections" && break
+            echo "Waiting for Postgres... ($i)"
+            sleep 2
+          done
+
       - name: Run integration http tests
         env:
           TEST_TYPE: integration:http
@@ -105,6 +113,9 @@ jobs:
           ADMIN_CORS: '*'
           AUTH_CORS: '*'
           LOG_LEVEL: error
+          DB_HOST: localhost
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
         run: npm run test:integration:http -- --watchman=false
 
   live-llm:
