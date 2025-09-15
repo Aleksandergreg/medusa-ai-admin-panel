@@ -2,7 +2,7 @@ import { MedusaService } from "@medusajs/framework/utils";
 import { getMcp } from "../../lib/mcp/manager";
 import { metricsStore, withToolLogging } from "../../lib/metrics/store";
 import { ChartType, HistoryEntry, McpTool } from "./types";
-import { extractToolJsonPayload, normalizeToolArgs } from "./utils";
+import { extractToolJsonPayload, normalizeToolArgs, ensureMarkdownMinimum } from "./utils";
 import { buildChartFromAnswer, buildChartFromLatestTool } from "./charts";
 import { planNextStepWithGemini } from "./planner";
 import { collectGroundTruthNumbers } from "./validation";
@@ -77,8 +77,9 @@ class AssistantModuleService extends MedusaService({}) {
             null
           : null;
 
+        const formattedAnswer = ensureMarkdownMinimum(plan.answer ?? "");
         return {
-          answer: plan.answer,
+          answer: formattedAnswer,
           chart,
           data: latestPayload ?? null,
           history,
@@ -91,7 +92,7 @@ class AssistantModuleService extends MedusaService({}) {
 
         metricsStore.noteToolUsed(turnId, plan.tool_name);
 
-        const normalizedArgs = normalizeToolArgs(plan.tool_args);
+        const normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
         if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
         }

@@ -15,6 +15,8 @@ import { createInventoryService } from "./inventory-service";
 import { createInventoryTools } from "../tools/inventory-tool-factory";
 import { createPromotionAnalyticsService } from "./promotion-analytics-service";
 import { createPromotionAnalyticsTools } from "../tools/promotion-analytics-tool-factory";
+import { createCartsTools } from "../tools/carts-tool-factory";
+
 
 export default class MedusaAdminService {
     private sdk: Medusa;
@@ -44,6 +46,7 @@ export default class MedusaAdminService {
             ...createAnalyticsTools(this.analytics),
             ...createInventoryTools(this.inventory),
             ...createPromotionAnalyticsTools(this.promotionAnalytics),
+            ...createCartsTools(this.http),
             ...createOpenApiTools(this.http)
         ];
     }
