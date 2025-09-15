@@ -78,6 +78,33 @@ if (shouldRunPgIntegration()) {
       beforeAll(async () => {
         await attachAdminKey();
         await ensureAdminIdentity();
+
+        // Minimal seed: create a simple product with one variant, then generate a few orders
+        // 1) Resolve region to pick a valid currency
+        const regions = await api.get("/admin/regions", {
+          params: { fields: "+id,+currency_code" },
+        });
+        const currency: string = regions.data?.regions?.[0]?.currency_code || "usd";
+
+        // 2) Create a minimal product with one variant (no inventory enforcement)
+        const prodRes = await api.post("/admin/products", {
+          title: "Test Product (analytics seed)",
+          variants: [
+            {
+              title: "Default",
+              sku: `tp-${Date.now()}`,
+              manage_inventory: false,
+              allow_backorder: true,
+              prices: [{ currency_code: currency, amount: 1500 }],
+            },
+          ],
+        });
+        expect(prodRes.status).toBe(200);
+
+        // 3) Run the existing seed-orders script (ensures shipping + creates a handful of orders)
+        const seedOrders = require("../../src/scripts/seed-orders").default;
+        const container = await getContainer();
+        await seedOrders({ container });
       });
 
       beforeEach(async () => {
@@ -113,12 +140,13 @@ if (shouldRunPgIntegration()) {
           });
 
           expect(res.status).toBe(200);
-          expect(res.data?.data).toBeDefined();
-          // We can't guarantee content on empty DB; validate shape only
           const data = res.data?.data;
+          expect(data).toBeDefined();
           expect(typeof data?.start).toBe("string");
           expect(typeof data?.end).toBe("string");
-          expect([undefined, "number"]).toContain(typeof data?.count);
+          // With seed orders, we expect at least 1 row
+          const rows = Array.isArray(data?.results) ? data.results : [];
+          expect(rows.length).toBeGreaterThan(0);
           expect(typeof res.data?.answer).toBe("string");
           expect(Array.isArray(res.data?.history)).toBe(true);
           expect(res.data.history?.[0]?.tool_name).toBe("sales_aggregate");
@@ -142,8 +170,10 @@ if (shouldRunPgIntegration()) {
           const data = res.data?.data;
           expect(data).toBeDefined();
           expect(Array.isArray(data?.customers)).toBe(true);
+          expect(data?.customers.length).toBeGreaterThan(0);
           expect(data?.summary).toBeDefined();
           expect(typeof data?.summary?.total_customers_analyzed).toBe("number");
+          expect(data?.summary?.total_customers_analyzed).toBeGreaterThan(0);
           expect(typeof res.data?.answer).toBe("string");
           expect(res.data?.history?.[0]?.tool_name).toBe("customer_order_frequency");
         });
@@ -155,4 +185,3 @@ if (shouldRunPgIntegration()) {
     it.skip("requires Postgres; set RUN_PG_TESTS=1", () => {});
   });
 }
-
