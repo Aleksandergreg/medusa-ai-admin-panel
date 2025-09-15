@@ -1,8 +1,8 @@
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
 import { shouldRunPgIntegration } from "./_helpers";
 
-const path = require("node:path");
-const jwt = require("jsonwebtoken");
+import path from "node:path";
+import jwt from "jsonwebtoken";
 
 // Allow ample time for app boot + DB ops in CI
 jest.setTimeout(90 * 1000);
