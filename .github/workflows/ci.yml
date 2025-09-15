@@ -104,6 +104,7 @@ jobs:
           STORE_CORS: '*'
           ADMIN_CORS: '*'
           AUTH_CORS: '*'
+          LOG_LEVEL: error
         run: npm run test:integration:http -- --watchman=false
 
   live-llm:
