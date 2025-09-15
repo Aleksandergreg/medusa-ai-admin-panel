@@ -3,9 +3,11 @@
  * Stubs the analytics service and verifies the handler returns the expected MCP envelope.
  */
 import path from "node:path";
+import fs from "node:fs";
 
 describe("medusa-mcp analytics orders_count tool", () => {
-  const factoryPath = path.resolve(process.cwd(), "../medusa-mcp/dist/tools/analytics-tool-factory.js");
+  // Import TypeScript source directly to avoid requiring a pre-built dist
+  const factoryPath = path.resolve(process.cwd(), "../medusa-mcp/src/tools/analytics-tool-factory.ts");
 
   it("returns count using stubbed analytics service", async () => {
     // Dynamically import the factory from the sibling package
@@ -44,4 +46,3 @@ describe("medusa-mcp analytics orders_count tool", () => {
     expect(payload.count).toBe(5);
   });
 });
-
