@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'my-medusa-store/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'my-medusa-store/**'
+
+jobs:
+  test-unit:
+    name: Unit tests (my-medusa-store)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: my-medusa-store
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            my-medusa-store/package-lock.json
+            medusa-mcp/package-lock.json
+
+      - name: Install deps (medusa-mcp)
+        run: npm ci || npm install --no-audit --no-fund
+        working-directory: medusa-mcp
+
+      # Build not required for unit tests since we import TS sources
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run unit tests
+        env:
+          TEST_TYPE: unit
+          NODE_OPTIONS: --experimental-vm-modules
+          GEMINI_API_KEY: dummy-for-ci
+          STORE_CORS: '*'
+          ADMIN_CORS: '*'
+          AUTH_CORS: '*'
+          DATABASE_URL: file:./.tmp/test.sqlite
+        run: npm run test:unit -- --watchman=false
+
+  integration-http:
+    name: Integration HTTP (assistant)
+    runs-on: ubuntu-latest
+    env:
+      RUN_PG_TESTS: '1'
+      DB_HOST: localhost
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGPORT: 5432
+      PGSSLMODE: disable
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: my-medusa-store
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: my-medusa-store/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run integration http tests
+        env:
+          TEST_TYPE: integration:http
+          NODE_OPTIONS: --experimental-vm-modules
+          GEMINI_API_KEY: dummy-for-ci
+          STORE_CORS: '*'
+          ADMIN_CORS: '*'
+          AUTH_CORS: '*'
+        run: npm run test:integration:http -- --watchman=false
+
+  live-llm:
+    name: Live Gemini (label-gated)
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'live-llm')
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    defaults:
+      run:
+        working-directory: my-medusa-store
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: my-medusa-store/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run live planner check
+        if: env.GEMINI_API_KEY != ''
+        run: npm run test:live
+
+      - name: Fail if secret missing
+        if: env.GEMINI_API_KEY == ''
+        run: |
+          echo "GEMINI_API_KEY is not configured; skipping live test" >&2
+          exit 1

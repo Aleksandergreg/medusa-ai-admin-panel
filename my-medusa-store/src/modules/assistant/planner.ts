@@ -44,6 +44,10 @@ export async function planNextStepWithGemini(
     `1) If you need information or must perform an action, choose 'call_tool'.\n` +
     `2) If you have enough information, choose 'final_answer' and summarize succinctly.\n\n` +
     `${chartDirective}\n\n` +
+    `FINAL ANSWER FORMAT:\n` +
+    `- When you output {"action":"final_answer"}, the 'answer' value MUST be formatted as GitHub-Flavored Markdown (GFM).\n` +
+    `- Use short paragraphs, bullet lists, bold key IDs, and code fences for JSON or commands.\n` +
+    `- Do not include raw HTML.\n\n` +
     `CRITICAL API RULES:\n` +
     `- Always check tool schema carefully before making calls\n` +
     `- If a tool call fails, analyze the error and adjust your approach\n` +
@@ -108,4 +112,3 @@ export async function planNextStepWithGemini(
     );
   }
 }
-
