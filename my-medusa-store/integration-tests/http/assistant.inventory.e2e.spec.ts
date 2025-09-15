@@ -36,14 +36,22 @@ if (shouldRunPgIntegration()) {
       const attachAdminKey = async () => {
         const { createApiKeysWorkflow } = require("@medusajs/core-flows");
         const container = await getContainer();
-        const { result } = await createApiKeysWorkflow(container).run({
-          input: { api_keys: [{ type: "secret", title: "CI Admin Key", created_by: "ci" }] },
-        });
-        const apiKey = result?.[0]?.token;
-        if (!apiKey || !String(apiKey).startsWith("sk_")) {
-          throw new Error("Failed to create admin API key for test auth");
+        try {
+          const { result } = await createApiKeysWorkflow(container).run({
+            input: { api_keys: [{ type: "secret", title: "CI Admin Key", created_by: "ci" }] },
+          });
+          const apiKey = result?.[0]?.token;
+          if (!apiKey || !String(apiKey).startsWith("sk_")) {
+            throw new Error("Failed to create admin API key for test auth");
+          }
+          api.defaults.headers.common["Authorization"] = `Basic ${apiKey}`;
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          if (msg.includes("one active secret key")) {
+            return; // Reuse existing header/key
+          }
+          throw e;
         }
-        api.defaults.headers.common["Authorization"] = `Basic ${apiKey}`;
       };
 
       const ensureAdminIdentity = async () => {
@@ -78,10 +86,7 @@ if (shouldRunPgIntegration()) {
         await ensureAdminIdentity();
       });
 
-      // Refresh auth context in case DB is reset between tests (future‑proof)
-      beforeEach(async () => {
-        await attachAdminKey();
-      });
+      // Single test in this suite; no need to recreate key per test
 
       it("calls real MCP inventory count via assistant", async () => {
         const res = await api.post("/admin/assistant", {
