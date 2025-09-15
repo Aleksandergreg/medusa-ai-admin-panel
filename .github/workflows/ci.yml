@@ -26,7 +26,17 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: my-medusa-store/package-lock.json
+          cache-dependency-path: |
+            my-medusa-store/package-lock.json
+            medusa-mcp/package-lock.json
+
+      - name: Install deps (medusa-mcp)
+        run: npm ci
+        working-directory: medusa-mcp
+
+      - name: Build medusa-mcp
+        run: npm run build
+        working-directory: medusa-mcp
 
       - name: Install deps
         run: npm ci
