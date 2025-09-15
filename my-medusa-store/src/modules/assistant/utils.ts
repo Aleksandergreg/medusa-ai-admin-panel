@@ -49,6 +49,41 @@ export function extractToolJsonPayload(toolResult: any): any | undefined {
   return undefined;
 }
 
+/**
+ * Ensure the assistant answer is presented as Markdown. If the text lacks
+ * any Markdown structure, wrap it with a minimal heading and bullet points.
+ */
+export function ensureMarkdownMinimum(answer: string): string {
+  try {
+    const text = String(answer ?? "").trim();
+    if (!text) return "";
+
+    const hasMd = /(^\s{0,3}#{1,6}\s)|(^\s*[-*+]\s)|(\n\n-\s)|(\n\n\d+\.\s)|(```)|(^\s*>\s)|(\*\*[^*]+\*\*)|(`[^`]+`)/m.test(text);
+    if (hasMd) return text;
+
+    // If it's likely JSON, fence it for readability
+    const stripped = stripJsonFences(text);
+    if (/^[\[{]/.test(stripped)) {
+      try {
+        JSON.parse(stripped);
+        return "```json\n" + stripped + "\n```";
+      } catch {}
+    }
+
+    // Build bullets from lines or sentences
+    const lines = stripped.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const items = lines.length > 1
+      ? lines
+      : stripped.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+
+    const heading = "### Answer";
+    const bullets = items.map((s) => `- ${s}`);
+    return [heading, "", ...bullets].join("\n");
+  } catch {
+    return String(answer ?? "");
+  }
+}
+
 // Normalize LLM tool args to match Medusa Admin expectations
 export function normalizeToolArgs(input: any, toolName?: string): any {
   const needsDollar = new Set([
