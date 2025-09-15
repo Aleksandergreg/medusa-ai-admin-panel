@@ -118,16 +118,30 @@ export function createOpenApiTools(
                         return " NOTE: For counting or summarizing orders (e.g., 'how many orders', 'total sales'), prefer the analytics tools: orders_count or sales_aggregate.";
                     }
                     // Inventory + Reservations guidance for tool routing
-                    if (method === "get" && operationId.includes("GetInventoryItemsIdLocationLevels")) {
+                    if (
+                        method === "get" &&
+                        operationId.includes(
+                            "GetInventoryItemsIdLocationLevels"
+                        )
+                    ) {
                         return " TIP: Use to read inventory levels, including reserved_quantity per location. Useful to quickly assess reserved vs stocked per location for an inventory_item_id.";
                     }
-                    if (method === "get" && operationId.includes("GetInventoryItems")) {
+                    if (
+                        method === "get" &&
+                        operationId.includes("GetInventoryItems")
+                    ) {
                         return " TIP: Use to map a variant's SKU to its inventory_item_id (filter by sku). Combine with AdminGetReservations or LocationLevels to compute reservations.";
                     }
-                    if (method === "get" && operationId.includes("GetReservations")) {
+                    if (
+                        method === "get" &&
+                        operationId.includes("GetReservations")
+                    ) {
                         return " TIP: Use to fetch reservations. Filter by inventory_item_id and/or line_item_id (and location_id if needed). Sum quantity across results to get reserved quantities.";
                     }
-                    if (method === "get" && operationId.includes("GetProductVariants")) {
+                    if (
+                        method === "get" &&
+                        operationId.includes("GetProductVariants")
+                    ) {
                         return " NOTE: Variant endpoints may not include inventory items via expand. If you need `inventory_item_id`, fetch it via AdminGetInventoryItems using the variant's `sku`.";
                     }
                     return "";
