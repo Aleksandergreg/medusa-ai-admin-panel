@@ -17,6 +17,8 @@ import {
   createShippingProfilesWorkflow,
   createShippingOptionsWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
+  createRegionsWorkflow,
+  createSalesChannelsWorkflow,
 } from "@medusajs/medusa/core-flows";
 
 export default async function seedDummyOrders({ container }: ExecArgs) {
@@ -74,10 +76,33 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
   }
 
   // Get other necessary data
-  const { data: regions } = await query.graph({
+  let { data: regions } = await query.graph({
     entity: "region",
     fields: ["id", "currency_code", "countries.iso_2"],
   });
+  if (!regions.length) {
+    try {
+      const { result: created } = await createRegionsWorkflow(container).run({
+        input: {
+          regions: [
+            {
+              name: "Test Region",
+              currency_code: "usd",
+              countries: ["us"],
+              payment_providers: ["pp_system_default"],
+            },
+          ],
+        },
+      });
+      if (created?.length) {
+        const re = (await query.graph({
+          entity: "region",
+          fields: ["id", "currency_code", "countries.iso_2"],
+        })) as any;
+        regions = re.data || created;
+      }
+    } catch {}
+  }
 
   const { data: products } = (await query.graph({
     entity: "product",
@@ -123,11 +148,19 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
 
   const salesChannelModuleService = container.resolve(Modules.SALES_CHANNEL);
 
-  const defaultSalesChannel = await salesChannelModuleService.listSalesChannels(
+  let defaultSalesChannel = await salesChannelModuleService.listSalesChannels(
     {
       name: "Default Sales Channel",
     }
   );
+  if (!defaultSalesChannel?.length) {
+    try {
+      const { result: scs } = await createSalesChannelsWorkflow(container).run({
+        input: { salesChannelsData: [{ name: "Default Sales Channel" }] },
+      });
+      defaultSalesChannel = scs || [];
+    } catch {}
+  }
 
   // Ensure stock location exists and is linked to the default sales channel; ensure basic shipping option as well
   const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT);
@@ -278,7 +311,11 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
 
   for (let i = 0; i < ordersNum; i++) {
     // Select random data for this order
-    const region = regions[Math.floor(Math.random() * regions.length)];
+    const region = regions[Math.floor(Math.random() * Math.max(1, regions.length))] || {
+      id: undefined,
+      currency_code: "usd",
+      countries: [{ iso_2: "us" }],
+    };
     const customer = customers[Math.floor(Math.random() * customers.length)];
     // Build a mixed set of 1-3 items per order using different products
     const itemsCount = Math.max(1, Math.floor(Math.random() * 3) + 0);
@@ -364,6 +401,10 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
       ],
       metadata: {},
     };
+    // If sales channel is still missing, omit it to avoid crash
+    if (!defaultSalesChannel?.[0]?.id) {
+      delete (orderData as any).sales_channel_id;
+    }
 
     try {
       const { result: order } = await createOrderWorkflow(container).run({
