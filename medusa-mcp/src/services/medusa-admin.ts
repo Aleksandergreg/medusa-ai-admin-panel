@@ -17,7 +17,6 @@ import { createPromotionAnalyticsService } from "./promotion-analytics-service";
 import { createPromotionAnalyticsTools } from "../tools/promotion-analytics-tool-factory";
 import { createCartsTools } from "../tools/carts-tool-factory";
 
-
 export default class MedusaAdminService {
     private sdk: Medusa;
     private token = "";
