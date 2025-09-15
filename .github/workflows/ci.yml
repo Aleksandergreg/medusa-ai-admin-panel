@@ -88,6 +88,27 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Install deps (medusa-mcp)
+        run: npm ci || npm install --no-audit --no-fund
+        working-directory: medusa-mcp
+
+      - name: Build medusa-mcp
+        run: npm run build
+        working-directory: medusa-mcp
+
+      - name: Wait for Postgres to accept connections
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for i in {1..60}; do
+            if psql -h localhost -U postgres -d postgres -c 'select 1' >/dev/null 2>&1; then
+              echo "Postgres is ready"
+              break
+            fi
+            echo "Waiting for Postgres... ($i)"
+            sleep 2
+          done
+
       - name: Run integration http tests
         env:
           TEST_TYPE: integration:http
@@ -96,6 +117,10 @@ jobs:
           STORE_CORS: '*'
           ADMIN_CORS: '*'
           AUTH_CORS: '*'
+          LOG_LEVEL: error
+          DB_HOST: localhost
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
         run: npm run test:integration:http -- --watchman=false
 
   live-llm:
