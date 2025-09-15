@@ -20,7 +20,21 @@ import {
 } from "@medusajs/medusa/core-flows";
 
 export default async function seedDummyOrders({ container }: ExecArgs) {
-  const { faker } = await import("@faker-js/faker");
+  // Lightweight faker-free helpers to avoid ESM import issues in Jest/CI
+  const rand = (min: number, max: number) =>
+    Math.floor(Math.random() * (max - min + 1)) + min;
+  const pick = <T>(arr: T[]): T => arr[rand(0, arr.length - 1)];
+  const nowSuffix = () => Date.now().toString(36) + rand(0, 9999).toString(36);
+  const firstName = () => pick(["Alex", "Sam", "Jamie", "Taylor", "Casey", "Jordan"]);
+  const lastName = () => pick(["Smith", "Johnson", "Lee", "Garcia", "Brown", "Davis"]);
+  const emailFor = (fn: string, ln: string) => `${fn}.${ln}.${nowSuffix()}@example.com`.toLowerCase();
+  const phone = () => `+1${rand(200, 999)}${rand(200, 999)}${rand(1000, 9999)}`;
+  const company = () => pick(["Acme Inc", "Globex", "Initech", "Umbrella", "Hooli"]);
+  const street = () => `${rand(100, 9999)} Test St`;
+  const street2 = () => `Apt ${rand(1, 999)}`;
+  const city = () => pick(["Copenhagen", "Berlin", "Paris", "Madrid", "Lisbon"]);
+  const state = () => pick(["CA", "NY", "TX", "FL", "WA"]);
+  const zip = () => `${rand(10000, 99999)}`;
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const query = container.resolve(ContainerRegistrationKeys.QUERY);
   const link = container.resolve(ContainerRegistrationKeys.LINK);
@@ -34,18 +48,16 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
   // If no customers exist, create one
   if (!customers.length) {
     logger.info("No customers found. Creating a new customer...");
-    const firstName = faker.person.firstName();
-    const lastName = faker.person.lastName();
-    const email = faker.internet
-      .email({ firstName, lastName, provider: "example.com" })
-      .toLowerCase();
+    const fn = firstName();
+    const ln = lastName();
+    const email = emailFor(fn, ln);
 
     await createCustomersWorkflow(container).run({
       input: {
         customersData: [
           {
-            first_name: firstName,
-            last_name: lastName,
+            first_name: fn,
+            last_name: ln,
             email,
           },
         ],
@@ -311,20 +323,22 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
     }
 
     // Create address data
+    const fn2 = firstName();
+    const ln2 = lastName();
     const address = {
-      first_name: faker.person.firstName(),
-      last_name: faker.person.lastName(),
-      phone: faker.phone.number(),
-      company: faker.company.name(),
-      address_1: faker.location.streetAddress(),
-      address_2: faker.location.secondaryAddress(),
-      city: faker.location.city(),
+      first_name: fn2,
+      last_name: ln2,
+      phone: phone(),
+      company: company(),
+      address_1: street(),
+      address_2: street2(),
+      city: city(),
       country_code:
         (Array.isArray((region as any).countries) &&
           (region as any).countries[0]?.iso_2?.toLowerCase()) ||
         "de",
-      province: faker.location.state(),
-      postal_code: faker.location.zipCode(),
+      province: state(),
+      postal_code: zip(),
       metadata: {},
     };
 
