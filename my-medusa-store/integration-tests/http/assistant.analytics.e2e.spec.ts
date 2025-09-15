@@ -1,0 +1,158 @@
+import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
+import { shouldRunPgIntegration } from "./_helpers";
+
+const path = require("node:path");
+const jwt = require("jsonwebtoken");
+
+// Allow ample time for app boot + DB ops in CI
+jest.setTimeout(90 * 1000);
+
+// Planner stub so the assistant deterministically calls the analytics tools we want
+const plannerPath = path.resolve(process.cwd(), "src/modules/assistant/planner.ts");
+jest.doMock(plannerPath, () => ({
+  __esModule: true,
+  planNextStepWithGemini: jest.fn(),
+}));
+
+if (shouldRunPgIntegration()) {
+  medusaIntegrationTestRunner({
+    inApp: true,
+    env: {
+      STORE_CORS: "*",
+      ADMIN_CORS: "*",
+      AUTH_CORS: "*",
+    },
+    testSuite: ({ api, getContainer }) => {
+      const ADMIN_EMAIL = "admin+ci@example.com";
+      const ADMIN_PASSWORD = "test-password-123";
+
+      const attachAdminKey = async () => {
+        const { createApiKeysWorkflow } = require("@medusajs/core-flows");
+        const container = await getContainer();
+        try {
+          const { result } = await createApiKeysWorkflow(container).run({
+            input: { api_keys: [{ type: "secret", title: "CI Admin Key", created_by: "ci" }] },
+          });
+          const apiKey = result?.[0]?.token;
+          if (!apiKey || !String(apiKey).startsWith("sk_")) {
+            throw new Error("Failed to create admin API key for test auth");
+          }
+          api.defaults.headers.common["Authorization"] = `Basic ${apiKey}`;
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          if (msg.includes("one active secret key")) {
+            return; // Reuse existing header/key
+          }
+          throw e;
+        }
+      };
+
+      const ensureAdminIdentity = async () => {
+        const container = await getContainer();
+        // Register admin identity (emailpass) and create the user
+        const res = await api.post(`/auth/user/emailpass/register`, {
+          email: ADMIN_EMAIL,
+          password: ADMIN_PASSWORD,
+        });
+        const token: string = res.data?.token;
+        if (!token) throw new Error("Auth identity registration did not return a token");
+        const decoded: any = jwt.decode(token) || {};
+        const authIdentityId: string | undefined = decoded?.auth_identity_id;
+        if (!authIdentityId) throw new Error("Missing auth_identity_id in registration token");
+
+        const { createUserAccountWorkflow } = require("@medusajs/core-flows");
+        await createUserAccountWorkflow(container).run({
+          input: {
+            authIdentityId,
+            userData: { email: ADMIN_EMAIL, first_name: "CI", last_name: "Admin" },
+          },
+        });
+
+        // Configure env so the real MCP server can login
+        const baseURL: string = api.defaults.baseURL || "http://localhost:9000";
+        process.env.MEDUSA_BACKEND_URL = baseURL;
+        process.env.MEDUSA_USERNAME = ADMIN_EMAIL;
+        process.env.MEDUSA_PASSWORD = ADMIN_PASSWORD;
+      };
+
+      beforeAll(async () => {
+        await attachAdminKey();
+        await ensureAdminIdentity();
+      });
+
+      beforeEach(async () => {
+        // DB is truncated between tests; refresh the admin key
+        await attachAdminKey();
+      });
+
+      const { planNextStepWithGemini } = require(plannerPath);
+
+      describe("Assistant analytics tools (real MCP)", () => {
+        it("aggregates sales by product", async () => {
+          const now = new Date();
+          const start = new Date(now.getTime() - 7 * 24 * 3600 * 1000).toISOString();
+          const end = now.toISOString();
+          planNextStepWithGemini
+            .mockResolvedValueOnce({
+              action: "call_tool",
+              tool_name: "sales_aggregate",
+              tool_args: {
+                start,
+                end,
+                group_by: "product",
+                metric: "orders",
+                limit: 3,
+                sort: "desc",
+              },
+            })
+            .mockResolvedValueOnce({ action: "final_answer", answer: "Here are the top products by orders." });
+
+          const res = await api.post("/admin/assistant", {
+            prompt: "Show top 3 products by orders last 7 days",
+            wantsChart: false,
+          });
+
+          expect(res.status).toBe(200);
+          expect(res.data?.data).toBeDefined();
+          // We can't guarantee content on empty DB; validate shape only
+          const data = res.data?.data;
+          expect(typeof data?.start).toBe("string");
+          expect(typeof data?.end).toBe("string");
+          expect([undefined, "number"]).toContain(typeof data?.count);
+          expect(typeof res.data?.answer).toBe("string");
+          expect(Array.isArray(res.data?.history)).toBe(true);
+          expect(res.data.history?.[0]?.tool_name).toBe("sales_aggregate");
+        });
+
+        it("computes customer order frequency", async () => {
+          planNextStepWithGemini
+            .mockResolvedValueOnce({
+              action: "call_tool",
+              tool_name: "customer_order_frequency",
+              tool_args: { min_orders: 2 },
+            })
+            .mockResolvedValueOnce({ action: "final_answer", answer: "Computed customer order frequency." });
+
+          const res = await api.post("/admin/assistant", {
+            prompt: "How frequently do customers order?",
+            wantsChart: false,
+          });
+
+          expect(res.status).toBe(200);
+          const data = res.data?.data;
+          expect(data).toBeDefined();
+          expect(Array.isArray(data?.customers)).toBe(true);
+          expect(data?.summary).toBeDefined();
+          expect(typeof data?.summary?.total_customers_analyzed).toBe("number");
+          expect(typeof res.data?.answer).toBe("string");
+          expect(res.data?.history?.[0]?.tool_name).toBe("customer_order_frequency");
+        });
+      });
+    },
+  });
+} else {
+  describe("Assistant analytics e2e (skipped)", () => {
+    it.skip("requires Postgres; set RUN_PG_TESTS=1", () => {});
+  });
+}
+
