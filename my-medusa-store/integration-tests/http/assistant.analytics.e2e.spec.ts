@@ -75,10 +75,7 @@ if (shouldRunPgIntegration()) {
         process.env.MEDUSA_PASSWORD = ADMIN_PASSWORD;
       };
 
-      beforeAll(async () => {
-        await attachAdminKey();
-        await ensureAdminIdentity();
-
+      const seedAnalyticsData = async () => {
         // Minimal seed: create a simple product with one variant, then generate a few orders
         // 1) Resolve region to pick a valid currency
         const regions = await api.get("/admin/regions", {
@@ -105,11 +102,17 @@ if (shouldRunPgIntegration()) {
         const seedOrders = require("../../src/scripts/seed-orders").default;
         const container = await getContainer();
         await seedOrders({ container });
+      };
+
+      beforeAll(async () => {
+        await attachAdminKey();
+        await ensureAdminIdentity();
       });
 
       beforeEach(async () => {
-        // DB is truncated between tests; refresh the admin key
+        // DB is truncated between tests; refresh the admin key and reseed minimal data
         await attachAdminKey();
+        await seedAnalyticsData();
       });
 
       const { planNextStepWithGemini } = require(plannerPath);
