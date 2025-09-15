@@ -42,6 +42,54 @@ jobs:
           DATABASE_URL: file:./.tmp/test.sqlite
         run: npm run test:unit -- --watchman=false
 
+  integration-http:
+    name: Integration HTTP (assistant)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: my-medusa-store
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: my-medusa-store/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run integration http tests
+        env:
+          TEST_TYPE: integration:http
+          NODE_OPTIONS: --experimental-vm-modules
+          GEMINI_API_KEY: dummy-for-ci
+          STORE_CORS: '*'
+          ADMIN_CORS: '*'
+          AUTH_CORS: '*'
+          RUN_PG_TESTS: '1'
+          DB_HOST: 127.0.0.1
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+        run: npm run test:integration:http -- --watchman=false
+
   live-llm:
     name: Live Gemini (label-gated)
     runs-on: ubuntu-latest
@@ -74,4 +122,3 @@ jobs:
         run: |
           echo "GEMINI_API_KEY is not configured; skipping live test" >&2
           exit 1
-

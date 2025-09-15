@@ -27,7 +27,7 @@
     "seed-pending-orders": "medusa exec ./src/scripts/seed-pending-orders.ts",
     "start": "medusa start",
     "dev": "medusa develop",
-    "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
+    "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules STORE_CORS=* ADMIN_CORS=* AUTH_CORS=* DATABASE_URL=file:./.tmp/test.sqlite jest --silent=false --runInBand --forceExit",
     "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit",
     "test:live": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --forceExit --watchman=false src/modules/assistant/__tests__/planner.live.spec.ts",
