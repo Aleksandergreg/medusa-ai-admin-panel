@@ -76,31 +76,64 @@ if (shouldRunPgIntegration()) {
       };
 
       const seedAnalyticsData = async () => {
-        // Minimal seed: create a simple product with one variant, then generate a few orders
-        // 1) Resolve region to pick a valid currency
-        const regions = await api.get("/admin/regions", {
-          params: { fields: "+id,+currency_code" },
-        });
-        const currency: string = regions.data?.regions?.[0]?.currency_code || "usd";
-
-        // 2) Create a minimal product with one variant (no inventory enforcement)
-        const prodRes = await api.post("/admin/products", {
-          title: "Test Product (analytics seed)",
-          variants: [
-            {
-              title: "Default",
-              sku: `tp-${Date.now()}`,
-              manage_inventory: false,
-              allow_backorder: true,
-              prices: [{ currency_code: currency, amount: 1500 }],
-            },
-          ],
-        });
-        expect(prodRes.status).toBe(200);
-
-        // 3) Run the existing seed-orders script (ensures shipping + creates a handful of orders)
-        const seedOrders = require("../../src/scripts/seed-orders").default;
+        // Minimal seed: create a simple product with one variant via workflows (avoids fragile HTTP schema),
+        // then generate a few orders
         const container = await getContainer();
+        const { Modules, ProductStatus, ContainerRegistrationKeys } = require("@medusajs/framework/utils");
+        const { createProductsWorkflow, createShippingProfilesWorkflow } = require("@medusajs/medusa/core-flows");
+
+        // Try to get default shipping profile (required by product workflow)
+        const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT);
+        let shippingProfiles = await fulfillmentModuleService.listShippingProfiles({ type: "default" });
+        let shippingProfile = shippingProfiles?.[0];
+        if (!shippingProfile) {
+          try {
+            const { result: profs } = await createShippingProfilesWorkflow(container).run({
+              input: { data: [{ name: "Default Shipping Profile", type: "default" }] },
+            });
+            shippingProfile = profs?.[0];
+          } catch {}
+        }
+
+        // Prefer real currencies if regions exist; otherwise provide common fallbacks
+        const query = container.resolve(ContainerRegistrationKeys.QUERY);
+        let currencies: string[] = [];
+        try {
+          const { data: regions } = await query.graph({
+            entity: "region",
+            fields: ["currency_code"],
+          });
+          currencies = Array.from(
+            new Set((regions || []).map((r: any) => r.currency_code).filter(Boolean))
+          );
+        } catch {}
+        if (!currencies.length) currencies = ["usd", "eur"]; // safe defaults for tests
+
+        // Create 1 minimal product if shipping profile is available; otherwise skip product creation
+        if (shippingProfile?.id) {
+          await createProductsWorkflow(container).run({
+            input: {
+              products: [
+                {
+                  title: "Test Product (analytics seed)",
+                  status: ProductStatus.PUBLISHED,
+                  shipping_profile_id: shippingProfile.id,
+                  variants: [
+                    {
+                      title: "Default",
+                      sku: `tp-${Date.now()}`,
+                      options: {},
+                      prices: currencies.map((c) => ({ currency_code: c, amount: 1500 })),
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+        }
+
+        // Ensure shipping + create a handful of orders using the existing script
+        const seedOrders = require("../../src/scripts/seed-orders").default;
         await seedOrders({ container });
       };
 
