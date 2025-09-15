@@ -1,7 +1,7 @@
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
 import { shouldRunPgIntegration } from "./_helpers";
 
-const path = require("node:path");
+import * as path from "node:path";
 const plannerPath = path.resolve(process.cwd(), "src/modules/assistant/planner.ts");
 const mcpManagerPath = path.resolve(process.cwd(), "src/lib/mcp/manager.ts");
 
