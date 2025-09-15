@@ -4,6 +4,9 @@ import { shouldRunPgIntegration } from "./_helpers";
 const path = require("node:path");
 const jwt = require("jsonwebtoken");
 
+// Allow ample time for app boot + DB ops in CI
+jest.setTimeout(90 * 1000);
+
 // Planner stub so the assistant deterministically calls the real MCP tool we want
 const plannerPath = path.resolve(process.cwd(), "src/modules/assistant/planner.ts");
 jest.doMock(plannerPath, () => ({
@@ -94,4 +97,3 @@ if (shouldRunPgIntegration()) {
     it.skip("requires Postgres; set RUN_PG_TESTS=1", () => {});
   });
 }
-

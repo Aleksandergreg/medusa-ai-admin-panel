@@ -7,6 +7,9 @@ const mcpManagerPath = path.resolve(process.cwd(), "src/lib/mcp/manager.ts");
 
 let toolCalls: Array<{ name: string; args: any }>;
 
+// Integration app boot + migrations can take >5s in CI
+jest.setTimeout(90 * 1000);
+
 // Stub the planner; we'll set distinct responses per test using mock implementation
 jest.doMock(plannerPath, () => ({
   __esModule: true,
@@ -144,4 +147,3 @@ if (shouldRunPgIntegration()) {
     it.skip("requires Postgres; set RUN_PG_TESTS=1", () => {});
   });
 }
-
