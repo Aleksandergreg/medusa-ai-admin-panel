@@ -1,15 +1,19 @@
-import { ExecArgs } from "@medusajs/framework/types";
+import { CreateInventoryLevelInput, ExecArgs } from "@medusajs/framework/types";
 import {
   ContainerRegistrationKeys,
   Modules,
   ProductStatus,
 } from "@medusajs/framework/utils";
-import { createProductsWorkflow } from "@medusajs/medusa/core-flows";
+import {
+  createInventoryLevelsWorkflow,
+  createProductsWorkflow,
+} from "@medusajs/medusa/core-flows";
 
 export default async function seedAdditionalProducts({ container }: ExecArgs) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const salesChannelModuleService = container.resolve(Modules.SALES_CHANNEL);
   const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT);
+  const query = container.resolve(ContainerRegistrationKeys.QUERY);
 
   logger.info("Seeding additional product data...");
 
@@ -42,7 +46,6 @@ export default async function seedAdditionalProducts({ container }: ExecArgs) {
   const shippingProfile = shippingProfiles[0];
 
   // Get existing categories
-  const query = container.resolve(ContainerRegistrationKeys.QUERY);
   const { data: categories } = await query.graph({
     entity: "product_category",
     fields: ["id", "name"],
@@ -63,6 +66,19 @@ export default async function seedAdditionalProducts({ container }: ExecArgs) {
       return;
     }
   }
+
+  // Get stock location for inventory
+  const { data: stockLocations } = await query.graph({
+    entity: "stock_location",
+    fields: ["id", "name"],
+  });
+
+  if (!stockLocations.length) {
+    logger.error("No stock locations found. Please run the main seed script first.");
+    return;
+  }
+
+  const stockLocation = stockLocations[0]; // Use the first available stock location
 
   await createProductsWorkflow(container).run({
     input: {
@@ -886,6 +902,57 @@ export default async function seedAdditionalProducts({ container }: ExecArgs) {
   });
 
   logger.info("Finished seeding additional product data!");
+
+  // Seed inventory levels for the new products
+  logger.info("Seeding inventory levels for new products...");
+
+  // Get all inventory items to find the new ones
+  const { data: allInventoryItems } = await query.graph({
+    entity: "inventory_item",
+    fields: ["id", "sku"],
+  });
+
+  // Filter to only the new products we just created based on SKU patterns
+  const newProductSKUs = [
+    "HOODIE-S-NAVY", "HOODIE-M-NAVY", "HOODIE-L-GRAY", "HOODIE-XL-GRAY",
+    "CAP-BLACK", "CAP-WHITE", "CAP-RED",
+    "TANK-S-WHITE", "TANK-M-WHITE", "TANK-L-GRAY", "TANK-XL-GRAY",
+    "JEANS-28-BLUE", "JEANS-30-BLUE", "JEANS-32-BLACK", "JEANS-34-BLACK",
+    "POLO-S-NAVY", "POLO-M-WHITE", "POLO-L-GREEN",
+    "BACKPACK-BLACK", "BACKPACK-GRAY", "BACKPACK-NAVY",
+    "SOCKS-S-BLACK", "SOCKS-M-WHITE", "SOCKS-L-GRAY",
+    "JACKET-S-BLACK", "JACKET-M-BLACK", "JACKET-L-NAVY",
+    "BUTTON-S-WHITE", "BUTTON-M-BLUE", "BUTTON-L-BLACK",
+  ];
+
+  const newInventoryItems = allInventoryItems.filter((item: any) => 
+    newProductSKUs.includes(item.sku)
+  );
+
+  if (newInventoryItems.length > 0) {
+    const inventoryLevels: CreateInventoryLevelInput[] = [];
+    for (const inventoryItem of newInventoryItems) {
+      const inventoryLevel = {
+        location_id: stockLocation.id,
+        stocked_quantity: 1000000,
+        inventory_item_id: inventoryItem.id,
+      };
+      inventoryLevels.push(inventoryLevel);
+    }
+
+    await createInventoryLevelsWorkflow(container).run({
+      input: {
+        inventory_levels: inventoryLevels,
+      },
+    });
+
+    logger.info(`Created inventory levels for ${inventoryLevels.length} new product variants.`);
+  } else {
+    logger.warn("No new inventory items found to create inventory levels for.");
+  }
+
+  logger.info("Finished seeding inventory levels for new products!");
+  
   logger.info("Added 10 new products:");
   logger.info("- Medusa Hoodie (Sweatshirts)");
   logger.info("- Medusa Cap (Merch)");
