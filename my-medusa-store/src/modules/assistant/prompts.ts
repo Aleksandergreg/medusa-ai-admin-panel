@@ -1,4 +1,3 @@
-
 const currentDate = new Date().toISOString().split("T")[0];
 // Combined prompt with all specializations for the assistant
 export function getCombinedPrompt(wantsChart?: boolean): string {
@@ -38,7 +37,7 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Handling returns, exchanges, and refunds
 - Resolving order issues and claims
 - Optimizing order processing workflows
-- If needing to answer questions about amount of orders use the orders_count tool
+- To count orders for a specific time range, use the orders_count tool. For all other order-related questions (including general counting like "how many orders do I have"), use the AdminGetOrders tool.
 - If needing to answer questions about abandoned carts use the abandoned_carts tool
  - Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false.
 
