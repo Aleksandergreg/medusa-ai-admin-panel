@@ -92,7 +92,51 @@ class AssistantModuleService extends MedusaService({}) {
 
         metricsStore.noteToolUsed(turnId, plan.tool_name);
 
-        const normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
+        let normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
+
+        // Defensive: if user clearly asked for "all time" and analytics tool
+        // omitted dates, inject a wide [start, end] to avoid 30-day default.
+        const isAnalyticsTool = new Set([
+          "sales_aggregate",
+          "orders_count",
+          "orders_status_analysis",
+        ]).has(plan.tool_name);
+        const mentionsAllTime = /\b(all\s*time|lifetime|since\s*(launch|start|inception)|ever)\b/i.test(
+          prompt
+        );
+        if (isAnalyticsTool && mentionsAllTime) {
+          const hasStart = Boolean(
+            normalizedArgs.start ||
+              normalizedArgs.start_date ||
+              normalizedArgs.from
+          );
+          const hasEnd = Boolean(
+            normalizedArgs.end || normalizedArgs.end_date || normalizedArgs.to
+          );
+
+          if (!hasStart || !hasEnd) {
+            const now = new Date();
+            const endUtc = new Date(
+              Date.UTC(
+                now.getUTCFullYear(),
+                now.getUTCMonth(),
+                now.getUTCDate(),
+                23,
+                59,
+                59,
+                999
+              )
+            ).toISOString();
+            normalizedArgs = {
+              end: endUtc,
+              start: "1970-01-01T00:00:00.000Z",
+              ...normalizedArgs,
+            };
+            console.log(
+              `   Injected all-time range for analytics tool: ${JSON.stringify({ start: normalizedArgs.start, end: normalizedArgs.end })}`
+            );
+          }
+        }
         if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
         }

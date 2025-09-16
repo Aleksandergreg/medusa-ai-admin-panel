@@ -221,5 +221,21 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
     return out;
   }
 
+  // Special normalization for sales_aggregate: map common direction/order hints
+  if (toolName === "sales_aggregate" && normalized && typeof normalized === "object") {
+    const dir = String((normalized as any).direction ?? "").toLowerCase().trim();
+    if ((dir === "asc" || dir === "desc") && !(normalized as any).sort && !(normalized as any).order) {
+      (normalized as any).sort = dir;
+      delete (normalized as any).direction;
+    }
+    const ob = String((normalized as any).order_by ?? "").toLowerCase();
+    if (ob.includes(" asc") && !(normalized as any).sort && !(normalized as any).order) {
+      (normalized as any).sort = "asc";
+    }
+    if (ob.includes(" desc") && !(normalized as any).sort && !(normalized as any).order) {
+      (normalized as any).sort = "desc";
+    }
+  }
+
   return normalized;
 }

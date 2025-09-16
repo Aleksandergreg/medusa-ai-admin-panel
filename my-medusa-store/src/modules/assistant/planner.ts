@@ -1,5 +1,5 @@
 import { McpTool, ChartType } from "./types";
-import { env, stripJsonFences } from "./utils";
+import { env, stripJsonFences, safeParseJSON } from "./utils";
 import { getCombinedPrompt } from "./prompts";
 
 export async function planNextStepWithGemini(
@@ -98,18 +98,18 @@ export async function planNextStepWithGemini(
 
   const text = (result as any).text;
   if (!text) throw new Error("LLM returned empty response");
-  try {
-    return JSON.parse(stripJsonFences(text).trim());
-  } catch (parseError) {
-    console.error("Failed to parse LLM response as JSON:");
-    console.error("Raw response:", text);
-    console.error("Cleaned response:", stripJsonFences(text).trim());
-    console.error("Parse error:", parseError);
-    throw new Error(
-      `Failed to parse LLM JSON response for the next action. Raw response: ${text.substring(
-        0,
-        200
-      )}...`
-    );
+
+  // Try to parse robustly first
+  const parsed = safeParseJSON(text);
+  if (parsed && typeof parsed === "object") {
+    return parsed;
   }
+
+  // As a last resort, treat the raw response as a final answer
+  console.error("Failed to parse LLM response as JSON. Falling back to final_answer.");
+  console.error("Raw response:", text);
+  return {
+    action: "final_answer",
+    answer: stripJsonFences(String(text)).trim(),
+  };
 }
