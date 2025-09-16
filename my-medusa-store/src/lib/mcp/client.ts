@@ -1,7 +1,7 @@
 // Use package exported subpaths; resolves to CJS under require per package exports
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const {
   StdioClientTransport,
 } = require("@modelcontextprotocol/sdk/client/stdio.js");

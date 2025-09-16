@@ -84,7 +84,7 @@ if (shouldRunPgIntegration()) {
 
         // Try to get default shipping profile (required by product workflow)
         const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT);
-        let shippingProfiles = await fulfillmentModuleService.listShippingProfiles({ type: "default" });
+        const shippingProfiles = await fulfillmentModuleService.listShippingProfiles({ type: "default" });
         let shippingProfile = shippingProfiles?.[0];
         if (!shippingProfile) {
           try {

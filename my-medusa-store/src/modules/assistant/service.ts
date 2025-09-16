@@ -39,7 +39,7 @@ class AssistantModuleService extends MedusaService({}) {
 
     const mcp = await getMcp();
     const tools = await mcp.listTools();
-    let availableTools: McpTool[] = (tools.tools ?? []) as any;
+    const availableTools: McpTool[] = (tools.tools ?? []) as any;
 
     const history: HistoryEntry[] = [];
 
