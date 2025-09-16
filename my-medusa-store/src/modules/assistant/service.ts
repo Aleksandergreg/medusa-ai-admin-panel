@@ -95,7 +95,8 @@ class AssistantModuleService extends MedusaService({}) {
         let normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
 
         // Defensive: if user clearly asked for "all time" and analytics tool
-        // omitted dates, inject a wide [start, end] to avoid 30-day default.
+        // omitted any explicit range, set an 'all_time' intent flag. The MCP
+        // tool will expand it to [epoch, end-of-today] for consistency.
         const isAnalyticsTool = new Set([
           "sales_aggregate",
           "orders_count",
@@ -105,35 +106,24 @@ class AssistantModuleService extends MedusaService({}) {
           prompt
         );
         if (isAnalyticsTool && mentionsAllTime) {
-          const hasStart = Boolean(
+          const hasExplicitRange = Boolean(
             normalizedArgs.start ||
               normalizedArgs.start_date ||
-              normalizedArgs.from
+              normalizedArgs.from ||
+              normalizedArgs.end ||
+              normalizedArgs.end_date ||
+              normalizedArgs.to ||
+              normalizedArgs.all_time ||
+              normalizedArgs.range ||
+              normalizedArgs.preset_range
           );
-          const hasEnd = Boolean(
-            normalizedArgs.end || normalizedArgs.end_date || normalizedArgs.to
-          );
-
-          if (!hasStart || !hasEnd) {
-            const now = new Date();
-            const endUtc = new Date(
-              Date.UTC(
-                now.getUTCFullYear(),
-                now.getUTCMonth(),
-                now.getUTCDate(),
-                23,
-                59,
-                59,
-                999
-              )
-            ).toISOString();
+          if (!hasExplicitRange) {
             normalizedArgs = {
-              end: endUtc,
-              start: "1970-01-01T00:00:00.000Z",
+              all_time: true,
               ...normalizedArgs,
             };
             console.log(
-              `   Injected all-time range for analytics tool: ${JSON.stringify({ start: normalizedArgs.start, end: normalizedArgs.end })}`
+              `   Injected all_time flag for analytics tool intent.`
             );
           }
         }
