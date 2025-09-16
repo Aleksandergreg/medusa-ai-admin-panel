@@ -17,10 +17,26 @@ import {
   createShippingProfilesWorkflow,
   createShippingOptionsWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
+  createRegionsWorkflow,
+  createSalesChannelsWorkflow,
 } from "@medusajs/medusa/core-flows";
 
 export default async function seedDummyOrders({ container }: ExecArgs) {
-  const { faker } = await import("@faker-js/faker");
+  // Lightweight faker-free helpers to avoid ESM import issues in Jest/CI
+  const rand = (min: number, max: number) =>
+    Math.floor(Math.random() * (max - min + 1)) + min;
+  const pick = <T>(arr: T[]): T => arr[rand(0, arr.length - 1)];
+  const nowSuffix = () => Date.now().toString(36) + rand(0, 9999).toString(36);
+  const firstName = () => pick(["Alex", "Sam", "Jamie", "Taylor", "Casey", "Jordan"]);
+  const lastName = () => pick(["Smith", "Johnson", "Lee", "Garcia", "Brown", "Davis"]);
+  const emailFor = (fn: string, ln: string) => `${fn}.${ln}.${nowSuffix()}@example.com`.toLowerCase();
+  const phone = () => `+1${rand(200, 999)}${rand(200, 999)}${rand(1000, 9999)}`;
+  const company = () => pick(["Acme Inc", "Globex", "Initech", "Umbrella", "Hooli"]);
+  const street = () => `${rand(100, 9999)} Test St`;
+  const street2 = () => `Apt ${rand(1, 999)}`;
+  const city = () => pick(["Copenhagen", "Berlin", "Paris", "Madrid", "Lisbon"]);
+  const state = () => pick(["CA", "NY", "TX", "FL", "WA"]);
+  const zip = () => `${rand(10000, 99999)}`;
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const query = container.resolve(ContainerRegistrationKeys.QUERY);
   const link = container.resolve(ContainerRegistrationKeys.LINK);
@@ -34,18 +50,16 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
   // If no customers exist, create one
   if (!customers.length) {
     logger.info("No customers found. Creating a new customer...");
-    const firstName = faker.person.firstName();
-    const lastName = faker.person.lastName();
-    const email = faker.internet
-      .email({ firstName, lastName, provider: "example.com" })
-      .toLowerCase();
+    const fn = firstName();
+    const ln = lastName();
+    const email = emailFor(fn, ln);
 
     await createCustomersWorkflow(container).run({
       input: {
         customersData: [
           {
-            first_name: firstName,
-            last_name: lastName,
+            first_name: fn,
+            last_name: ln,
             email,
           },
         ],
@@ -62,10 +76,33 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
   }
 
   // Get other necessary data
-  const { data: regions } = await query.graph({
+  let { data: regions } = await query.graph({
     entity: "region",
     fields: ["id", "currency_code", "countries.iso_2"],
   });
+  if (!regions.length) {
+    try {
+      const { result: created } = await createRegionsWorkflow(container).run({
+        input: {
+          regions: [
+            {
+              name: "Test Region",
+              currency_code: "usd",
+              countries: ["us"],
+              payment_providers: ["pp_system_default"],
+            },
+          ],
+        },
+      });
+      if (created?.length) {
+        const re = (await query.graph({
+          entity: "region",
+          fields: ["id", "currency_code", "countries.iso_2"],
+        })) as any;
+        regions = re.data || created;
+      }
+    } catch {}
+  }
 
   const { data: products } = (await query.graph({
     entity: "product",
@@ -111,11 +148,19 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
 
   const salesChannelModuleService = container.resolve(Modules.SALES_CHANNEL);
 
-  const defaultSalesChannel = await salesChannelModuleService.listSalesChannels(
+  let defaultSalesChannel = await salesChannelModuleService.listSalesChannels(
     {
       name: "Default Sales Channel",
     }
   );
+  if (!defaultSalesChannel?.length) {
+    try {
+      const { result: scs } = await createSalesChannelsWorkflow(container).run({
+        input: { salesChannelsData: [{ name: "Default Sales Channel" }] },
+      });
+      defaultSalesChannel = scs || [];
+    } catch {}
+  }
 
   // Ensure stock location exists and is linked to the default sales channel; ensure basic shipping option as well
   const fulfillmentModuleService = container.resolve(Modules.FULFILLMENT);
@@ -266,7 +311,11 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
 
   for (let i = 0; i < ordersNum; i++) {
     // Select random data for this order
-    const region = regions[Math.floor(Math.random() * regions.length)];
+    const region = regions[Math.floor(Math.random() * Math.max(1, regions.length))] || {
+      id: undefined,
+      currency_code: "usd",
+      countries: [{ iso_2: "us" }],
+    };
     const customer = customers[Math.floor(Math.random() * customers.length)];
     // Build a mixed set of 1-3 items per order using different products
     const itemsCount = Math.max(1, Math.floor(Math.random() * 3) + 0);
@@ -311,20 +360,22 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
     }
 
     // Create address data
+    const fn2 = firstName();
+    const ln2 = lastName();
     const address = {
-      first_name: faker.person.firstName(),
-      last_name: faker.person.lastName(),
-      phone: faker.phone.number(),
-      company: faker.company.name(),
-      address_1: faker.location.streetAddress(),
-      address_2: faker.location.secondaryAddress(),
-      city: faker.location.city(),
+      first_name: fn2,
+      last_name: ln2,
+      phone: phone(),
+      company: company(),
+      address_1: street(),
+      address_2: street2(),
+      city: city(),
       country_code:
         (Array.isArray((region as any).countries) &&
           (region as any).countries[0]?.iso_2?.toLowerCase()) ||
         "de",
-      province: faker.location.state(),
-      postal_code: faker.location.zipCode(),
+      province: state(),
+      postal_code: zip(),
       metadata: {},
     };
 
@@ -350,6 +401,10 @@ export default async function seedDummyOrders({ container }: ExecArgs) {
       ],
       metadata: {},
     };
+    // If sales channel is still missing, omit it to avoid crash
+    if (!defaultSalesChannel?.[0]?.id) {
+      delete (orderData as any).sales_channel_id;
+    }
 
     try {
       const { result: order } = await createOrderWorkflow(container).run({
