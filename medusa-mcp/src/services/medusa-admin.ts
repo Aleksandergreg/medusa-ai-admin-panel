@@ -63,7 +63,7 @@ export default class MedusaAdminService {
                 : "";
     }
 
-    defineTools() {
+    defineTools(): Array<ReturnType<typeof createOpenApiTools>[number]> {
         return this.tools;
     }
 }
