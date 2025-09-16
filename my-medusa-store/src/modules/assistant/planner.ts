@@ -40,6 +40,7 @@ export async function planNextStepWithGemini(
   const systemMessage =
     `${Prompt}\n\n` +
     `Decide the next step based on the user's goal and the tool-call history.\n` +
+    'Do only what the user asks for and respond with nothing else but that'+
     `Actions: 'call_tool' or 'final_answer'.\n\n` +
     `1) If you need information or must perform an action, choose 'call_tool'.\n` +
     `2) If you have enough information, choose 'final_answer' and summarize succinctly.\n\n` +

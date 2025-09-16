@@ -58,18 +58,89 @@ export function createAnalyticsTools(
     analytics: AnalyticsService
 ): Array<ReturnType<typeof defineTool>> {
     // alias coercers
+    const datetimeHasTime = (value: string): boolean => /(?:T|\s)\d{2}:\d{2}/.test(value);
+    const datetimeHasTimezone = (value: string): boolean => /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
+    const normalizeDateTimeInput = (
+        value: string | undefined,
+        { defaultToEndOfDay = false }: { defaultToEndOfDay?: boolean } = {}
+    ): string | undefined => {
+        if (!value) {
+            return undefined;
+        }
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return undefined;
+        }
+
+        const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const hasTime = datetimeHasTime(trimmed);
+        const hasTimezone = datetimeHasTimezone(trimmed);
+        if (dateOnlyMatch) {
+            const [year, month, day] = dateOnlyMatch.slice(1).map((part) => Number(part));
+            if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+                return undefined;
+            }
+            const hours = defaultToEndOfDay ? 23 : 0;
+            const minutes = defaultToEndOfDay ? 59 : 0;
+            const seconds = defaultToEndOfDay ? 59 : 0;
+            const millis = defaultToEndOfDay ? 999 : 0;
+            return new Date(
+                Date.UTC(year, month - 1, day, hours, minutes, seconds, millis)
+            ).toISOString();
+        }
+
+        if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+            return undefined;
+        }
+
+        let normalized = trimmed;
+        if (normalized.includes(" ") && !normalized.includes("T")) {
+            normalized = normalized.replace(" ", "T");
+        }
+        if (hasTime && !hasTimezone) {
+            normalized = `${normalized}Z`;
+        }
+
+        const parsed = new Date(normalized);
+        if (Number.isNaN(parsed.getTime())) {
+            return undefined;
+        }
+
+        if (!hasTime) {
+            const hours = defaultToEndOfDay ? 23 : 0;
+            const minutes = defaultToEndOfDay ? 59 : 0;
+            const seconds = defaultToEndOfDay ? 59 : 0;
+            const millis = defaultToEndOfDay ? 999 : 0;
+            return new Date(
+                Date.UTC(
+                    parsed.getUTCFullYear(),
+                    parsed.getUTCMonth(),
+                    parsed.getUTCDate(),
+                    hours,
+                    minutes,
+                    seconds,
+                    millis
+                )
+            ).toISOString();
+        }
+
+        return parsed.toISOString();
+    };
+
     const coerceRange = (
         input: Record<string, unknown>
     ): { start?: string; end?: string } => {
-        const s =
+        const rawStart =
             (input.start as string | undefined) ||
             (input.start_date as string | undefined) ||
             (input.from as string | undefined);
-        const e =
+        const rawEnd =
             (input.end as string | undefined) ||
             (input.end_date as string | undefined) ||
             (input.to as string | undefined);
-        return { start: s, end: e };
+        const start = normalizeDateTimeInput(rawStart, { defaultToEndOfDay: false });
+        const end = normalizeDateTimeInput(rawEnd, { defaultToEndOfDay: true });
+        return { start, end };
     };
 
     const coerceGroupBy = (

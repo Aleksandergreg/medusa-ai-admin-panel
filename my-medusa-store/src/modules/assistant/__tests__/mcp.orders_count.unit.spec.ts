@@ -45,4 +45,26 @@ describe("medusa-mcp analytics orders_count tool", () => {
     const payload = JSON.parse(out.content[0].text);
     expect(payload.count).toBe(5);
   });
+
+  it("normalizes date-only string ranges", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { createAnalyticsTools } = require(factoryPath);
+    const analytics = {
+      ordersCount: jest.fn().mockResolvedValue(2),
+    };
+    const tools = createAnalyticsTools(analytics);
+    const tool = tools.find((t: any) => t.name === "orders_count");
+
+    const result = await tool.handler({ start_date: "2025-07-01", end_date: "2025-07-31" });
+
+    expect(analytics.ordersCount).toHaveBeenCalledWith(
+      "2025-07-01T00:00:00.000Z",
+      "2025-07-31T23:59:59.999Z",
+    );
+
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.start).toBe("2025-07-01T00:00:00.000Z");
+    expect(payload.end).toBe("2025-07-31T23:59:59.999Z");
+    expect(payload.count).toBe(2);
+  });
 });
