@@ -2,7 +2,10 @@ import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
 import { shouldRunPgIntegration } from "./_helpers";
 
 import * as path from "node:path";
-const plannerPath = path.resolve(process.cwd(), "src/modules/assistant/planner.ts");
+const plannerPath = path.resolve(
+  process.cwd(),
+  "src/modules/assistant/planner.ts"
+);
 const mcpManagerPath = path.resolve(process.cwd(), "src/lib/mcp/manager.ts");
 
 let toolCalls: Array<{ name: string; args: any }>;
@@ -26,7 +29,8 @@ jest.doMock(mcpManagerPath, () => ({
         tools: [
           {
             name: "promotion_product_analysis",
-            description: "Analyze which products customers buy when they use promotions",
+            description:
+              "Analyze which products customers buy when they use promotions",
           },
         ],
       }),
@@ -34,10 +38,13 @@ jest.doMock(mcpManagerPath, () => ({
         toolCalls.push({ name, args });
 
         if (name === "promotion_product_analysis") {
-          const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+          const defaultStart = new Date(
+            Date.now() - 30 * 24 * 60 * 60 * 1000
+          ).toISOString();
           const defaultEnd = new Date().toISOString();
 
-          const start = args?.start || args?.start_date || args?.from || defaultStart;
+          const start =
+            args?.start || args?.start_date || args?.from || defaultStart;
           const end = args?.end || args?.end_date || args?.to || defaultEnd;
           const promotion_code = args?.promotion_code;
 
@@ -163,7 +170,11 @@ if (shouldRunPgIntegration()) {
         const container = await getContainer();
         try {
           const { result } = await createApiKeysWorkflow(container).run({
-            input: { api_keys: [{ type: "secret", title: "CI Admin Key", created_by: "ci" }] },
+            input: {
+              api_keys: [
+                { type: "secret", title: "CI Admin Key", created_by: "ci" },
+              ],
+            },
           });
           const token = result?.[0]?.token;
           if (!token || !String(token).startsWith("sk_")) {
@@ -199,7 +210,10 @@ if (shouldRunPgIntegration()) {
               tool_name: "promotion_product_analysis",
               tool_args: {}, // No date parameters provided
             })
-            .mockResolvedValueOnce({ action: "final_answer", answer: "Promotion product analysis complete." });
+            .mockResolvedValueOnce({
+              action: "final_answer",
+              answer: "Promotion product analysis complete.",
+            });
 
           const res = await api.post("/admin/assistant", {
             prompt: "Show me products sold with promotions",
@@ -209,7 +223,10 @@ if (shouldRunPgIntegration()) {
           expect(res.status).toBe(200);
 
           // Verify the tool was called with no date parameters
-          expect(toolCalls?.[0]).toMatchObject({ name: "promotion_product_analysis", args: {} });
+          expect(toolCalls?.[0]).toMatchObject({
+            name: "promotion_product_analysis",
+            args: {},
+          });
 
           // Verify response has the expected shape and default date range is applied
           expect(res.data?.data).toHaveProperty("start");
@@ -231,7 +248,10 @@ if (shouldRunPgIntegration()) {
                 end: "2024-09-30T23:59:59Z",
               },
             })
-            .mockResolvedValueOnce({ action: "final_answer", answer: "Filtered promotion product analysis." });
+            .mockResolvedValueOnce({
+              action: "final_answer",
+              answer: "Filtered promotion product analysis.",
+            });
 
           const res = await api.post("/admin/assistant", {
             prompt: "Show me products sold with SAVE20 in September",
@@ -290,7 +310,10 @@ if (shouldRunPgIntegration()) {
                 end: "2024-09-30T23:59:59Z",
               },
             })
-            .mockResolvedValueOnce({ action: "final_answer", answer: "Product metrics validated." });
+            .mockResolvedValueOnce({
+              action: "final_answer",
+              answer: "Product metrics validated.",
+            });
 
           const res = await api.post("/admin/assistant", {
             prompt: "Validate promotion product metrics for September",
@@ -301,7 +324,10 @@ if (shouldRunPgIntegration()) {
 
           expect(toolCalls?.[0]).toMatchObject({
             name: "promotion_product_analysis",
-            args: { start: "2024-09-01T00:00:00Z", end: "2024-09-30T23:59:59Z" },
+            args: {
+              start: "2024-09-01T00:00:00Z",
+              end: "2024-09-30T23:59:59Z",
+            },
           });
 
           const products = res.data?.data?.products;
@@ -310,7 +336,10 @@ if (shouldRunPgIntegration()) {
 
           const p = products[0];
           // average_order_quantity should equal total_quantity_sold / total_orders (approx)
-          expect(p.average_order_quantity).toBeCloseTo(p.total_quantity_sold / p.total_orders, 3);
+          expect(p.average_order_quantity).toBeCloseTo(
+            p.total_quantity_sold / p.total_orders,
+            3
+          );
 
           // discount_amount should be non-negative and reasonable
           expect(p.discount_amount).toBeGreaterThanOrEqual(0);
