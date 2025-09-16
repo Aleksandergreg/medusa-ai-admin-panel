@@ -95,7 +95,7 @@ export function createOpenApiTools(
                     operationId: string,
                     method: string,
                     pathHint: string
-                ) => {
+                ): string => {
                     if (method === "post") {
                         if (operationId.includes("Batch")) {
                             return " **BATCH OPERATION**: Only use this for bulk operations with multiple items. Requires arrays: create[], update[], delete[]. For single operations, use the non-batch version.";
