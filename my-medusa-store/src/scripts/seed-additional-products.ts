@@ -74,7 +74,9 @@ export default async function seedAdditionalProducts({ container }: ExecArgs) {
   });
 
   if (!stockLocations.length) {
-    logger.error("No stock locations found. Please run the main seed script first.");
+    logger.error(
+      "No stock locations found. Please run the main seed script first."
+    );
     return;
   }
 
@@ -914,18 +916,39 @@ export default async function seedAdditionalProducts({ container }: ExecArgs) {
 
   // Filter to only the new products we just created based on SKU patterns
   const newProductSKUs = [
-    "HOODIE-S-NAVY", "HOODIE-M-NAVY", "HOODIE-L-GRAY", "HOODIE-XL-GRAY",
-    "CAP-BLACK", "CAP-WHITE", "CAP-RED",
-    "TANK-S-WHITE", "TANK-M-WHITE", "TANK-L-GRAY", "TANK-XL-GRAY",
-    "JEANS-28-BLUE", "JEANS-30-BLUE", "JEANS-32-BLACK", "JEANS-34-BLACK",
-    "POLO-S-NAVY", "POLO-M-WHITE", "POLO-L-GREEN",
-    "BACKPACK-BLACK", "BACKPACK-GRAY", "BACKPACK-NAVY",
-    "SOCKS-S-BLACK", "SOCKS-M-WHITE", "SOCKS-L-GRAY",
-    "JACKET-S-BLACK", "JACKET-M-BLACK", "JACKET-L-NAVY",
-    "BUTTON-S-WHITE", "BUTTON-M-BLUE", "BUTTON-L-BLACK",
+    "HOODIE-S-NAVY",
+    "HOODIE-M-NAVY",
+    "HOODIE-L-GRAY",
+    "HOODIE-XL-GRAY",
+    "CAP-BLACK",
+    "CAP-WHITE",
+    "CAP-RED",
+    "TANK-S-WHITE",
+    "TANK-M-WHITE",
+    "TANK-L-GRAY",
+    "TANK-XL-GRAY",
+    "JEANS-28-BLUE",
+    "JEANS-30-BLUE",
+    "JEANS-32-BLACK",
+    "JEANS-34-BLACK",
+    "POLO-S-NAVY",
+    "POLO-M-WHITE",
+    "POLO-L-GREEN",
+    "BACKPACK-BLACK",
+    "BACKPACK-GRAY",
+    "BACKPACK-NAVY",
+    "SOCKS-S-BLACK",
+    "SOCKS-M-WHITE",
+    "SOCKS-L-GRAY",
+    "JACKET-S-BLACK",
+    "JACKET-M-BLACK",
+    "JACKET-L-NAVY",
+    "BUTTON-S-WHITE",
+    "BUTTON-M-BLUE",
+    "BUTTON-L-BLACK",
   ];
 
-  const newInventoryItems = allInventoryItems.filter((item: any) => 
+  const newInventoryItems = allInventoryItems.filter((item: any) =>
     newProductSKUs.includes(item.sku)
   );
 
@@ -946,13 +969,15 @@ export default async function seedAdditionalProducts({ container }: ExecArgs) {
       },
     });
 
-    logger.info(`Created inventory levels for ${inventoryLevels.length} new product variants.`);
+    logger.info(
+      `Created inventory levels for ${inventoryLevels.length} new product variants.`
+    );
   } else {
     logger.warn("No new inventory items found to create inventory levels for.");
   }
 
   logger.info("Finished seeding inventory levels for new products!");
-  
+
   logger.info("Added 10 new products:");
   logger.info("- Medusa Hoodie (Sweatshirts)");
   logger.info("- Medusa Cap (Merch)");
