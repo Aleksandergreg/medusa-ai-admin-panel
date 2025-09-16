@@ -50,7 +50,7 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
  - Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false.
 
 ## ANALYTICS AGGREGATIONS
-- Use sales_aggregate for product/variant/shipping summaries. Always pass: start_date/start and end_date/end, group_by, metric, limit, and sort (asc/desc).
+- Use sales_aggregate for product/variant/shipping summaries. Always pass: start_date/start and end_date/end, group_by, metric, limit, and sort (asc/desc). By default, include_zero=true so zero-sale products are considered; set include_zero=false to consider only items that sold.
 - Interpret intent:
   - "top/most/best" → sort: desc
   - "least/worst/lowest" → sort: asc
