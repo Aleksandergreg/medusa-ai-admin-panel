@@ -58,8 +58,40 @@ export function createAnalyticsTools(
     analytics: AnalyticsService
 ): Array<ReturnType<typeof defineTool>> {
     // alias coercers
+    const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
     const datetimeHasTime = (value: string): boolean => /(?:T|\s)\d{2}:\d{2}/.test(value);
     const datetimeHasTimezone = (value: string): boolean => /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
+    const startOfDayUtc = (date: Date): Date =>
+        new Date(
+            Date.UTC(
+                date.getUTCFullYear(),
+                date.getUTCMonth(),
+                date.getUTCDate(),
+                0,
+                0,
+                0,
+                0
+            )
+        );
+    const endOfDayUtc = (date: Date): Date =>
+        new Date(
+            Date.UTC(
+                date.getUTCFullYear(),
+                date.getUTCMonth(),
+                date.getUTCDate(),
+                23,
+                59,
+                59,
+                999
+            )
+        );
+    const last30DayRange = (): { start: string; end: string } => {
+        const now = new Date();
+        const end = endOfDayUtc(now);
+        const startSeed = new Date(end.getTime() - 30 * MILLISECONDS_PER_DAY);
+        const start = startOfDayUtc(startSeed);
+        return { start: start.toISOString(), end: end.toISOString() };
+    };
     const normalizeDateTimeInput = (
         value: string | undefined,
         { defaultToEndOfDay = false }: { defaultToEndOfDay?: boolean } = {}
@@ -138,8 +170,36 @@ export function createAnalyticsTools(
             (input.end as string | undefined) ||
             (input.end_date as string | undefined) ||
             (input.to as string | undefined);
-        const start = normalizeDateTimeInput(rawStart, { defaultToEndOfDay: false });
-        const end = normalizeDateTimeInput(rawEnd, { defaultToEndOfDay: true });
+        let start = normalizeDateTimeInput(rawStart, { defaultToEndOfDay: false });
+        let end = normalizeDateTimeInput(rawEnd, { defaultToEndOfDay: true });
+
+        if (start && !end) {
+            const startDate = new Date(start);
+            if (Number.isNaN(startDate.getTime())) {
+                start = undefined;
+            } else {
+                end = endOfDayUtc(new Date()).toISOString();
+            }
+        }
+
+        if (!start && end) {
+            const endDate = new Date(end);
+            if (Number.isNaN(endDate.getTime())) {
+                end = undefined;
+            } else {
+                const startFromEnd = startOfDayUtc(
+                    new Date(endDate.getTime() - 30 * MILLISECONDS_PER_DAY)
+                );
+                start = startFromEnd.toISOString();
+            }
+        }
+
+        if (!start && !end) {
+            const defaults = last30DayRange();
+            start = defaults.start;
+            end = defaults.end;
+        }
+
         return { start, end };
     };
 
@@ -219,12 +279,13 @@ export function createAnalyticsTools(
         description:
             "Count non-canceled orders in a UTC date range [start, end). Returns { count }.",
         inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional()
+            // Accept free-form strings; handler normalizes and validates
+            start: z.string().optional(),
+            end: z.string().optional(),
+            start_date: z.string().optional(),
+            end_date: z.string().optional(),
+            from: z.string().optional(),
+            to: z.string().optional()
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const { start, end } = coerceRange(input);
@@ -251,12 +312,13 @@ export function createAnalyticsTools(
         description:
             "Aggregate sales in a UTC date range with grouping and metric. Group by: product, variant, or shipping (method). Metric accepts: quantity (qty/units), revenue (sales/amount/total/sum), orders (count).",
         inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional(),
+            // Accept free-form strings; handler normalizes and validates
+            start: z.string().optional(),
+            end: z.string().optional(),
+            start_date: z.string().optional(),
+            end_date: z.string().optional(),
+            from: z.string().optional(),
+            to: z.string().optional(),
 
             // Accept any string for group_by and metric; we coerce/validate in handler
             group_by: z.string().optional(),
@@ -386,12 +448,13 @@ export function createAnalyticsTools(
             "IMPORTANT: When user asks about 'refunds', consider BOTH 'refunded' AND 'partially_refunded'. When asked about 'failed payments', map to ['not_paid', 'canceled', 'requires_action']. When asked about 'paid orders', use ['captured']. " +
             "Examples: unpaid orders (payment_status: 'not_paid'), delivered/shipped orders (fulfillment_status: ['shipped', 'delivered']), paid unfulfilled orders (payment_status: ['captured'] + fulfillment_status: ['not_fulfilled','partially_fulfilled']).",
         inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional(),
+            // Accept free-form strings; handler normalizes and validates
+            start: z.string().optional(),
+            end: z.string().optional(),
+            start_date: z.string().optional(),
+            end_date: z.string().optional(),
+            from: z.string().optional(),
+            to: z.string().optional(),
 
             payment_status: z
                 .union([z.string(), z.array(z.string())])
