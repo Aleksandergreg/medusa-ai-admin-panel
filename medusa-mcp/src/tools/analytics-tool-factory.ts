@@ -58,18 +58,197 @@ export function createAnalyticsTools(
     analytics: AnalyticsService
 ): Array<ReturnType<typeof defineTool>> {
     // alias coercers
+    const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+    const datetimeHasTime = (value: string): boolean => /(?:T|\s)\d{2}:\d{2}/.test(value);
+    const datetimeHasTimezone = (value: string): boolean => /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
+    const startOfDayUtc = (date: Date): Date =>
+        new Date(
+            Date.UTC(
+                date.getUTCFullYear(),
+                date.getUTCMonth(),
+                date.getUTCDate(),
+                0,
+                0,
+                0,
+                0
+            )
+        );
+    const endOfDayUtc = (date: Date): Date =>
+        new Date(
+            Date.UTC(
+                date.getUTCFullYear(),
+                date.getUTCMonth(),
+                date.getUTCDate(),
+                23,
+                59,
+                59,
+                999
+            )
+        );
+    const last30DayRange = (): { start: string; end: string } => {
+        const now = new Date();
+        const end = endOfDayUtc(now);
+        const startSeed = new Date(end.getTime() - 30 * MILLISECONDS_PER_DAY);
+        const start = startOfDayUtc(startSeed);
+        return { start: start.toISOString(), end: end.toISOString() };
+    };
+    const allTimeRange = (): { start: string; end: string } => {
+        const end = endOfDayUtc(new Date());
+        const start = new Date(0); // 1970-01-01T00:00:00.000Z
+        return { start: start.toISOString(), end: end.toISOString() };
+    };
+    const isEpochStartIso = (iso?: string): boolean => {
+        if (!iso || typeof iso !== "string") return false;
+        const t = Date.parse(iso);
+        if (!Number.isFinite(t)) return false;
+        // Consider anything within first minute of epoch as epoch-ish
+        return t <= 60 * 1000;
+    };
+    const normalizeDateTimeInput = (
+        value: string | undefined,
+        { defaultToEndOfDay = false }: { defaultToEndOfDay?: boolean } = {}
+    ): string | undefined => {
+        if (!value) {
+            return undefined;
+        }
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return undefined;
+        }
+
+        const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const hasTime = datetimeHasTime(trimmed);
+        const hasTimezone = datetimeHasTimezone(trimmed);
+        if (dateOnlyMatch) {
+            const [year, month, day] = dateOnlyMatch.slice(1).map((part) => Number(part));
+            if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+                return undefined;
+            }
+            const hours = defaultToEndOfDay ? 23 : 0;
+            const minutes = defaultToEndOfDay ? 59 : 0;
+            const seconds = defaultToEndOfDay ? 59 : 0;
+            const millis = defaultToEndOfDay ? 999 : 0;
+            return new Date(
+                Date.UTC(year, month - 1, day, hours, minutes, seconds, millis)
+            ).toISOString();
+        }
+
+        if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+            return undefined;
+        }
+
+        let normalized = trimmed;
+        if (normalized.includes(" ") && !normalized.includes("T")) {
+            normalized = normalized.replace(" ", "T");
+        }
+        if (hasTime && !hasTimezone) {
+            normalized = `${normalized}Z`;
+        }
+
+        const parsed = new Date(normalized);
+        if (Number.isNaN(parsed.getTime())) {
+            return undefined;
+        }
+
+        if (!hasTime) {
+            const hours = defaultToEndOfDay ? 23 : 0;
+            const minutes = defaultToEndOfDay ? 59 : 0;
+            const seconds = defaultToEndOfDay ? 59 : 0;
+            const millis = defaultToEndOfDay ? 999 : 0;
+            return new Date(
+                Date.UTC(
+                    parsed.getUTCFullYear(),
+                    parsed.getUTCMonth(),
+                    parsed.getUTCDate(),
+                    hours,
+                    minutes,
+                    seconds,
+                    millis
+                )
+            ).toISOString();
+        }
+
+        return parsed.toISOString();
+    };
+
     const coerceRange = (
         input: Record<string, unknown>
     ): { start?: string; end?: string } => {
-        const s =
+        const rangeTokenRaw =
+            (input.range as string | undefined) ||
+            (input.preset_range as string | undefined) ||
+            (input.preset as string | undefined);
+        const isAllTimeToken = (v?: string): boolean => {
+            if (!v) return false;
+            const s = String(v).toLowerCase().trim().replace(/\s+/g, "_");
+            return ["all_time", "lifetime", "ever", "since_epoch", "all"].includes(s);
+        };
+        const boolish = (v: unknown): boolean => {
+            if (typeof v === "boolean") return v;
+            if (typeof v === "number") return v !== 0;
+            if (typeof v === "string") {
+                const s = v.trim().toLowerCase();
+                return ["1", "true", "yes", "y", "all_time", "ever", "lifetime", "all"].includes(s);
+            }
+            return false;
+        };
+        if (boolish((input as any).all_time) || isAllTimeToken(rangeTokenRaw)) {
+            return allTimeRange();
+        }
+
+        const rawStart =
             (input.start as string | undefined) ||
             (input.start_date as string | undefined) ||
             (input.from as string | undefined);
-        const e =
+        const rawEnd =
             (input.end as string | undefined) ||
             (input.end_date as string | undefined) ||
             (input.to as string | undefined);
-        return { start: s, end: e };
+        let start = normalizeDateTimeInput(rawStart, { defaultToEndOfDay: false });
+        let end = normalizeDateTimeInput(rawEnd, { defaultToEndOfDay: true });
+
+        if (start && !end) {
+            const startDate = new Date(start);
+            if (Number.isNaN(startDate.getTime())) {
+                start = undefined;
+            } else {
+                end = endOfDayUtc(new Date()).toISOString();
+            }
+        }
+
+        if (!start && end) {
+            const endDate = new Date(end);
+            if (Number.isNaN(endDate.getTime())) {
+                end = undefined;
+            } else {
+                const startFromEnd = startOfDayUtc(
+                    new Date(endDate.getTime() - 30 * MILLISECONDS_PER_DAY)
+                );
+                start = startFromEnd.toISOString();
+            }
+        }
+
+        if (!start && !end) {
+            const defaults = last30DayRange();
+            start = defaults.start;
+            end = defaults.end;
+        }
+
+        // Guardrail: if a caller passes an epoch start (1970-01-01...) without
+        // explicitly signaling all_time, assume it's accidental and clamp to
+        // the standard 30-day default.
+        if (
+            start && end &&
+            isEpochStartIso(start) &&
+            !boolish((input as any).all_time) &&
+            !isAllTimeToken(rangeTokenRaw)
+        ) {
+            const defaults = last30DayRange();
+            start = defaults.start;
+            end = defaults.end;
+        }
+
+        return { start, end };
     };
 
     const coerceGroupBy = (
@@ -148,12 +327,17 @@ export function createAnalyticsTools(
         description:
             "Count non-canceled orders in a UTC date range [start, end). Returns { count }.",
         inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional()
+            // Accept free-form strings; handler normalizes and validates
+            start: z.string().optional(),
+            end: z.string().optional(),
+            start_date: z.string().optional(),
+            end_date: z.string().optional(),
+            from: z.string().optional(),
+            to: z.string().optional(),
+            // Convenience flags/tokens for ranges
+            all_time: z.union([z.boolean(), z.string()]).optional(),
+            range: z.string().optional(),
+            preset_range: z.string().optional()
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const { start, end } = coerceRange(input);
@@ -180,12 +364,17 @@ export function createAnalyticsTools(
         description:
             "Aggregate sales in a UTC date range with grouping and metric. Group by: product, variant, or shipping (method). Metric accepts: quantity (qty/units), revenue (sales/amount/total/sum), orders (count).",
         inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional(),
+            // Accept free-form strings; handler normalizes and validates
+            start: z.string().optional(),
+            end: z.string().optional(),
+            start_date: z.string().optional(),
+            end_date: z.string().optional(),
+            from: z.string().optional(),
+            to: z.string().optional(),
+            // Convenience flags/tokens for ranges
+            all_time: z.union([z.boolean(), z.string()]).optional(),
+            range: z.string().optional(),
+            preset_range: z.string().optional(),
 
             // Accept any string for group_by and metric; we coerce/validate in handler
             group_by: z.string().optional(),
@@ -204,7 +393,8 @@ export function createAnalyticsTools(
                 .union([z.literal("desc"), z.literal("asc")])
                 .default("desc"),
             order: z.string().optional(),
-            order_by: z.string().optional()
+            order_by: z.string().optional(),
+            direction: z.string().optional()
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const rng = coerceRange(input);
@@ -237,6 +427,10 @@ export function createAnalyticsTools(
                 const ob = (
                     input.order_by as string | undefined
                 )?.toLowerCase();
+                const dir = (input.direction as string | undefined)?.toLowerCase();
+                if (dir === "asc" || dir === "desc") {
+                    return dir;
+                }
                 if (o === "asc" || o === "desc") {
                     return o;
                 }
@@ -315,12 +509,13 @@ export function createAnalyticsTools(
             "IMPORTANT: When user asks about 'refunds', consider BOTH 'refunded' AND 'partially_refunded'. When asked about 'failed payments', map to ['not_paid', 'canceled', 'requires_action']. When asked about 'paid orders', use ['captured']. " +
             "Examples: unpaid orders (payment_status: 'not_paid'), delivered/shipped orders (fulfillment_status: ['shipped', 'delivered']), paid unfulfilled orders (payment_status: ['captured'] + fulfillment_status: ['not_fulfilled','partially_fulfilled']).",
         inputSchema: {
-            start: z.string().datetime().optional(),
-            end: z.string().datetime().optional(),
-            start_date: z.string().datetime().optional(),
-            end_date: z.string().datetime().optional(),
-            from: z.string().datetime().optional(),
-            to: z.string().datetime().optional(),
+            // Accept free-form strings; handler normalizes and validates
+            start: z.string().optional(),
+            end: z.string().optional(),
+            start_date: z.string().optional(),
+            end_date: z.string().optional(),
+            from: z.string().optional(),
+            to: z.string().optional(),
 
             payment_status: z
                 .union([z.string(), z.array(z.string())])

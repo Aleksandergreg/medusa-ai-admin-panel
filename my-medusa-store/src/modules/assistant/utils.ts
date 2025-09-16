@@ -221,5 +221,7 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
     return out;
   }
 
+  // Rely on medusa-mcp analytics tools to interpret sorting hints
+
   return normalized;
 }

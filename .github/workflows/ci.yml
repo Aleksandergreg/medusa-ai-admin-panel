@@ -83,14 +83,24 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: my-medusa-store/package-lock.json
+          cache-dependency-path: |
+            my-medusa-store/package-lock.json
+            medusa-mcp/package-lock.json
 
-      - name: Install deps
-        run: npm ci
+      - name: Install deps (parallel)
+        run: |
+          set -euo pipefail
+          npm ci &
+          main_pid=$!
 
-      - name: Install deps (medusa-mcp)
-        run: npm ci || npm install --no-audit --no-fund
-        working-directory: medusa-mcp
+          (
+            cd ../medusa-mcp
+            npm ci || npm install --no-audit --no-fund
+          ) &
+          mcp_pid=$!
+
+          wait "$main_pid"
+          wait "$mcp_pid"
 
       - name: Build medusa-mcp
         run: npm run build

@@ -9,6 +9,10 @@ describe("medusa-mcp analytics orders_count tool", () => {
   // Import TypeScript source directly to avoid requiring a pre-built dist
   const factoryPath = path.resolve(process.cwd(), "../medusa-mcp/src/tools/analytics-tool-factory.ts");
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("returns count using stubbed analytics service", async () => {
     // Dynamically import the factory from the sibling package
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -44,5 +48,51 @@ describe("medusa-mcp analytics orders_count tool", () => {
     const out = await tool.handler({ from: "2025-07-01T00:00:00.000Z", to: "2025-07-15T00:00:00.000Z" });
     const payload = JSON.parse(out.content[0].text);
     expect(payload.count).toBe(5);
+  });
+
+  it("normalizes date-only string ranges", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { createAnalyticsTools } = require(factoryPath);
+    const analytics = {
+      ordersCount: jest.fn().mockResolvedValue(2),
+    };
+    const tools = createAnalyticsTools(analytics);
+    const tool = tools.find((t: any) => t.name === "orders_count");
+
+    const result = await tool.handler({ start_date: "2025-07-01", end_date: "2025-07-31" });
+
+    expect(analytics.ordersCount).toHaveBeenCalledWith(
+      "2025-07-01T00:00:00.000Z",
+      "2025-07-31T23:59:59.999Z",
+    );
+
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.start).toBe("2025-07-01T00:00:00.000Z");
+    expect(payload.end).toBe("2025-07-31T23:59:59.999Z");
+    expect(payload.count).toBe(2);
+  });
+
+  it("defaults to the last 30 days when range is omitted", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2025-09-16T15:00:00.000Z"));
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { createAnalyticsTools } = require(factoryPath);
+    const analytics = {
+      ordersCount: jest.fn().mockResolvedValue(42),
+    };
+    const tools = createAnalyticsTools(analytics);
+    const tool = tools.find((t: any) => t.name === "orders_count");
+
+    const result = await tool.handler({});
+
+    expect(analytics.ordersCount).toHaveBeenCalledWith(
+      "2025-08-17T00:00:00.000Z",
+      "2025-09-16T23:59:59.999Z",
+    );
+
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.start).toBe("2025-08-17T00:00:00.000Z");
+    expect(payload.end).toBe("2025-09-16T23:59:59.999Z");
+    expect(payload.count).toBe(42);
   });
 });
