@@ -11,7 +11,7 @@ describe("medusa-mcp analytics orders_count tool", () => {
 
   it("returns count using stubbed analytics service", async () => {
     // Dynamically import the factory from the sibling package
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const { createAnalyticsTools } = require(factoryPath);
 
     const analytics = {
@@ -33,7 +33,7 @@ describe("medusa-mcp analytics orders_count tool", () => {
   });
 
   it("accepts alias keys ('from','to') for range", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const { createAnalyticsTools } = require(factoryPath);
     const analytics = {
       ordersCount: jest.fn().mockResolvedValue(5),
