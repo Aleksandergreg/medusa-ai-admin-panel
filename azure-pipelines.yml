@@ -1,62 +1,155 @@
 # azure-pipelines.yml
-trigger:
+
+# Your GH workflow only ran on PRs to main, so:
+trigger: none
+pr:
   branches:
     include:
       - main
-      - develop
-      - feature/*
 
-pool:
-  vmImage: ubuntu-latest
+jobs:
+# -------------------------------
+# Job 1: Unit tests (my-medusa-store)
+# -------------------------------
+- job: test_unit
+  displayName: "Unit tests (my-medusa-store)"
+  pool:
+    vmImage: "ubuntu-latest"
+  steps:
+    - checkout: self
 
-variables:
-  NODE_VERSION: '20.x'
-  ESLINT_GLOB: 'src/**/*.{ts,tsx}'
-  ESLINT_IGNORE: 'src/types/*-json.ts'   # your big generated files
+    - task: NodeTool@0
+      displayName: "Use Node 20"
+      inputs:
+        versionSpec: "20.x"
 
-steps:
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '$(NODE_VERSION)'
-    displayName: 'Use Node.js $(NODE_VERSION)'
+    # Install deps (medusa-mcp)
+    - script: npm ci || npm install --no-audit --no-fund
+      displayName: "Install deps (medusa-mcp)"
+      workingDirectory: medusa-mcp
 
-  - task: Cache@2
-    displayName: 'Cache npm'
-    inputs:
-      key: 'npm | "$(Agent.OS)" | **/package-lock.json'
-      restoreKeys: |
-        npm | "$(Agent.OS)"
-      path: $(Pipeline.Workspace)/.npm
+    # Build not required for unit tests since TS sources are imported
 
-  - script: |
-      set -e
-      OUT_DIR="$(Build.SourcesDirectory)/eslint-sarif"
-      mkdir -p "$OUT_DIR"
+    # Install deps (my-medusa-store)
+    - script: npm ci
+      displayName: "Install deps (my-medusa-store)"
+      workingDirectory: my-medusa-store
 
-      # find all packages (skip node_modules)
-      PKGS=$(find . -name package.json -not -path "*/node_modules/*" -exec dirname {} \; | sort -u)
+    # Run unit tests
+    - script: |
+        npm run test:unit -- --watchman=false
+      displayName: "Run unit tests"
+      workingDirectory: my-medusa-store
+      env:
+        TEST_TYPE: unit
+        NODE_OPTIONS: --experimental-vm-modules
+        GEMINI_API_KEY: dummy-for-ci
+        STORE_CORS: "*"
+        ADMIN_CORS: "*"
+        AUTH_CORS: "*"
+        DATABASE_URL: file:./.tmp/test.sqlite
 
-      for d in $PKGS; do
-        [ -d "$d/src" ] || { echo "No src/ in $d — skipping SARIF."; continue; }
+# -------------------------------
+# Job 2: Integration HTTP (assistant) with Postgres service
+# -------------------------------
+- job: integration_http
+  displayName: "Integration HTTP (assistant)"
+  pool:
+    vmImage: "ubuntu-latest"
 
-        echo "##[group]ESLint SARIF in $d"
-        # install the SARIF formatter without changing package.json
-        (cd "$d" && npm i --no-save @microsoft/eslint-formatter-sarif >/dev/null 2>&1 || true)
+  # Define the Postgres service container (similar to GH Actions services)
+  services:
+    postgres:
+      image: postgres:15
+      env:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: postgres
+      ports:
+        - 5432:5432
+      options: >-
+        --health-cmd "pg_isready -U postgres"
+        --health-interval 10s
+        --health-timeout 5s
+        --health-retries 5
 
-        PKG_NAME=$(basename "$d")
-        (cd "$d" && npx --yes eslint "src/**/*.{ts,tsx}" \
-          --ext .ts,.tsx \
-          --ignore-pattern "src/types/*-json.ts" \
-          -f @microsoft/eslint-formatter-sarif \
-          -o "$OUT_DIR/${PKG_NAME}-eslint.sarif" || true)
-        echo "##[endgroup]"
-      done
-    displayName: 'ESLint (produce SARIF for Scans tab)'
-    condition: always()
+  steps:
+    - checkout: self
 
-  - task: PublishPipelineArtifact@1
-    displayName: 'Publish ESLint SARIF -> CodeAnalysisLogs'
-    inputs:
-      targetPath: '$(Build.SourcesDirectory)/eslint-sarif'
-      artifact: 'CodeAnalysisLogs'
-    condition: always()
+    - task: NodeTool@0
+      displayName: "Use Node 20"
+      inputs:
+        versionSpec: "20.x"
+
+    - script: npm ci
+      displayName: "Install deps (my-medusa-store)"
+      workingDirectory: my-medusa-store
+
+    - script: npm ci || npm install --no-audit --no-fund
+      displayName: "Install deps (medusa-mcp)"
+      workingDirectory: medusa-mcp
+
+    - script: npm run build
+      displayName: "Build medusa-mcp"
+      workingDirectory: medusa-mcp
+
+    # Ensure psql client is available for the readiness loop
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+      displayName: "Install Postgres client"
+
+    - script: |
+        for i in {1..60}; do
+          if PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c 'select 1' >/dev/null 2>&1; then
+            echo "Postgres is ready"
+            break
+          fi
+          echo "Waiting for Postgres... ($i)"
+          sleep 2
+        done
+      displayName: "Wait for Postgres to accept connections"
+
+    - script: |
+        npm run test:integration:http -- --watchman=false
+      displayName: "Run integration http tests"
+      workingDirectory: my-medusa-store
+      env:
+        TEST_TYPE: integration:http
+        NODE_OPTIONS: --experimental-vm-modules
+        GEMINI_API_KEY: dummy-for-ci
+        STORE_CORS: "*"
+        ADMIN_CORS: "*"
+        AUTH_CORS: "*"
+        LOG_LEVEL: error
+        DB_HOST: localhost
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        PGHOST: localhost
+        PGUSER: postgres
+        PGPASSWORD: postgres
+        PGPORT: "5432"
+        PGSSLMODE: disable
+
+# -------------------------------
+# Job 3: Live Gemini (label-gated in GH; variable-gated here)
+# -------------------------------
+# Azure Pipelines doesn't natively gate jobs by GitHub PR labels.
+# Use a pipeline variable (e.g., runLiveLLM=true) set at queue time or via variable group.
+- job: live_llm
+  displayName: "Live Gemini (variable-gated)"
+  dependsOn: [ test_unit, integration_http ]
+  condition: and(succeeded(), eq(variables['runLiveLLM'], 'true'))
+  pool:
+    vmImage: "ubuntu-latest"
+  steps:
+    - checkout: self
+
+    - task: NodeTool@0
+      displayName: "Use Node 20"
+      inputs:
+        versionSpec: "20.x"
+
+    - script: npm ci
+      displayName: "Install deps"
+      workingDirectory: my-medusa-store
