@@ -33,6 +33,7 @@ type InventoryService = {
 export function createInventoryTools(
     inventory: InventoryService
 ): Array<ReturnType<typeof defineTool>> {
+    const DEFAULT_LOW_INV_THRESHOLD = 5;
     const low_inventory_products_count = defineTool((z) => ({
         name: "low_inventory_products_count",
         description:
@@ -42,7 +43,10 @@ export function createInventoryTools(
                 .number()
                 .int()
                 .min(0)
-                .describe("Inventory threshold (e.g., 100, 50, 200)"),
+                .optional()
+                .describe(
+                    `Inventory threshold (e.g., 100, 50, 200). Default: ${DEFAULT_LOW_INV_THRESHOLD}`
+                ),
             manage_inventory_only: z
                 .boolean()
                 .optional()
@@ -52,7 +56,11 @@ export function createInventoryTools(
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const schema = z.object({
-                threshold: z.number().int().min(0),
+                threshold: z.coerce
+                    .number()
+                    .int()
+                    .min(0)
+                    .default(DEFAULT_LOW_INV_THRESHOLD),
                 manage_inventory_only: z.boolean().optional()
             });
             const parsed = schema.safeParse(input);
@@ -77,7 +85,10 @@ export function createInventoryTools(
                 .number()
                 .int()
                 .min(0)
-                .describe("Inventory threshold (e.g., 100, 50, 200)"),
+                .optional()
+                .describe(
+                    `Inventory threshold (e.g., 100, 50, 200). Default: ${DEFAULT_LOW_INV_THRESHOLD}`
+                ),
             manage_inventory_only: z
                 .boolean()
                 .optional()
@@ -100,9 +111,13 @@ export function createInventoryTools(
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const schema = z.object({
-                threshold: z.number().int().min(0),
+                threshold: z.coerce
+                    .number()
+                    .int()
+                    .min(0)
+                    .default(DEFAULT_LOW_INV_THRESHOLD),
                 manage_inventory_only: z.boolean().optional(),
-                limit: z.number().int().min(1).max(200).optional(),
+                limit: z.coerce.number().int().min(1).max(200).optional(),
                 include_variants: z.boolean().optional()
             });
             const parsed = schema.safeParse(input);
