@@ -60,7 +60,7 @@ export function useAssistant() {
     } catch (e: any) {
       if (e.name === "AbortError") {
         console.log("Request aborted");
-        setError("Request cancelled.");
+        // Do not set error state for AbortError
       } else {
         setError(e?.message ?? "Unknown error");
       }
