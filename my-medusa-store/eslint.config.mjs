@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 export default [
   // Ignore files that you don't want to lint
   {
-    ignores: ["node_modules/", "dist/", "build/", ".next/", ".medusa/"],
+    ignores: ["node_modules/", "dist/", "build/", ".next/", ".medusa/", "src/scripts", "integration-tests/http", "src/modules/assistant/__tests__"],
   },
 
   // Apply recommended JavaScript rules

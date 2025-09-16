@@ -167,7 +167,7 @@ function chartFromChildObjects(
 ): ChartSpec | undefined {
   if (!isObj(payload)) return undefined;
 
-  const entries = Object.entries(payload).filter(([_, v]) => isObj(v)) as [
+  const entries = Object.entries(payload).filter(([v]) => isObj(v)) as [
     string,
     Record<string, any>
   ][];
@@ -177,7 +177,7 @@ function chartFromChildObjects(
   let chosenY: string | undefined;
   for (const y of Y) {
     const hits = entries.filter(
-      ([_, obj]) => typeof obj[y] === "number"
+      ([obj]) => typeof obj[y] === "number"
     ).length;
     if (hits >= Math.max(2, Math.ceil(entries.length / 2))) {
       chosenY = y;

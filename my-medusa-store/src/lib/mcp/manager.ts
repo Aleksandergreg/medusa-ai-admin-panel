@@ -40,7 +40,7 @@ export async function getMcp(): Promise<MedusaMcpClient> {
     }
   } catch (err) {
     // Non-fatal: we'll try to run whatever is present in dist
-    // eslint-disable-next-line no-console
+     
     console.warn("Warning: could not verify/build medusa-mcp dist:", err);
   }
   const env: Record<string, string> = {
