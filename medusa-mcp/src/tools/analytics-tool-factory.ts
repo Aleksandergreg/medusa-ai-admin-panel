@@ -97,6 +97,13 @@ export function createAnalyticsTools(
         const start = new Date(0); // 1970-01-01T00:00:00.000Z
         return { start: start.toISOString(), end: end.toISOString() };
     };
+    const isEpochStartIso = (iso?: string): boolean => {
+        if (!iso || typeof iso !== "string") return false;
+        const t = Date.parse(iso);
+        if (!Number.isFinite(t)) return false;
+        // Consider anything within first minute of epoch as epoch-ish
+        return t <= 60 * 1000;
+    };
     const normalizeDateTimeInput = (
         value: string | undefined,
         { defaultToEndOfDay = false }: { defaultToEndOfDay?: boolean } = {}
@@ -222,6 +229,20 @@ export function createAnalyticsTools(
         }
 
         if (!start && !end) {
+            const defaults = last30DayRange();
+            start = defaults.start;
+            end = defaults.end;
+        }
+
+        // Guardrail: if a caller passes an epoch start (1970-01-01...) without
+        // explicitly signaling all_time, assume it's accidental and clamp to
+        // the standard 30-day default.
+        if (
+            start && end &&
+            isEpochStartIso(start) &&
+            !boolish((input as any).all_time) &&
+            !isAllTimeToken(rangeTokenRaw)
+        ) {
             const defaults = last30DayRange();
             start = defaults.start;
             end = defaults.end;

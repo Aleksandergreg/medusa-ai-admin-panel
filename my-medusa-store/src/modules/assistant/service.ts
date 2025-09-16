@@ -106,27 +106,13 @@ class AssistantModuleService extends MedusaService({}) {
           prompt
         );
         if (isAnalyticsTool && mentionsAllTime) {
-          const hasExplicitRange = Boolean(
-            normalizedArgs.start ||
-              normalizedArgs.start_date ||
-              normalizedArgs.from ||
-              normalizedArgs.end ||
-              normalizedArgs.end_date ||
-              normalizedArgs.to ||
-              normalizedArgs.all_time ||
-              normalizedArgs.range ||
-              normalizedArgs.preset_range
-          );
-          if (!hasExplicitRange) {
-            normalizedArgs = {
-              all_time: true,
-              ...normalizedArgs,
-            };
-            console.log(
-              `   Injected all_time flag for analytics tool intent.`
-            );
+          // Always express explicit 'all_time' intent so MCP won't clamp epoch ranges
+          if (!normalizedArgs.all_time) {
+            normalizedArgs = { all_time: true, ...normalizedArgs };
+            console.log(`   Injected all_time flag for analytics tool intent.`);
           }
         }
+
         if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
         }
