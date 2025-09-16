@@ -70,8 +70,21 @@ export function createAnalyticsService(
         group_by: "product" | "variant" | "shipping";
         metric: "quantity" | "revenue" | "orders";
         limit?: number;
-        sort?: "asc" | "desc";
-    }) {
+        sort?: "desc" | "asc";
+    }): Promise<
+        Array<{
+            product_id: string | null;
+            variant_id: string | null;
+            sku: string | null;
+            title: string | null;
+            shipping_method_id?: string | null;
+            shipping_option_id?: string | null;
+            quantity: number;
+            revenue: number;
+            orders: number;
+            value: number;
+        }>
+    > {
         const {
             start,
             end,
