@@ -39,7 +39,7 @@ jest.doMock(mcpManagerPath, () => ({
       }),
       callTool: async (name: string, args: any) => {
         toolCalls.push({ name, args });
-        // Simulate MCP tool envelope
+        // Simulate MCP tool git elope
         return {
           content: [
             {
