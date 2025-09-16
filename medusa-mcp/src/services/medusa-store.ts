@@ -26,7 +26,10 @@ export default class MedusaStoreService {
         });
     }
 
-    wrapPath(refPath: string, refFunction: SdkRequestType) {
+    wrapPath(
+        refPath: string,
+        refFunction: SdkRequestType
+    ): ReturnType<typeof defineTool> {
         return defineTool((z): any => {
             let name;
             let description;
@@ -95,7 +98,6 @@ export default class MedusaStoreService {
                     for (const pName of pathParams) {
                         const val = (input as any)[pName];
                         if (val === undefined || val === null) {
-                            // If path param is missing, leave as-is; server may handle error
                             continue;
                         }
                         finalPath = finalPath.replace(
@@ -104,7 +106,7 @@ export default class MedusaStoreService {
                         );
                     }
 
-                    // Build body from non-path, non-query inputs (most POST endpoints expect JSON body)
+                    // Build body from non-path, non-query inputs
                     const body = Object.entries(input).reduce(
                         (acc, [key, value]) => {
                             if (
@@ -122,7 +124,7 @@ export default class MedusaStoreService {
                         {} as Record<string, any>
                     );
 
-                    // Build query from remaining non-path, non-body values
+                    // Build query
                     const queryEntries: [string, string][] = [];
                     for (const [key, value] of Object.entries(input)) {
                         if (
@@ -139,7 +141,6 @@ export default class MedusaStoreService {
                                 queryEntries.push([key, String(v)]);
                             }
                         } else if (typeof value === "object") {
-                            // JSON-encode objects in query if needed
                             queryEntries.push([key, JSON.stringify(value)]);
                         } else {
                             queryEntries.push([key, String(value)]);
@@ -185,8 +186,8 @@ export default class MedusaStoreService {
 
     defineTools(store = storeJson): any[] {
         const paths = Object.entries(store.paths) as [string, SdkRequestType][];
-        const tools = paths.map(([path, refFunction]) =>
-            this.wrapPath(path, refFunction)
+        const tools: ReturnType<typeof this.wrapPath>[] = paths.map(
+            ([path, refFunction]) => this.wrapPath(path, refFunction)
         );
         return tools;
     }
