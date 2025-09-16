@@ -1,8 +1,8 @@
 import Medusa from "@medusajs/js-sdk";
 import { config } from "dotenv";
-import { z, ZodTypeAny } from "zod";
+import { ZodTypeAny } from "zod";
 import storeJson from "../oas/store.json";
-import { SdkRequestType, StoreJson, Parameter } from "../types/store-json";
+import { SdkRequestType, Parameter } from "../types/store-json";
 import { defineTool, InferToolHandlerInput } from "../utils/define-tools";
 
 config();

@@ -36,13 +36,16 @@ export function createOrdersRepo(http: Http): {
                 "+shipping_methods.shipping_option_id"
             ].join(",")
         } as const;
-        // paginate
-        while (true) {
+
+        // paginate without using while(true)
+        let more = true;
+        while (more) {
             const q = { ...base, limit, offset } as Record<string, unknown>;
             const data = await http.get<{ orders?: AdminOrderMinimal[] }>(
                 "/admin/orders",
                 q
             );
+
             const batch = Array.isArray(data?.orders) ? data.orders : [];
             for (const o of batch) {
                 if (o?.canceled_at || !o?.created_at) {
@@ -63,10 +66,12 @@ export function createOrdersRepo(http: Http): {
                     });
                 }
             }
-            if (batch.length < limit) {
-                break;
+
+            // continue only if we received a full page
+            more = batch.length === limit;
+            if (more) {
+                offset += limit;
             }
-            offset += limit;
         }
         return acc;
     }

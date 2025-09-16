@@ -1,8 +1,3 @@
-import type {
-    AdminOrderMinimal,
-    VariantResolution
-} from "../types/medusa-admin";
-
 import type { OrdersRepo, VariantsRepo } from "../types/analytics-service";
 
 const toNum = (x: unknown): number =>
