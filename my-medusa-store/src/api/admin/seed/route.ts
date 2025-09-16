@@ -14,7 +14,9 @@ function loadSeeder(script: string): any {
   try {
     // TS (dev)
     return require(`../../../scripts/${script}.ts`)
-  } catch (_) {}
+  } catch (err) {
+    console.log(err);
+  }
   // JS (build)
   return require(`../../../scripts/${script}.js`)
 }

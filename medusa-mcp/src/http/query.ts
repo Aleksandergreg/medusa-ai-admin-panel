@@ -3,7 +3,7 @@ export function toBracketParams(
     prefix = ""
 ): [string, string][] {
     const out: [string, string][] = [];
-    const push = (k: string, v: unknown) => {
+    const push = (k: string, v: unknown): void => {
         if (v != null) {
             out.push([k, String(v)]);
         }

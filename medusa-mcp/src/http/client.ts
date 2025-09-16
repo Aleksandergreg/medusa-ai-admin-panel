@@ -16,7 +16,7 @@ export function createHttp(sdk: Medusa, getToken: () => string | ""): Http {
         method: "get" | "post" | "delete",
         path: string,
         { query, body }: any = {}
-    ) {
+    ): Promise<T> {
         const url = withQuery(path, query ?? {});
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
