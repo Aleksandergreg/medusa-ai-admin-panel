@@ -243,11 +243,11 @@ jobs:
 
       - name: Seed data
         working-directory: my-medusa-store
-        run: npm run seed || true
+        run: npm run seed
 
       - name: Create admin user (emailpass)
         working-directory: my-medusa-store
-        run: npx medusa user --email "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" || true
+        run: npx medusa user --email "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}"
 
       - name: Start backend (background)
         working-directory: my-medusa-store
