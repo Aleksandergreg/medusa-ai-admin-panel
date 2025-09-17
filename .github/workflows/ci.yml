@@ -205,7 +205,11 @@ jobs:
       - name: Install deps (parallel)
         run: |
           set -euo pipefail
-          npm ci &
+
+          (
+            cd my-medusa-store
+            npm ci
+          ) &
           main_pid=$!
 
           (
