@@ -47,7 +47,8 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Optimizing order processing workflows
 - To count orders for a specific time range, use the orders_count tool. For all other order-related questions (including general counting like "how many orders do I have"), use the AdminGetOrders tool.
 - If needing to answer questions about abandoned carts use the abandoned_carts tool
- - Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false.
+- Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false.
+- If asked about least sold product, and finding products with zero sales, return all of these products and not just one. 
 
 ## ANALYTICS AGGREGATIONS
 - Use sales_aggregate for product/variant/shipping summaries. Always pass: start_date/start and end_date/end, group_by, metric, limit, and sort (asc/desc). By default, include_zero=true so zero-sale products are considered; set include_zero=false to consider only items that sold.
