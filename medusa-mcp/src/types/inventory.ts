@@ -85,6 +85,9 @@ export type AdminInventoryItemLevelsResponse = {
     inventory_levels?: Array<AdminInventoryItemLevel>;
 };
 
+export type AdminProductSummaryResponse = {
+    product?: { id?: string; title?: string | null };
+};
 export type InventoryServiceDefinition = {
     countLowInventoryProducts(
         params: CountParams
