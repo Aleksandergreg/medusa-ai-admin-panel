@@ -49,3 +49,18 @@ tests:
       - type: javascript
         value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r) return true; const a=r.history?.[0]?.tool_args||{}; const s=(a.start||a.start_date||r.data?.start||''); const e=(a.end||a.end_date||r.data?.end||''); return !!s && !!e; })()"
 
+  - description: Abandoned carts default (24h, emails only)
+    vars:
+      prompt: "Show me abandoned carts"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+      # Mentions abandoned carts
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('abandoned cart'); })()"
+      # Mentions default window (24h or 1440 minutes)
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('24 hours') || l.includes('1440'); })()"
+      # If JSON available: tool + defaults
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r||!r.history) return true; const a=r.history[0]?.tool_args||{}; return r.history[0]?.tool_name==='abandoned_carts' && (a.older_than_minutes||0) >= 1440 && a.require_email !== false; })()"
