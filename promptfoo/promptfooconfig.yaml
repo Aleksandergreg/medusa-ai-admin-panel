@@ -32,6 +32,7 @@ providers:
       # Extract only the natural-language answer for scoring
       responsePath: answer
 
+
 # Reference external dataset with prompts and assertions
 datasets:
   - promptfoo/datasets/prompts.yaml
