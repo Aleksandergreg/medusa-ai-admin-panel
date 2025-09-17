@@ -25,6 +25,22 @@ type InventoryService = {
                 title: string | null;
                 sku: string | null;
                 inventory_quantity: number;
+                reserved_quantity: number;
+                stocked_quantity: number | null;
+                available_quantity: number | null;
+                inventory_items: Array<{
+                    id: string;
+                    sku: string | null;
+                    stocked_quantity: number;
+                    reserved_quantity: number;
+                    available_quantity: number;
+                    location_levels: Array<{
+                        location_id: string | null;
+                        stocked_quantity: number;
+                        reserved_quantity: number;
+                        available_quantity: number;
+                    }>;
+                }>;
             }>;
         }>;
     }>;
@@ -79,7 +95,7 @@ export function createInventoryTools(
     const low_inventory_products_list = defineTool((z) => ({
         name: "low_inventory_products_list",
         description:
-            "List products that have at least one variant with inventory below a threshold. Returns product id, title, and low variants (id, title, sku, quantity).",
+            "List products that have at least one variant with inventory below a threshold. Returns product id, title, and low variants with inventory quantity, reserved quantity, and inventory item location breakdown.",
         inputSchema: {
             threshold: z
                 .number()

@@ -5,11 +5,31 @@ type CountParams = {
     manage_inventory_only?: boolean;
 };
 
+type LocationLevelSnapshot = {
+    location_id: string | null;
+    stocked_quantity: number;
+    reserved_quantity: number;
+    available_quantity: number;
+};
+
+type LowInventoryVariantInventoryItem = {
+    id: string;
+    sku: string | null;
+    stocked_quantity: number;
+    reserved_quantity: number;
+    available_quantity: number;
+    location_levels: Array<LocationLevelSnapshot>;
+};
+
 type LowInventoryVariant = {
     id: string;
     title: string | null;
     sku: string | null;
     inventory_quantity: number;
+    reserved_quantity: number;
+    stocked_quantity: number | null;
+    available_quantity: number | null;
+    inventory_items: Array<LowInventoryVariantInventoryItem>;
 };
 
 type LowInventoryProduct = {
@@ -27,6 +47,19 @@ type CountLowInventoryResult = {
 
 type ListLowInventoryResult = CountLowInventoryResult & {
     products: Array<LowInventoryProduct>;
+};
+
+type InventoryItemsLookup = {
+    inventory_items?: Array<{
+        id?: string;
+        sku?: string | null;
+        location_levels?: Array<{
+            location_id?: string | null;
+            stocked_quantity?: number | string | null;
+            reserved_quantity?: number | string | null;
+            available_quantity?: number | string | null;
+        }>;
+    }>;
 };
 
 type InventoryService = {
@@ -79,6 +112,193 @@ export function createInventoryService(http: Http): InventoryService {
             }>;
         }>("/admin/product-variants", query);
         return Array.isArray(data?.variants) ? (data!.variants as any[]) : [];
+    }
+
+    const toNumber = (value: unknown): number => {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+        if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (trimmed !== "") {
+                const parsed = Number(trimmed);
+                if (Number.isFinite(parsed)) {
+                    return parsed;
+                }
+            }
+        }
+        return 0;
+    };
+
+    async function enrichVariantsWithInventory(
+        products: Array<LowInventoryProduct>
+    ): Promise<void> {
+        const skuToVariants = new Map<string, LowInventoryVariant[]>();
+        for (const product of products) {
+            for (const variant of product.low_variants) {
+                const sku =
+                    typeof variant.sku === "string" && variant.sku.trim() !== ""
+                        ? variant.sku
+                        : null;
+                if (!sku) {
+                    continue;
+                }
+                const grouped = skuToVariants.get(sku);
+                if (grouped) {
+                    grouped.push(variant);
+                } else {
+                    skuToVariants.set(sku, [variant]);
+                }
+            }
+        }
+        if (skuToVariants.size === 0) {
+            return;
+        }
+
+        const aggregateBySku = new Map<
+            string,
+            {
+                totalReserved: number;
+                totalStocked: number;
+                totalAvailable: number;
+                items: Array<LowInventoryVariantInventoryItem>;
+            }
+        >();
+
+        const skus = Array.from(skuToVariants.keys());
+        const chunkSize = 20;
+
+        for (let i = 0; i < skus.length; i += chunkSize) {
+            const chunk = skus.slice(i, i + chunkSize);
+            let offset = 0;
+            const limit = 200;
+            let hasMore = true;
+
+            while (hasMore) {
+                let payload: InventoryItemsLookup | undefined;
+                try {
+                    payload = await http.get<InventoryItemsLookup>(
+                        "/admin/inventory-items",
+                        {
+                            sku: chunk,
+                            limit,
+                            offset,
+                            expand: "location_levels",
+                            fields: [
+                                "+id",
+                                "+sku",
+                                "+location_levels",
+                                "+location_levels.location_id",
+                                "+location_levels.stocked_quantity",
+                                "+location_levels.reserved_quantity",
+                                "+location_levels.available_quantity"
+                            ].join(",")
+                        }
+                    );
+                } catch {
+                    break;
+                }
+
+                const items = Array.isArray(payload?.inventory_items)
+                    ? (payload!.inventory_items as any[])
+                    : [];
+
+                for (const item of items) {
+                    const skuRaw = item?.sku;
+                    const sku =
+                        typeof skuRaw === "string" && skuRaw.trim() !== ""
+                            ? skuRaw
+                            : undefined;
+                    if (!sku || !skuToVariants.has(sku)) {
+                        continue;
+                    }
+
+                    const locationLevels = Array.isArray(item?.location_levels)
+                        ? (item!.location_levels as any[])
+                        : [];
+
+                    const parsedLevels: Array<LocationLevelSnapshot> =
+                        locationLevels.map((lvl) => {
+                            const locationId =
+                                typeof lvl?.location_id === "string" &&
+                                lvl.location_id.trim() !== ""
+                                    ? lvl.location_id
+                                    : null;
+                            return {
+                                location_id: locationId,
+                                stocked_quantity: toNumber(
+                                    (lvl as any)?.stocked_quantity
+                                ),
+                                reserved_quantity: toNumber(
+                                    (lvl as any)?.reserved_quantity
+                                ),
+                                available_quantity: toNumber(
+                                    (lvl as any)?.available_quantity
+                                )
+                            };
+                        });
+
+                    const itemSummary: LowInventoryVariantInventoryItem = {
+                        id:
+                            typeof item?.id === "string" && item.id
+                                ? item.id
+                                : "",
+                        sku,
+                        stocked_quantity: parsedLevels.reduce(
+                            (acc, lvl) => acc + lvl.stocked_quantity,
+                            0
+                        ),
+                        reserved_quantity: parsedLevels.reduce(
+                            (acc, lvl) => acc + lvl.reserved_quantity,
+                            0
+                        ),
+                        available_quantity: parsedLevels.reduce(
+                            (acc, lvl) => acc + lvl.available_quantity,
+                            0
+                        ),
+                        location_levels: parsedLevels
+                    };
+
+                    const aggregate = aggregateBySku.get(sku) ?? {
+                        totalReserved: 0,
+                        totalStocked: 0,
+                        totalAvailable: 0,
+                        items: [] as Array<LowInventoryVariantInventoryItem>
+                    };
+
+                    aggregate.totalReserved += itemSummary.reserved_quantity;
+                    aggregate.totalStocked += itemSummary.stocked_quantity;
+                    aggregate.totalAvailable += itemSummary.available_quantity;
+                    aggregate.items.push(itemSummary);
+
+                    aggregateBySku.set(sku, aggregate);
+                }
+
+                if (items.length < limit) {
+                    hasMore = false;
+                } else {
+                    offset += limit;
+                }
+            }
+        }
+
+        for (const [sku, variants] of skuToVariants.entries()) {
+            const aggregate = aggregateBySku.get(sku);
+            if (!aggregate) {
+                continue;
+            }
+            for (const variant of variants) {
+                variant.reserved_quantity = aggregate.totalReserved;
+                variant.stocked_quantity = aggregate.totalStocked;
+                variant.available_quantity = aggregate.totalAvailable;
+                variant.inventory_items = aggregate.items.map((item) => ({
+                    ...item,
+                    location_levels: item.location_levels.map((lvl) => ({
+                        ...lvl
+                    }))
+                }));
+            }
+        }
     }
 
     async function countLowInventoryProducts(
@@ -206,7 +426,11 @@ export function createInventoryService(http: Http): InventoryService {
                         id: (v?.id ?? "") as string,
                         title: (v?.title ?? null) as string | null,
                         sku: (v?.sku ?? null) as string | null,
-                        inventory_quantity: qty
+                        inventory_quantity: qty,
+                        reserved_quantity: 0,
+                        stocked_quantity: null,
+                        available_quantity: null,
+                        inventory_items: []
                     });
                 }
             }
@@ -215,6 +439,12 @@ export function createInventoryService(http: Http): InventoryService {
             } else {
                 offset += limit;
             }
+        }
+
+        try {
+            await enrichVariantsWithInventory(productsOut);
+        } catch {
+            // ignore inventory enrichment failures
         }
 
         // Hydrate product titles

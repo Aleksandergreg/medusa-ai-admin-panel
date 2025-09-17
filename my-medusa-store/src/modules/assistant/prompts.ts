@@ -21,6 +21,7 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Handling product pricing and stock levels
 - Managing product images, descriptions, and attributes
 - Tracking inventory across different locations
+- Use low_inventory_products_list for reservation-aware inventory questions; each low variant includes reserved_quantity plus per-location inventory item details.
 - PRODUCT VARIANT CREATION RULES:
   * When creating product variants, the 'options' field must be an OBJECT, not an array
   * Each variant requires a 'prices' array with currency_code and amount
