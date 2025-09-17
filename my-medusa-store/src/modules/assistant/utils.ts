@@ -10,12 +10,32 @@ export function stripJsonFences(text: string): string {
   return m ? m[1] : text;
 }
 
-export function safeParseJSON(maybeJson: unknown): any | undefined {
+/** A safe description of JSON values */
+export type JSONPrimitive = string | number | boolean | null;
+export type JSONValue = JSONPrimitive | JSONObject | JSONArray;
+export interface JSONObject { [key: string]: JSONValue }
+export interface JSONArray extends Array<JSONValue> {}
+
+/** Type guards */
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null;
+
+const isJSONObject = (v: unknown): v is JSONObject =>
+  isObject(v) && !Array.isArray(v);
+
+const isArray = (v: unknown): v is unknown[] => Array.isArray(v);
+
+/**
+ * Parse a JSON-looking string safely. Returns T if you know the shape,
+ * otherwise defaults to JSONValue.
+ */
+export function safeParseJSON<T = JSONValue>(maybeJson: unknown): T | undefined {
   if (typeof maybeJson !== "string") return undefined;
   const stripped = stripJsonFences(maybeJson).trim();
+
   // Try direct parse first
   try {
-    return JSON.parse(stripped);
+    return JSON.parse(stripped) as T;
   } catch (err) {
     console.error(err);
   }
@@ -25,7 +45,7 @@ export function safeParseJSON(maybeJson: unknown): any | undefined {
   const lastObj = stripped.lastIndexOf("}");
   if (firstObj !== -1 && lastObj !== -1 && lastObj > firstObj) {
     try {
-      return JSON.parse(stripped.slice(firstObj, lastObj + 1));
+      return JSON.parse(stripped.slice(firstObj, lastObj + 1)) as T;
     } catch (err) {
       console.error(err);
     }
@@ -36,7 +56,7 @@ export function safeParseJSON(maybeJson: unknown): any | undefined {
   const lastArr = stripped.lastIndexOf("]");
   if (firstArr !== -1 && lastArr !== -1 && lastArr > firstArr) {
     try {
-      return JSON.parse(stripped.slice(firstArr, lastArr + 1));
+      return JSON.parse(stripped.slice(firstArr, lastArr + 1)) as T;
     } catch (err) {
       console.error(err);
     }
@@ -45,12 +65,32 @@ export function safeParseJSON(maybeJson: unknown): any | undefined {
 }
 
 // MCP result: { content: [{ type:"text", text: "...json..." }], isError? }
-export function extractToolJsonPayload(toolResult: any): any | undefined {
+type ToolContentBase = { type: string } & Record<string, unknown>;
+type ToolContentText = ToolContentBase & { type: "text"; text: string };
+type ToolContent = ToolContentText | ToolContentBase;
+
+export interface MCPResult {
+  content?: ToolContent[];
+  isError?: boolean;
+  // allow unknown extra fields
+  [k: string]: unknown;
+}
+
+const isToolContentText = (c: unknown): c is ToolContentText => {
+  if (!isObject(c)) return false;
+  const type = c["type"];
+  const text = (c as Record<string, unknown>)["text"];
+  return type === "text" && typeof text === "string";
+};
+
+export function extractToolJsonPayload(toolResult: unknown): JSONValue | undefined {
   try {
-    const textItem = toolResult?.content?.find?.(
-      (c: any) => c?.type === "text"
-    );
-    if (textItem?.text) return safeParseJSON(textItem.text);
+    const content = (isObject(toolResult) ? (toolResult as { content?: unknown }).content : undefined);
+    if (!Array.isArray(content)) return undefined;
+
+    // find the first { type: 'text', text: string }
+    const textItem = (content as unknown[]).find(isToolContentText);
+    if (textItem) return safeParseJSON(textItem.text);
   } catch (err) {
     console.error(err);
   }
@@ -66,7 +106,10 @@ export function ensureMarkdownMinimum(answer: string): string {
     const text = String(answer ?? "").trim();
     if (!text) return "";
 
-    const hasMd = /(^\s{0,3}#{1,6}\s)|(^\s*[-*+]\s)|(\n\n-\s)|(\n\n\d+\.\s)|(```)|(^\s*>\s)|(\*\*[^*]+\*\*)|(`[^`]+`)/m.test(text);
+    const hasMd =
+      /(^\s{0,3}#{1,6}\s)|(^\s*[-*+]\s)|(\n\n-\s)|(\n\n\d+\.\s)|(```)|(^\s*>\s)|(\*\*[^*]+\*\*)|(`[^`]+`)/m.test(
+        text
+      );
     if (hasMd) return text;
 
     // If it's likely JSON, fence it for readability
@@ -82,9 +125,10 @@ export function ensureMarkdownMinimum(answer: string): string {
 
     // Build bullets from lines or sentences
     const lines = stripped.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const items = lines.length > 1
-      ? lines
-      : stripped.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+    const items =
+      lines.length > 1
+        ? lines
+        : stripped.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
 
     const heading = "### Answer";
     const bullets = items.map((s) => `- ${s}`);
@@ -96,7 +140,7 @@ export function ensureMarkdownMinimum(answer: string): string {
 }
 
 // Normalize LLM tool args to match Medusa Admin expectations
-export function normalizeToolArgs(input: any, toolName?: string): any {
+export function normalizeToolArgs(input: unknown, toolName?: string): JSONValue {
   const needsDollar = new Set([
     "gt",
     "gte",
@@ -119,17 +163,17 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
     "or",
   ]);
 
-  const toNumberIfNumericString = (v: unknown) =>
+  const toNumberIfNumericString = (v: unknown): unknown =>
     typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
 
-  const walk = (val: any, keyPath: string[] = []): any => {
+  const walk = (val: JSONValue, keyPath: string[] = []): JSONValue => {
     if (Array.isArray(val)) {
       const lastKey = keyPath[keyPath.length - 1];
       if (lastKey === "fields") return val.map(String).join(",");
-      return val.map((v) => walk(v, keyPath));
+      return (val as JSONValue[]).map((v) => walk(v, keyPath)) as JSONArray;
     }
-    if (val && typeof val === "object") {
-      const out: Record<string, any> = {};
+    if (isJSONObject(val)) {
+      const out: JSONObject = {};
       for (const [k, v] of Object.entries(val)) {
         const bare = k.replace(/^\$/g, "");
         const newKey = needsDollar.has(bare) ? `$${bare}` : k;
@@ -138,24 +182,25 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
       return out;
     }
     const last = keyPath[keyPath.length - 1];
-    if (last === "limit" || last === "offset")
-      return toNumberIfNumericString(val);
+    if (last === "limit" || last === "offset") return toNumberIfNumericString(val) as JSONValue;
     return val;
   };
 
-  const normalized = walk(input);
+  const normalized = walk((input as JSONValue) ?? null);
 
   // Special normalization for abandoned_carts tool: coerce natural keys
-  if (toolName === "abandoned_carts" && normalized && typeof normalized === "object") {
-    const out: Record<string, any> = { ...normalized };
+  if (toolName === "abandoned_carts" && isJSONObject(normalized)) {
+    const out: JSONObject = { ...normalized };
 
-    const isDefined = (v: any) => v !== undefined && v !== null && v !== "";
-    const toInt = (v: any): number | undefined => {
+    const isDefined = (v: unknown): boolean => v !== undefined && v !== null && v !== "";
+
+    const toInt = (v: unknown): number | undefined => {
       if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
       if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return parseInt(v.trim(), 10);
       return undefined;
     };
-    const toBool = (v: any): boolean | undefined => {
+
+    const toBool = (v: unknown): boolean | undefined => {
       if (typeof v === "boolean") return v;
       if (typeof v === "number") return v !== 0;
       if (typeof v === "string") {
@@ -165,7 +210,8 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
       }
       return undefined;
     };
-    const parseMinutes = (v: any): number | undefined => {
+
+    const parseMinutes = (v: unknown): number | undefined => {
       if (typeof v === "number" && Number.isFinite(v)) return Math.max(0, Math.trunc(v));
       if (typeof v !== "string") return undefined;
       const s = v.trim().toLowerCase().replace(/ago$/, "").trim();
@@ -177,7 +223,9 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
         if (u === "h") return Math.round(n * 60);
         if (u === "d") return Math.round(n * 1440);
       }
-      const m2 = s.match(/^(\d+(?:\.\d+)?)\s*(minute|minutes|min|m|hour|hours|hr|h|day|days|d)$/i);
+      const m2 = s.match(
+        /^(\d+(?:\.\d+)?)\s*(minute|minutes|min|m|hour|hours|hr|h|day|days|d)$/i
+      );
       if (m2) {
         const n = parseFloat(m2[1]);
         const u = m2[2].toLowerCase();
@@ -189,7 +237,7 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
       return typeof num === "number" ? Math.max(0, num) : undefined;
     };
 
-    const pick = (obj: any, keys: string[]) => {
+    const pick = (obj: JSONObject, keys: string[]): unknown => {
       for (const k of keys) if (isDefined(obj?.[k])) return obj[k];
       return undefined;
     };
@@ -203,8 +251,10 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
       "minutes_old",
       "min_age",
     ]);
+
     if (!isDefined(out.older_than_minutes) && isDefined(olderRaw)) {
-      const unit = String(pick(out, ["threshold_unit", "unit"]) ?? "").toLowerCase().trim();
+      const unitRaw = pick(out, ["threshold_unit", "unit"]);
+      const unit = typeof unitRaw === "string" ? unitRaw.toLowerCase().trim() : "";
       let mins: number | undefined;
       const n = toInt(olderRaw);
       if (typeof n === "number") {
@@ -233,6 +283,5 @@ export function normalizeToolArgs(input: any, toolName?: string): any {
   }
 
   // Rely on medusa-mcp analytics tools to interpret sorting hints
-
   return normalized;
 }
