@@ -1,4 +1,4 @@
-import { MedusaService, ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { MedusaService } from "@medusajs/framework/utils"
 
 type ListOptions = {
   olderThanMinutes: number

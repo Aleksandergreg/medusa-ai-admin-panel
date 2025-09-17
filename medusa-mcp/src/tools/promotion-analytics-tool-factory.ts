@@ -70,7 +70,17 @@ export function createPromotionAnalyticsTools(
             to: z.string().datetime().optional(),
             promotion_code: z.string().optional()
         },
-        handler: async (input) => {
+        handler: async (
+            input: Record<string, unknown>
+        ): Promise<{
+            start: string;
+            end: string;
+            promotion_code?: string;
+            total_orders: number;
+            total_discount_amount: number;
+            total_revenue: number;
+            orders: PromotionOrderAnalysis[];
+        }> => {
             // Coerce date range
             const { start: coercedStart, end: coercedEnd } = coerceRange(input);
             const start = coercedStart || defaultDateRange.start;
@@ -114,7 +124,17 @@ export function createPromotionAnalyticsTools(
             to: z.string().datetime().optional(),
             promotion_code: z.string().optional()
         },
-        handler: async (input) => {
+        handler: async (
+            input: Record<string, unknown>
+        ): Promise<{
+            start: string;
+            end: string;
+            promotion_code?: string;
+            total_products: number;
+            total_quantity_sold: number;
+            total_revenue: number;
+            products: PromotionProductStats[];
+        }> => {
             // Coerce date range
             const { start: coercedStart, end: coercedEnd } = coerceRange(input);
             const start = coercedStart || defaultDateRange.start;
@@ -157,7 +177,13 @@ export function createPromotionAnalyticsTools(
             from: z.string().datetime().optional(),
             to: z.string().datetime().optional()
         },
-        handler: async (input) => {
+        handler: async (
+            input: Record<string, unknown>
+        ): Promise<{
+            start: string;
+            end: string;
+            summary: PromotionSummary[];
+        }> => {
             // Coerce date range
             const { start: coercedStart, end: coercedEnd } = coerceRange(input);
             const start = coercedStart || defaultDateRange.start;
@@ -193,7 +219,17 @@ export function createPromotionAnalyticsTools(
             sort_order: z.enum(["asc", "desc"]).default("desc"),
             limit: z.number().int().positive().max(100).default(20)
         },
-        handler: async (input) => {
+        handler: async (
+            input: Record<string, unknown>
+        ): Promise<{
+            start: string;
+            end: string;
+            sort_by: "quantity" | "revenue" | "orders";
+            sort_order: "asc" | "desc";
+            limit: number;
+            total_products: number;
+            products: PromotionProductStats[];
+        }> => {
             // Coerce date range
             const { start: coercedStart, end: coercedEnd } = coerceRange(input);
             const start = coercedStart || defaultDateRange.start;

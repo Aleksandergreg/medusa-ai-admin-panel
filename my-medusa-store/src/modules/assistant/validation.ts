@@ -1,6 +1,6 @@
 // Pull a few commonly-used numeric fields from a payload as ground truth.
 export function collectGroundTruthNumbers(
-  payload: any
+  payload: unknown
 ): Record<string, number> | undefined {
   if (!payload || typeof payload !== "object") return undefined;
 

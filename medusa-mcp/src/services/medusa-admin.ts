@@ -16,6 +16,7 @@ import { createInventoryTools } from "../tools/inventory-tool-factory";
 import { createPromotionAnalyticsService } from "./promotion-analytics-service";
 import { createPromotionAnalyticsTools } from "../tools/promotion-analytics-tool-factory";
 import { createCartsTools } from "../tools/carts-tool-factory";
+import { createProductsRepo } from "../repositories/products-repo";
 
 export default class MedusaAdminService {
     private sdk: Medusa;
@@ -38,7 +39,8 @@ export default class MedusaAdminService {
         this.http = createHttp(this.sdk, () => this.token);
         this.variants = createVariantsRepo(this.http);
         this.orders = createOrdersRepo(this.http);
-        this.analytics = createAnalyticsService(this.orders, this.variants);
+        const products = createProductsRepo(this.http);
+        this.analytics = createAnalyticsService(this.orders, this.variants, products);
         this.inventory = createInventoryService(this.http);
         this.promotionAnalytics = createPromotionAnalyticsService(this.http);
         this.tools = [
@@ -63,7 +65,7 @@ export default class MedusaAdminService {
                 : "";
     }
 
-    defineTools() {
+    defineTools(): Array<ReturnType<typeof createOpenApiTools>[number]> {
         return this.tools;
     }
 }

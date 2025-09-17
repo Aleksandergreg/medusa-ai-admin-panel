@@ -5,7 +5,40 @@ type CountParams = {
     manage_inventory_only?: boolean;
 };
 
-export function createInventoryService(http: Http) {
+type LowInventoryVariant = {
+    id: string;
+    title: string | null;
+    sku: string | null;
+    inventory_quantity: number;
+};
+
+type LowInventoryProduct = {
+    id: string;
+    title: string | null;
+    low_variants_count: number;
+    low_variants: Array<LowInventoryVariant>;
+};
+
+type CountLowInventoryResult = {
+    threshold: number;
+    count: number;
+    variants_count: number;
+};
+
+type ListLowInventoryResult = CountLowInventoryResult & {
+    products: Array<LowInventoryProduct>;
+};
+
+type InventoryService = {
+    countLowInventoryProducts(
+        params: CountParams
+    ): Promise<CountLowInventoryResult>;
+    listLowInventoryProducts(
+        params: CountParams
+    ): Promise<ListLowInventoryResult>;
+};
+
+export function createInventoryService(http: Http): InventoryService {
     async function fetchVariantsPage(
         offset: number,
         limit: number,
@@ -48,11 +81,9 @@ export function createInventoryService(http: Http) {
         return Array.isArray(data?.variants) ? (data!.variants as any[]) : [];
     }
 
-    async function countLowInventoryProducts(params: CountParams): Promise<{
-        threshold: number;
-        count: number;
-        variants_count: number;
-    }> {
+    async function countLowInventoryProducts(
+        params: CountParams
+    ): Promise<CountLowInventoryResult> {
         const threshold = Math.max(0, Math.floor(params.threshold ?? 0));
         const manageOnly = params.manage_inventory_only !== false; // default true
 
@@ -61,7 +92,8 @@ export function createInventoryService(http: Http) {
         const productIds = new Set<string>();
         let variantsCount = 0;
 
-        while (true) {
+        let hasMore = true;
+        while (hasMore) {
             let batch: any[] = [];
             try {
                 batch = await fetchVariantsPage(offset, limit, manageOnly);
@@ -99,9 +131,10 @@ export function createInventoryService(http: Http) {
                 }
             }
             if (batch.length < limit) {
-                break;
+                hasMore = false;
+            } else {
+                offset += limit;
             }
-            offset += limit;
         }
 
         return {
@@ -111,41 +144,19 @@ export function createInventoryService(http: Http) {
         };
     }
 
-    async function listLowInventoryProducts(params: CountParams): Promise<{
-        threshold: number;
-        count: number;
-        variants_count: number;
-        products: Array<{
-            id: string;
-            title: string | null;
-            low_variants_count: number;
-            low_variants: Array<{
-                id: string;
-                title: string | null;
-                sku: string | null;
-                inventory_quantity: number;
-            }>;
-        }>;
-    }> {
+    async function listLowInventoryProducts(
+        params: CountParams
+    ): Promise<ListLowInventoryResult> {
         const threshold = Math.max(0, Math.floor(params.threshold ?? 0));
         const manageOnly = params.manage_inventory_only !== false; // default true
 
         const limit = 200;
         let offset = 0;
-        const productsOut: Array<{
-            id: string;
-            title: string | null;
-            low_variants_count: number;
-            low_variants: Array<{
-                id: string;
-                title: string | null;
-                sku: string | null;
-                inventory_quantity: number;
-            }>;
-        }> = [];
+        const productsOut: Array<LowInventoryProduct> = [];
         let variantsCount = 0;
 
-        while (true) {
+        let hasMore = true;
+        while (hasMore) {
             let batch: any[] = [];
             try {
                 batch = await fetchVariantsPage(offset, limit, manageOnly);
@@ -200,9 +211,10 @@ export function createInventoryService(http: Http) {
                 }
             }
             if (batch.length < limit) {
-                break;
+                hasMore = false;
+            } else {
+                offset += limit;
             }
-            offset += limit;
         }
 
         // Hydrate product titles

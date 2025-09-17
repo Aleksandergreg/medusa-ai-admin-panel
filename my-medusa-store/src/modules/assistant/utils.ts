@@ -1,7 +1,7 @@
 // Common utilities used by the assistant module
 
 export function env(key: string): string | undefined {
-  return (process.env as any)?.[key];
+  return (process.env as NodeJS.ProcessEnv)?.[key];
 }
 
 export function stripJsonFences(text: string): string {
@@ -16,7 +16,9 @@ export function safeParseJSON(maybeJson: unknown): any | undefined {
   // Try direct parse first
   try {
     return JSON.parse(stripped);
-  } catch {}
+  } catch (err) {
+    console.error(err);
+  }
 
   // Try object slice { ... }
   const firstObj = stripped.indexOf("{");
@@ -24,7 +26,9 @@ export function safeParseJSON(maybeJson: unknown): any | undefined {
   if (firstObj !== -1 && lastObj !== -1 && lastObj > firstObj) {
     try {
       return JSON.parse(stripped.slice(firstObj, lastObj + 1));
-    } catch {}
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   // Try array slice [ ... ]
@@ -33,7 +37,9 @@ export function safeParseJSON(maybeJson: unknown): any | undefined {
   if (firstArr !== -1 && lastArr !== -1 && lastArr > firstArr) {
     try {
       return JSON.parse(stripped.slice(firstArr, lastArr + 1));
-    } catch {}
+    } catch (err) {
+      console.error(err);
+    }
   }
   return undefined;
 }
@@ -45,7 +51,9 @@ export function extractToolJsonPayload(toolResult: any): any | undefined {
       (c: any) => c?.type === "text"
     );
     if (textItem?.text) return safeParseJSON(textItem.text);
-  } catch {}
+  } catch (err) {
+    console.error(err);
+  }
   return undefined;
 }
 
@@ -67,7 +75,9 @@ export function ensureMarkdownMinimum(answer: string): string {
       try {
         JSON.parse(stripped);
         return "```json\n" + stripped + "\n```";
-      } catch {}
+      } catch (err) {
+        console.error(err);
+      }
     }
 
     // Build bullets from lines or sentences
@@ -79,7 +89,8 @@ export function ensureMarkdownMinimum(answer: string): string {
     const heading = "### Answer";
     const bullets = items.map((s) => `- ${s}`);
     return [heading, "", ...bullets].join("\n");
-  } catch {
+  } catch (err) {
+    console.error(err);
     return String(answer ?? "");
   }
 }

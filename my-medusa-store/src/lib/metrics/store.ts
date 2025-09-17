@@ -85,9 +85,11 @@ function extractToolJsonPayload(toolResult: any): any | undefined {
       (c: any) => c?.type === "text"
     );
     if (textItem?.text) return safeParseJSON(textItem.text);
-  } catch {}
-  return undefined;
-}
+  } catch (err) {
+        console.error(err);
+        return undefined;
+      }
+    }
 
 function generateId() {
   return (
@@ -330,8 +332,10 @@ class MetricsStore {
       evt.parsedPayload =
         extractToolJsonPayload(rawResult) ??
         (typeof rawResult === "object" ? rawResult : undefined);
-    } catch {}
-
+    } catch (err) {
+        console.error(err);
+      }
+    
     evt.success = ok;
     evt.errorMessage = ok ? undefined : errorMessage ?? "";
     evt.durationMs = Date.now() - evt.timestamp;
@@ -382,7 +386,9 @@ class MetricsStore {
       if (typeof text === "string") {
         t.extractedNumbers = extractAnyNumbers(text);
       }
-    } catch {}
+    } catch (err) {
+  console.error(err);
+}
 
     // Optional anomaly: numeric claims but no tools used
     if (
@@ -596,7 +602,9 @@ class MetricsStore {
           });
         }
       }
-    } catch {}
+  } catch (err) {
+  console.error(err);
+}
 
     // spike detection per tool
     try {
@@ -623,7 +631,9 @@ class MetricsStore {
           details: { thisMinute: thisMin, baselineAvg: avg },
         });
       }
-    } catch {}
+   } catch (err) {
+  console.error(err);
+}
 
     // high recent error rate (last 10 for same tool)
     try {
@@ -639,7 +649,9 @@ class MetricsStore {
           });
         }
       }
-    } catch {}
+  } catch (err) {
+  console.error(err);
+}
   }
 
   // Deep redaction + length limits with stable object shape

@@ -25,7 +25,9 @@ localStorage.removeItem(key);
 } else {
 localStorage.setItem(key, value);
 }
-} catch {}
+} catch (err) {
+    console.log(err);
+}
 }, [key, state]);
 
 

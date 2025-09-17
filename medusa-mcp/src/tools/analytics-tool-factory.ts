@@ -9,6 +9,7 @@ type AnalyticsService = {
         metric: "quantity" | "revenue" | "orders";
         limit?: number;
         sort?: "asc" | "desc";
+        include_zero?: boolean;
     }) => Promise<
         Array<{
             product_id: string | null;
@@ -59,8 +60,10 @@ export function createAnalyticsTools(
 ): Array<ReturnType<typeof defineTool>> {
     // alias coercers
     const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
-    const datetimeHasTime = (value: string): boolean => /(?:T|\s)\d{2}:\d{2}/.test(value);
-    const datetimeHasTimezone = (value: string): boolean => /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
+    const datetimeHasTime = (value: string): boolean =>
+        /(?:T|\s)\d{2}:\d{2}/.test(value);
+    const datetimeHasTimezone = (value: string): boolean =>
+        /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
     const startOfDayUtc = (date: Date): Date =>
         new Date(
             Date.UTC(
@@ -98,9 +101,13 @@ export function createAnalyticsTools(
         return { start: start.toISOString(), end: end.toISOString() };
     };
     const isEpochStartIso = (iso?: string): boolean => {
-        if (!iso || typeof iso !== "string") return false;
+        if (!iso || typeof iso !== "string") {
+            return false;
+        }
         const t = Date.parse(iso);
-        if (!Number.isFinite(t)) return false;
+        if (!Number.isFinite(t)) {
+            return false;
+        }
         // Consider anything within first minute of epoch as epoch-ish
         return t <= 60 * 1000;
     };
@@ -120,8 +127,14 @@ export function createAnalyticsTools(
         const hasTime = datetimeHasTime(trimmed);
         const hasTimezone = datetimeHasTimezone(trimmed);
         if (dateOnlyMatch) {
-            const [year, month, day] = dateOnlyMatch.slice(1).map((part) => Number(part));
-            if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+            const [year, month, day] = dateOnlyMatch
+                .slice(1)
+                .map((part) => Number(part));
+            if (
+                Number.isNaN(year) ||
+                Number.isNaN(month) ||
+                Number.isNaN(day)
+            ) {
                 return undefined;
             }
             const hours = defaultToEndOfDay ? 23 : 0;
@@ -179,16 +192,37 @@ export function createAnalyticsTools(
             (input.preset_range as string | undefined) ||
             (input.preset as string | undefined);
         const isAllTimeToken = (v?: string): boolean => {
-            if (!v) return false;
+            if (!v) {
+                return false;
+            }
             const s = String(v).toLowerCase().trim().replace(/\s+/g, "_");
-            return ["all_time", "lifetime", "ever", "since_epoch", "all"].includes(s);
+            return [
+                "all_time",
+                "lifetime",
+                "ever",
+                "since_epoch",
+                "all"
+            ].includes(s);
         };
         const boolish = (v: unknown): boolean => {
-            if (typeof v === "boolean") return v;
-            if (typeof v === "number") return v !== 0;
+            if (typeof v === "boolean") {
+                return v;
+            }
+            if (typeof v === "number") {
+                return v !== 0;
+            }
             if (typeof v === "string") {
                 const s = v.trim().toLowerCase();
-                return ["1", "true", "yes", "y", "all_time", "ever", "lifetime", "all"].includes(s);
+                return [
+                    "1",
+                    "true",
+                    "yes",
+                    "y",
+                    "all_time",
+                    "ever",
+                    "lifetime",
+                    "all"
+                ].includes(s);
             }
             return false;
         };
@@ -204,7 +238,9 @@ export function createAnalyticsTools(
             (input.end as string | undefined) ||
             (input.end_date as string | undefined) ||
             (input.to as string | undefined);
-        let start = normalizeDateTimeInput(rawStart, { defaultToEndOfDay: false });
+        let start = normalizeDateTimeInput(rawStart, {
+            defaultToEndOfDay: false
+        });
         let end = normalizeDateTimeInput(rawEnd, { defaultToEndOfDay: true });
 
         if (start && !end) {
@@ -238,7 +274,8 @@ export function createAnalyticsTools(
         // explicitly signaling all_time, assume it's accidental and clamp to
         // the standard 30-day default.
         if (
-            start && end &&
+            start &&
+            end &&
             isEpochStartIso(start) &&
             !boolish((input as any).all_time) &&
             !isAllTimeToken(rangeTokenRaw)
@@ -394,7 +431,8 @@ export function createAnalyticsTools(
                 .default("desc"),
             order: z.string().optional(),
             order_by: z.string().optional(),
-            direction: z.string().optional()
+            direction: z.string().optional(),
+            include_zero: z.union([z.boolean(), z.string(), z.number()]).optional()
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const rng = coerceRange(input);
@@ -427,7 +465,9 @@ export function createAnalyticsTools(
                 const ob = (
                     input.order_by as string | undefined
                 )?.toLowerCase();
-                const dir = (input.direction as string | undefined)?.toLowerCase();
+                const dir = (
+                    input.direction as string | undefined
+                )?.toLowerCase();
                 if (dir === "asc" || dir === "desc") {
                     return dir;
                 }
@@ -445,6 +485,18 @@ export function createAnalyticsTools(
             const sort = (sortToken === "asc" ? "asc" : "desc") as
                 | "asc"
                 | "desc";
+
+            // include_zero: default true unless explicitly disabled (false/0/"false")
+            const includeZero = ((): boolean => {
+                const v = (input as any).include_zero;
+                if (typeof v === "boolean") return v;
+                if (typeof v === "number") return v !== 0;
+                if (typeof v === "string") {
+                    const s = v.trim().toLowerCase();
+                    return !["0", "false", "no", "off"].includes(s);
+                }
+                return true;
+            })();
 
             const schema = z.object({
                 start: z.string().datetime(),
@@ -480,7 +532,8 @@ export function createAnalyticsTools(
                 group_by: parsed.data.group_by,
                 metric: parsed.data.metric,
                 limit: parsed.data.limit,
-                sort: parsed.data.sort
+                sort: parsed.data.sort,
+                include_zero: includeZero
             });
 
             const titleGroup =

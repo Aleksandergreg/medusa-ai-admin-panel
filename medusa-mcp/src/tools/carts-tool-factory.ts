@@ -1,7 +1,7 @@
 import { defineTool } from "../utils/define-tools";
 import type { Http } from "../http/client";
 
-export function createCartsTools(http: Http) {
+export function createCartsTools(http: Http): ReturnType<typeof defineTool>[] {
     const abandoned_carts = defineTool((z) => ({
         name: "abandoned_carts",
         description:
@@ -36,7 +36,7 @@ export function createCartsTools(http: Http) {
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             // Helpers to coerce natural language inputs --------------------------------
-            const isDefined = (v: any) =>
+            const isDefined = (v: any): boolean =>
                 v !== undefined && v !== null && v !== "";
 
             const coerceBoolean = (v: any): boolean | undefined => {
@@ -116,8 +116,11 @@ export function createCartsTools(http: Http) {
                 return undefined;
             };
 
-            // Pull values with aliases (handler remains tolerant, even if schema omits aliases)
-            const getAlias = (obj: Record<string, unknown>, keys: string[]) => {
+            // Pull values with aliases
+            const getAlias = (
+                obj: Record<string, unknown>,
+                keys: string[]
+            ): unknown => {
                 for (const k of keys) {
                     if (isDefined(obj[k])) {
                         return obj[k];
@@ -126,7 +129,7 @@ export function createCartsTools(http: Http) {
                 return undefined;
             };
 
-            // older_than_minutes: from direct or aliases like threshold, min_last_updated
+            // ... rest of your handler unchanged ...
             const olderRaw = getAlias(input, [
                 "older_than_minutes",
                 "threshold",
@@ -147,7 +150,7 @@ export function createCartsTools(http: Http) {
                     : coerceInt(olderRaw);
             if (typeof numericOlder === "number") {
                 if (!unitStr) {
-                    older_than_minutes = numericOlder; // assume minutes if no unit
+                    older_than_minutes = numericOlder;
                 } else if (
                     ["m", "min", "minute", "minutes"].includes(unitStr)
                 ) {
@@ -161,21 +164,19 @@ export function createCartsTools(http: Http) {
             older_than_minutes =
                 older_than_minutes ?? parseDurationToMinutes(olderRaw);
             if (older_than_minutes === undefined) {
-                older_than_minutes = 1440; // default 24h
+                older_than_minutes = 1440;
             }
 
-            // require_email
             const requireEmailRaw = getAlias(input, [
                 "require_email",
                 "with_email"
             ]);
-            let require_email = true; // default
+            let require_email = true;
             const reqEmail = coerceBoolean(requireEmailRaw);
             if (typeof reqEmail === "boolean") {
                 require_email = reqEmail;
             }
 
-            // min_items
             const minItemsRaw = getAlias(input, [
                 "min_items",
                 "min_items_count",
@@ -184,7 +185,6 @@ export function createCartsTools(http: Http) {
             ]);
             const min_items = coerceInt(minItemsRaw) ?? 1;
 
-            // limit/offset
             const limit = Math.max(
                 1,
                 Math.min(
@@ -199,7 +199,6 @@ export function createCartsTools(http: Http) {
                 coerceInt(getAlias(input, ["offset", "skip", "page"])) ?? 0
             );
 
-            // with_customer
             const withCustomerRaw = getAlias(input, ["with_customer"]);
             const with_customer = coerceBoolean(withCustomerRaw);
 
