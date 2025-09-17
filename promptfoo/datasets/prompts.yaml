@@ -1,0 +1,95 @@
+# Starter dataset for evaluating the Medusa Assistant answers
+# Run with:
+#   npx promptfoo@latest eval -c promptfoo/promptfooconfig.yaml -d promptfoo/datasets/prompts.yaml
+
+name: Medusa Assistant – Baseline
+vars:
+  # Defaults can be overridden at the item level
+  wantsChart: false
+  chartType: bar
+
+tests:
+  - description: Orders count last 7 days
+    vars:
+      prompt: "How many orders did we have in the last 7 days?"
+    assert:
+      # Non-empty answer
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+      # Answer mentions a number
+      - type: javascript
+        value: "(() => { const r = (typeof output === 'string' ? (output.trim().startsWith('{') ? JSON.parse(output) : {answer: output}) : (output||{})); const ans = String(r.answer||''); return /\\b\\d+\\b/.test(ans); })()"
+      # Answer mentions orders
+      - type: javascript
+        value: "(() => { const r = (typeof output === 'string' ? (output.trim().startsWith('{') ? JSON.parse(output) : {answer: output}) : (output||{})); const ans = String(r.answer||'').toLowerCase(); return ans.includes('order'); })()"
+      # If JSON available: tool used is orders_count
+      - type: javascript
+        value: "(() => { const r = (typeof output === 'string' && output.trim().startsWith('{')) ? JSON.parse(output) : (typeof output==='object'?output:null); if(!r||!r.history) return true; return r.history[0]?.tool_name==='orders_count'; })()"
+
+  - description: Least sold product all time
+    vars:
+      prompt: "What are the least sold products of all time?"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+      # Mentions 'least' and 'all time' intent
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('least') && (l.includes('all time')||l.includes('since')||l.includes('ever')); })()"
+      # Uses list formatting (bullets)
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const ans=String(r.answer||''); return /^[*-]\\s/m.test(ans); })()"
+      # If JSON available: correct tool + args
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r||!r.history) return true; const a=r.history[0]?.tool_args||{}; return r.history[0]?.tool_name==='sales_aggregate' && a.group_by==='product' && a.sort==='asc' && !!a.metric && /^(quantity|orders)$/.test(String(a.metric)); })()"
+      # If JSON available: all-time-ish start
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r) return true; const a=r.history?.[0]?.tool_args||{}; const s=new Date(a.start||a.start_date||r.data?.start||''); if (!(s instanceof Date) || isNaN(s)) return true; return s.getUTCFullYear() <= 1980; })()"
+
+  - description: Abandoned carts default (24h, emails only)
+    vars:
+      prompt: "Show me abandoned carts"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+      # Mentions abandoned carts
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('abandoned cart'); })()"
+      # Mentions default window (24h or 1440 minutes)
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('24 hours') || l.includes('1440'); })()"
+      # If JSON available: tool + defaults
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r||!r.history) return true; const a=r.history[0]?.tool_args||{}; return r.history[0]?.tool_name==='abandoned_carts' && (a.older_than_minutes||0) >= 1440 && a.require_email !== false; })()"
+
+  - description: Top 3 products by orders last month (chart off)
+    vars:
+      prompt: "Top 3 products by number of orders last month"
+      wantsChart: false
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+      # Mentions 'top' and 'orders'
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('top') && l.includes('order'); })()"
+      # Exactly 3 bullets in the answer
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const ans=String(r.answer||''); const n=(ans.match(/^[*-]\\s/gm)||[]).length; return n===3; })()"
+      # If JSON available: correct tool + args
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r||!r.history) return true; const a=r.history[0]?.tool_args||{}; return r.history[0]?.tool_name==='sales_aggregate' && a.group_by==='product' && a.metric==='orders' && a.sort==='desc' && a.limit===3; })()"
+      # If JSON available: start/end present
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r) return true; const a=r.history?.[0]?.tool_args||{}; const s=(a.start||a.start_date||r.data?.start||''); const e=(a.end||a.end_date||r.data?.end||''); return !!s && !!e; })()"
+
+  - description: Customer order frequency
+    vars:
+      prompt: "How frequently do customers order?"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+      # Mentions average days
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('average') && l.includes('day'); })()"
+      # If JSON available: tool + summary structure
+      - type: javascript
+        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r) return true; const name=r.history?.[0]?.tool_name; const t=r.data?.summary?.total_customers_analyzed; return (!name || name==='customer_order_frequency') && (t===undefined || (typeof t==='number' && t>=0)); })()"
