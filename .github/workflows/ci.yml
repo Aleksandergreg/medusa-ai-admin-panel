@@ -170,10 +170,6 @@ jobs:
     name: Promptfoo Assistant Checks (label-gated)
     runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'promptfoo')
-    permissions:
-      contents: read
-      actions: write
-      pull-requests: write
     services:
       postgres:
         image: postgres:15
@@ -181,7 +177,8 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
-        ports: [ "5432:5432" ]
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
@@ -214,14 +211,17 @@ jobs:
             cd my-medusa-store
             npm ci
           ) &
+          main_pid=$!
 
           (
             cd medusa-mcp
             npm ci || npm install --no-audit --no-fund
             npm run build
           ) &
+          mcp_pid=$!
 
-          wait
+          wait "$main_pid"
+          wait "$mcp_pid"
 
       - name: Create backend .env
         run: |
@@ -254,7 +254,8 @@ jobs:
       - name: Start backend (background)
         working-directory: my-medusa-store
         run: |
-          nohup npm run dev > ../backend.log 2>&1 & echo $! > ../backend.pid
+          nohup npm run dev > ../backend.log 2>&1 & \
+          echo $! > ../backend.pid
 
       - name: Wait for backend
         run: |
@@ -267,7 +268,7 @@ jobs:
           token=$(curl -s -X POST http://localhost:9000/auth/user/emailpass \
             -H 'Content-Type: application/json' \
             -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" | jq -r '.token // .access_token // empty')
-          [ -n "$token" ] || { echo "Failed to get admin JWT" >&2; exit 1; }
+          if [ -z "$token" ]; then echo "Failed to get admin JWT" >&2; exit 1; fi
           echo "token=$token" >> $GITHUB_OUTPUT
 
       - name: Create Admin API key (secret)
@@ -281,48 +282,86 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"title":"CI Admin Key","type":"secret"}')
           key=$(echo "$resp" | jq -r '.. | .token? // empty' | grep -m1 '^sk_')
-          [ -n "$key" ] || { echo "Failed to create admin API key: $resp" >&2; exit 1; }
+          if [ -z "$key" ]; then echo "Failed to create admin API key: $resp" >&2; exit 1; fi
           echo "key=$key" >> $GITHUB_OUTPUT
 
-      # --- NEW: Promptfoo auth (if secret present)
-      - name: Promptfoo auth
+      - name: Promptfoo auth (optional)
         if: env.PROMPTFOO_API_KEY != ''
         run: npx promptfoo@latest auth login -k "${PROMPTFOO_API_KEY}"
 
-      # --- UPDATED: Run Promptfoo + share + HTML output
-      - name: Run Promptfoo (with optional share)
+      - name: Run Promptfoo (blocking)
         id: pfoo
         env:
           MEDUSA_ADMIN_API_KEY: ${{ steps.adminkey.outputs.key }}
         run: |
           set -euo pipefail
           SHARE_FLAG=""
-          if [ -n "${PROMPTFOO_API_KEY:-}" ]; then SHARE_FLAG="--share"; fi
+          # Share only if API key present
+          if [ -n "${PROMPTFOO_API_KEY:-}" ]; then
+            SHARE_FLAG="--share"
+          fi
 
+          # Run eval (same config & dataset), plus HTML report to artifact dir
           npx promptfoo@latest eval \
             -c promptfoo/promptfooconfig.yaml promptfoo/datasets/prompts.ci.yaml \
             --max-concurrency 1 \
             $SHARE_FLAG \
             -o .promptfoo/last-run/report.html
 
-          # If we shared, pull out the share URL deterministically
+          # If shared, capture the viewer URL
           if [ -n "${PROMPTFOO_API_KEY:-}" ]; then
-            url=$(npx promptfoo@latest share latest -y | grep -Eo 'https?://[^ ]+' | tail -n1)
-            echo "share_url=$url" >> "$GITHUB_OUTPUT"
+            # This prints the latest share URL; tolerate format variations
+            share_url="$(npx promptfoo@latest share latest -y | grep -Eo 'https?://[^ ]+' | tail -n1 || true)"
+            if [ -n "$share_url" ]; then
+              echo "share_url=$share_url" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
-      # --- NEW: Show link in job summary (nice UX)
       - name: Add Promptfoo link to summary
         if: steps.pfoo.outputs.share_url
         env:
           URL: ${{ steps.pfoo.outputs.share_url }}
         run: |
           {
-            echo "### ✅ Promptfoo Results";
+            echo "### ✅ Promptfoo Web Viewer";
             echo "";
-            echo "- **Web viewer**: ${URL}";
-            echo "- **HTML report**: downloaded in the artifact below.";
+            echo "- **Link**: ${URL}";
+            echo "- **HTML report**: included in the artifact below.";
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dump Promptfoo results on failure
+        if: failure()
+        run: |
+          echo "Promptfoo last-run contents:" && ls -la .promptfoo/last-run || true
+          if [ -f .promptfoo/last-run/results.json ]; then
+            echo "--- results.json ---"
+            node -e "console.log(require('fs').readFileSync('.promptfoo/last-run/results.json','utf8'))"
+          elif [ -f .promptfoo/last-run/report.json ]; then
+            echo "--- report.json ---"
+            node -e "console.log(require('fs').readFileSync('.promptfoo/last-run/report.json','utf8'))"
+          else
+            echo "No JSON results found under .promptfoo/last-run"
+          fi
+
+      - name: Dump raw assistant responses (on failure)
+        if: failure()
+        env:
+          MEDUSA_ADMIN_API_KEY: ${{ steps.adminkey.outputs.key }}
+        run: |
+          echo "--- Raw assistant responses for dataset prompts ---"
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            payload=$(jq -n --arg p "$line" '{prompt: $p}')
+            echo "PROMPT: $line"
+            resp=$(curl -s -X POST http://localhost:9000/admin/assistant \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Basic $MEDUSA_ADMIN_API_KEY" \
+              -d "$payload")
+            echo "$resp" | jq -r '.answer // "(no answer field)"'
+            echo "TOOL: "$(echo "$resp" | jq -r '.history[0].tool_name // "(none)"')
+            echo "ARGS: "$(echo "$resp" | jq -c '.history[0].tool_args // {}')
+            echo "---"
+          done < <(sed -n 's/^[[:space:]]*prompt:[[:space:]]*"\(.*\)".*/\1/p' promptfoo/datasets/prompts.yaml)
 
       - name: Upload Promptfoo artifacts
         if: always()
