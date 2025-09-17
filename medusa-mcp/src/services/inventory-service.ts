@@ -62,6 +62,16 @@ type InventoryItemsLookup = {
     }>;
 };
 
+type InventoryItemLevelsLookup = {
+    inventory_levels?: Array<{
+        id?: string;
+        location_id?: string | null;
+        stocked_quantity?: number | string | null;
+        reserved_quantity?: number | string | null;
+        available_quantity?: number | string | null;
+    }>;
+};
+
 type InventoryService = {
     countLowInventoryProducts(
         params: CountParams
@@ -114,7 +124,7 @@ export function createInventoryService(http: Http): InventoryService {
         return Array.isArray(data?.variants) ? (data!.variants as any[]) : [];
     }
 
-    const toNumber = (value: unknown): number => {
+    const toOptionalNumber = (value: unknown): number | undefined => {
         if (typeof value === "number" && Number.isFinite(value)) {
             return value;
         }
@@ -127,8 +137,10 @@ export function createInventoryService(http: Http): InventoryService {
                 }
             }
         }
-        return 0;
+        return undefined;
     };
+
+    const toNumber = (value: unknown): number => toOptionalNumber(value) ?? 0;
 
     async function enrichVariantsWithInventory(
         products: Array<LowInventoryProduct>
@@ -165,6 +177,67 @@ export function createInventoryService(http: Http): InventoryService {
             }
         >();
 
+        const locationLevelsCache = new Map<string, Array<LocationLevelSnapshot>>();
+
+        const mapLocationLevels = (rawLevels: unknown): Array<LocationLevelSnapshot> => {
+            if (!Array.isArray(rawLevels)) {
+                return [];
+            }
+            return (rawLevels as any[]).map((lvl) => {
+                const locationId =
+                    typeof lvl?.location_id === "string" && lvl.location_id.trim() !== ""
+                        ? lvl.location_id
+                        : null;
+                return {
+                    location_id: locationId,
+                    stocked_quantity: toNumber((lvl as any)?.stocked_quantity),
+                    reserved_quantity: toNumber((lvl as any)?.reserved_quantity),
+                    available_quantity: toNumber((lvl as any)?.available_quantity)
+                };
+            });
+        };
+
+        const resolveLocationLevels = async (
+            inventoryItemId: string
+        ): Promise<Array<LocationLevelSnapshot>> => {
+            if (!inventoryItemId) {
+                return [];
+            }
+            if (locationLevelsCache.has(inventoryItemId)) {
+                return locationLevelsCache.get(inventoryItemId)!;
+            }
+
+            const collected: Array<LocationLevelSnapshot> = [];
+            const limit = 200;
+            let offset = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+                let response: InventoryItemLevelsLookup | undefined;
+                try {
+                    response = await http.get<InventoryItemLevelsLookup>(
+                        `/admin/inventory-items/${encodeURIComponent(inventoryItemId)}/location-levels`,
+                        { limit, offset }
+                    );
+                } catch {
+                    break;
+                }
+
+                const page = mapLocationLevels(response?.inventory_levels);
+                if (page.length) {
+                    collected.push(...page);
+                }
+                if (page.length < limit) {
+                    hasMore = false;
+                } else {
+                    offset += limit;
+                }
+            }
+
+            locationLevelsCache.set(inventoryItemId, collected);
+            return collected;
+        };
+
         const skus = Array.from(skuToVariants.keys());
         const chunkSize = 20;
 
@@ -182,17 +255,7 @@ export function createInventoryService(http: Http): InventoryService {
                         {
                             sku: chunk,
                             limit,
-                            offset,
-                            expand: "location_levels",
-                            fields: [
-                                "+id",
-                                "+sku",
-                                "+location_levels",
-                                "+location_levels.location_id",
-                                "+location_levels.stocked_quantity",
-                                "+location_levels.reserved_quantity",
-                                "+location_levels.available_quantity"
-                            ].join(",")
+                            offset
                         }
                     );
                 } catch {
@@ -213,30 +276,36 @@ export function createInventoryService(http: Http): InventoryService {
                         continue;
                     }
 
-                    const locationLevels = Array.isArray(item?.location_levels)
-                        ? (item!.location_levels as any[])
-                        : [];
+                    const baseStockedRaw = toOptionalNumber((item as any)?.stocked_quantity);
+                    const baseReservedRaw = toOptionalNumber((item as any)?.reserved_quantity);
+                    const baseAvailableRaw = toOptionalNumber((item as any)?.available_quantity);
+                    const baseStocked = baseStockedRaw ?? 0;
+                    const baseReserved = baseReservedRaw ?? 0;
+                    const baseAvailable = baseAvailableRaw ?? 0;
 
-                    const parsedLevels: Array<LocationLevelSnapshot> =
-                        locationLevels.map((lvl) => {
-                            const locationId =
-                                typeof lvl?.location_id === "string" &&
-                                lvl.location_id.trim() !== ""
-                                    ? lvl.location_id
-                                    : null;
-                            return {
-                                location_id: locationId,
-                                stocked_quantity: toNumber(
-                                    (lvl as any)?.stocked_quantity
-                                ),
-                                reserved_quantity: toNumber(
-                                    (lvl as any)?.reserved_quantity
-                                ),
-                                available_quantity: toNumber(
-                                    (lvl as any)?.available_quantity
-                                )
-                            };
-                        });
+                    let parsedLevels = mapLocationLevels(item?.location_levels);
+                    if (parsedLevels.length === 0) {
+                        const itemId =
+                            typeof item?.id === "string" && item.id
+                                ? item.id
+                                : "";
+                        if (itemId) {
+                            parsedLevels = await resolveLocationLevels(itemId);
+                        }
+                    }
+                    if (
+                        parsedLevels.length === 0 &&
+                        (baseStockedRaw != null || baseReservedRaw != null || baseAvailableRaw != null)
+                    ) {
+                        parsedLevels = [
+                            {
+                                location_id: null,
+                                stocked_quantity: baseStocked,
+                                reserved_quantity: baseReserved,
+                                available_quantity: baseAvailable
+                            }
+                        ];
+                    }
 
                     const itemSummary: LowInventoryVariantInventoryItem = {
                         id:
