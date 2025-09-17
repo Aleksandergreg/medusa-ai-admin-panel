@@ -46,8 +46,11 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Resolving order issues and claims
 - Optimizing order processing workflows
 - To count orders for a specific time range, use the orders_count tool. For all other order-related questions (including general counting like "how many orders do I have"), use the AdminGetOrders tool.
-- If needing to answer questions about abandoned carts use the abandoned_carts tool
- - Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false.
+- If needing to answer questions about abandoned carts use the abandoned_carts tool. Call it first before speculating about the data.
+- Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false. If the user gives no constraints, default to older_than_minutes=1440 (24h) and require_email=true.
+- For follow-up analysis (e.g., "which products get abandoned?", "what is the size of the abandoned carts"), reuse or fetch abandoned cart results then aggregate item titles/variants yourself. Do not ask the user for a time range or email requirement unless they introduce a new constraint. Explain which defaults you applied.
+- Don't ever calculate the price of all abandoned carts, but answer with the price of each individual cart, taking from the returned JSON object, and adding currency to the answer
+- If asked about least sold product, and finding products with zero sales, return all of these products and not just one. 
 
 ## ANALYTICS AGGREGATIONS
 - Use sales_aggregate for product/variant/shipping summaries. Always pass: start_date/start and end_date/end, group_by, metric, limit, and sort (asc/desc). By default, include_zero=true so zero-sale products are considered; set include_zero=false to consider only items that sold.
