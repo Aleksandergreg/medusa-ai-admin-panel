@@ -1,34 +1,8 @@
 import { defineTool } from "../utils/define-tools";
+import type { InventoryServiceDefinition } from "../types/inventory";
 
-type InventoryService = {
-    countLowInventoryProducts: (params: {
-        threshold: number;
-        manage_inventory_only?: boolean;
-    }) => Promise<{
-        threshold: number;
-        count: number;
-        variants_count: number;
-    }>;
-    listLowInventoryProducts: (params: {
-        threshold: number;
-        manage_inventory_only?: boolean;
-    }) => Promise<{
-        threshold: number;
-        count: number;
-        variants_count: number;
-        products: Array<{
-            id: string;
-            title: string | null;
-            low_variants_count: number;
-            low_variants: Array<{
-                id: string;
-                title: string | null;
-                sku: string | null;
-                inventory_quantity: number;
-            }>;
-        }>;
-    }>;
-};
+
+type InventoryService = InventoryServiceDefinition;
 
 export function createInventoryTools(
     inventory: InventoryService
@@ -79,7 +53,7 @@ export function createInventoryTools(
     const low_inventory_products_list = defineTool((z) => ({
         name: "low_inventory_products_list",
         description:
-            "List products that have at least one variant with inventory below a threshold. Returns product id, title, and low variants (id, title, sku, quantity).",
+            "List products that have at least one variant with inventory below a threshold. Returns product id, title, and low variants with inventory quantity, reserved quantity, and inventory item location breakdown.",
         inputSchema: {
             threshold: z
                 .number()
