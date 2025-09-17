@@ -1,0 +1,46 @@
+# Starter dataset for evaluating the Medusa Assistant answers
+# Run with:
+#   npx promptfoo@latest eval -c promptfoo/promptfooconfig.yaml -d promptfoo/datasets/prompts.yaml
+
+name: Medusa Assistant – Baseline
+vars:
+  # Defaults can be overridden at the item level
+  wantsChart: false
+  chartType: bar
+
+tests:
+  - description: Orders count last 7 days
+    vars:
+      prompt: "How many orders did we have in the last 7 days?"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+
+  - description: Least sold product all time
+    vars:
+      prompt: "What are the least sold products of all time?"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+
+  - description: Abandoned carts default (24h, emails only)
+    vars:
+      prompt: "Show me abandoned carts"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+
+  - description: Top products by orders last month (chart off)
+    vars:
+      prompt: "Top 3 products by number of orders last month"
+      wantsChart: false
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
+
+  - description: Customer order frequency
+    vars:
+      prompt: "How frequently do customers order?"
+    assert:
+      - type: javascript
+        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
