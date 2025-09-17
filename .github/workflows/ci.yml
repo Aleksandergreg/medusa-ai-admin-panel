@@ -235,6 +235,7 @@ jobs:
           MEDUSA_USERNAME=${{ env.ADMIN_EMAIL }}
           MEDUSA_PASSWORD=${{ env.ADMIN_PASSWORD }}
           GEMINI_API_KEY=${{ env.GEMINI_API_KEY }}
+          ASSISTANT_PLANNER_MODE=ci
           EOF
 
       - name: Migrate DB
@@ -286,7 +287,7 @@ jobs:
       - name: Run Promptfoo (blocking)
         env:
           MEDUSA_ADMIN_API_KEY: ${{ steps.adminkey.outputs.key }}
-        run: npx promptfoo@latest eval -c promptfoo/promptfooconfig.yaml promptfoo/datasets/prompts.yaml --max-concurrency 2
+        run: npx promptfoo@latest eval -c promptfoo/promptfooconfig.yaml promptfoo/datasets/prompts.yaml --max-concurrency 1
 
       - name: Dump Promptfoo results on failure
         if: failure()
