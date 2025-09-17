@@ -1,50 +1,8 @@
 import { defineTool } from "../utils/define-tools";
+import type { InventoryServiceDefinition } from "../types/inventory";
 
-type InventoryService = {
-    countLowInventoryProducts: (params: {
-        threshold: number;
-        manage_inventory_only?: boolean;
-    }) => Promise<{
-        threshold: number;
-        count: number;
-        variants_count: number;
-    }>;
-    listLowInventoryProducts: (params: {
-        threshold: number;
-        manage_inventory_only?: boolean;
-    }) => Promise<{
-        threshold: number;
-        count: number;
-        variants_count: number;
-        products: Array<{
-            id: string;
-            title: string | null;
-            low_variants_count: number;
-            low_variants: Array<{
-                id: string;
-                title: string | null;
-                sku: string | null;
-                inventory_quantity: number;
-                reserved_quantity: number;
-                stocked_quantity: number | null;
-                available_quantity: number | null;
-                inventory_items: Array<{
-                    id: string;
-                    sku: string | null;
-                    stocked_quantity: number;
-                    reserved_quantity: number;
-                    available_quantity: number;
-                    location_levels: Array<{
-                        location_id: string | null;
-                        stocked_quantity: number;
-                        reserved_quantity: number;
-                        available_quantity: number;
-                    }>;
-                }>;
-            }>;
-        }>;
-    }>;
-};
+
+type InventoryService = InventoryServiceDefinition;
 
 export function createInventoryTools(
     inventory: InventoryService

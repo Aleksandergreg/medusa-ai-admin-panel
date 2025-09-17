@@ -1,101 +1,28 @@
 import type { Http } from "../http/client";
+import type {
+    AdminInventoryItemLevelsResponse,
+    AdminInventoryItemsListResponse,
+    AdminInventoryItemLevel,
+    AdminVariantPreview,
+    AdminVariantsListResponse,
+    CountLowInventoryResult,
+    CountParams,
+    InventoryServiceDefinition,
+    ListLowInventoryResult,
+    LocationLevelSnapshot,
+    LowInventoryProduct,
+    LowInventoryVariant,
+    LowInventoryVariantInventoryItem
+} from "../types/inventory";
 
-type CountParams = {
-    threshold: number;
-    manage_inventory_only?: boolean;
-};
-
-type LocationLevelSnapshot = {
-    location_id: string | null;
-    stocked_quantity: number;
-    reserved_quantity: number;
-    available_quantity: number;
-};
-
-type LowInventoryVariantInventoryItem = {
-    id: string;
-    sku: string | null;
-    stocked_quantity: number;
-    reserved_quantity: number;
-    available_quantity: number;
-    location_levels: Array<LocationLevelSnapshot>;
-};
-
-type LowInventoryVariant = {
-    id: string;
-    title: string | null;
-    sku: string | null;
-    inventory_quantity: number;
-    reserved_quantity: number;
-    stocked_quantity: number | null;
-    available_quantity: number | null;
-    inventory_items: Array<LowInventoryVariantInventoryItem>;
-};
-
-type LowInventoryProduct = {
-    id: string;
-    title: string | null;
-    low_variants_count: number;
-    low_variants: Array<LowInventoryVariant>;
-};
-
-type CountLowInventoryResult = {
-    threshold: number;
-    count: number;
-    variants_count: number;
-};
-
-type ListLowInventoryResult = CountLowInventoryResult & {
-    products: Array<LowInventoryProduct>;
-};
-
-type InventoryItemsLookup = {
-    inventory_items?: Array<{
-        id?: string;
-        sku?: string | null;
-        location_levels?: Array<{
-            location_id?: string | null;
-            stocked_quantity?: number | string | null;
-            reserved_quantity?: number | string | null;
-            available_quantity?: number | string | null;
-        }>;
-    }>;
-};
-
-type InventoryItemLevelsLookup = {
-    inventory_levels?: Array<{
-        id?: string;
-        location_id?: string | null;
-        stocked_quantity?: number | string | null;
-        reserved_quantity?: number | string | null;
-        available_quantity?: number | string | null;
-    }>;
-};
-
-type InventoryService = {
-    countLowInventoryProducts(
-        params: CountParams
-    ): Promise<CountLowInventoryResult>;
-    listLowInventoryProducts(
-        params: CountParams
-    ): Promise<ListLowInventoryResult>;
-};
+type InventoryService = InventoryServiceDefinition;
 
 export function createInventoryService(http: Http): InventoryService {
     async function fetchVariantsPage(
         offset: number,
         limit: number,
         manageOnly: boolean
-    ): Promise<
-        Array<{
-            id?: string;
-            product_id?: string;
-            title?: string | null;
-            sku?: string | null;
-            manage_inventory?: boolean;
-            inventory_quantity?: number | string | null;
-        }>
-    > {
+    ): Promise<AdminVariantPreview[]> {
         const query: Record<string, unknown> = {
             limit,
             offset,
@@ -111,17 +38,14 @@ export function createInventoryService(http: Http): InventoryService {
         if (manageOnly) {
             query.manage_inventory = true;
         }
-        const data = await http.get<{
-            variants?: Array<{
-                id?: string;
-                product_id?: string;
-                title?: string | null;
-                sku?: string | null;
-                manage_inventory?: boolean;
-                inventory_quantity?: number | string | null;
-            }>;
-        }>("/admin/product-variants", query);
-        return Array.isArray(data?.variants) ? (data!.variants as any[]) : [];
+        const data = await http.get<AdminVariantsListResponse>(
+            "/admin/product-variants",
+            query
+        );
+        if (!data?.variants || !Array.isArray(data.variants)) {
+            return [];
+        }
+        return data.variants;
     }
 
     const toOptionalNumber = (value: unknown): number | undefined => {
@@ -148,18 +72,18 @@ export function createInventoryService(http: Http): InventoryService {
         const skuToVariants = new Map<string, LowInventoryVariant[]>();
         for (const product of products) {
             for (const variant of product.low_variants) {
-                const sku =
+                const skuValue =
                     typeof variant.sku === "string" && variant.sku.trim() !== ""
                         ? variant.sku
                         : null;
-                if (!sku) {
+                if (!skuValue) {
                     continue;
                 }
-                const grouped = skuToVariants.get(sku);
-                if (grouped) {
-                    grouped.push(variant);
+                const existing = skuToVariants.get(skuValue);
+                if (existing) {
+                    existing.push(variant);
                 } else {
-                    skuToVariants.set(sku, [variant]);
+                    skuToVariants.set(skuValue, [variant]);
                 }
             }
         }
@@ -167,32 +91,49 @@ export function createInventoryService(http: Http): InventoryService {
             return;
         }
 
-        const aggregateBySku = new Map<
-            string,
-            {
-                totalReserved: number;
-                totalStocked: number;
-                totalAvailable: number;
-                items: Array<LowInventoryVariantInventoryItem>;
-            }
-        >();
+        type InventoryAggregation = {
+            totalReserved: number;
+            totalStocked: number;
+            totalAvailable: number;
+            items: Array<LowInventoryVariantInventoryItem>;
+        };
 
+        const aggregateBySku = new Map<string, InventoryAggregation>();
         const locationLevelsCache = new Map<string, Array<LocationLevelSnapshot>>();
 
-        const mapLocationLevels = (rawLevels: unknown): Array<LocationLevelSnapshot> => {
+        const getOrCreateAggregate = (skuKey: string): InventoryAggregation => {
+            const existing = aggregateBySku.get(skuKey);
+            if (existing) {
+                return existing;
+            }
+            const fresh: InventoryAggregation = {
+                totalReserved: 0,
+                totalStocked: 0,
+                totalAvailable: 0,
+                items: []
+            };
+            aggregateBySku.set(skuKey, fresh);
+            return fresh;
+        };
+
+        const mapLocationLevels = (
+            rawLevels: Array<AdminInventoryItemLevel> | null | undefined
+        ): Array<LocationLevelSnapshot> => {
             if (!Array.isArray(rawLevels)) {
                 return [];
             }
-            return (rawLevels as any[]).map((lvl) => {
+
+            return rawLevels.map((level) => {
                 const locationId =
-                    typeof lvl?.location_id === "string" && lvl.location_id.trim() !== ""
-                        ? lvl.location_id
+                    typeof level?.location_id === "string" && level.location_id.trim() !== ""
+                        ? level.location_id
                         : null;
+
                 return {
                     location_id: locationId,
-                    stocked_quantity: toNumber((lvl as any)?.stocked_quantity),
-                    reserved_quantity: toNumber((lvl as any)?.reserved_quantity),
-                    available_quantity: toNumber((lvl as any)?.available_quantity)
+                    stocked_quantity: toNumber(level?.stocked_quantity),
+                    reserved_quantity: toNumber(level?.reserved_quantity),
+                    available_quantity: toNumber(level?.available_quantity)
                 };
             });
         };
@@ -203,8 +144,10 @@ export function createInventoryService(http: Http): InventoryService {
             if (!inventoryItemId) {
                 return [];
             }
-            if (locationLevelsCache.has(inventoryItemId)) {
-                return locationLevelsCache.get(inventoryItemId)!;
+
+            const cached = locationLevelsCache.get(inventoryItemId);
+            if (cached) {
+                return cached;
             }
 
             const collected: Array<LocationLevelSnapshot> = [];
@@ -213,9 +156,9 @@ export function createInventoryService(http: Http): InventoryService {
             let hasMore = true;
 
             while (hasMore) {
-                let response: InventoryItemLevelsLookup | undefined;
+                let response: AdminInventoryItemLevelsResponse | undefined;
                 try {
-                    response = await http.get<InventoryItemLevelsLookup>(
+                    response = await http.get<AdminInventoryItemLevelsResponse>(
                         `/admin/inventory-items/${encodeURIComponent(inventoryItemId)}/location-levels`,
                         { limit, offset }
                     );
@@ -223,11 +166,13 @@ export function createInventoryService(http: Http): InventoryService {
                     break;
                 }
 
-                const page = mapLocationLevels(response?.inventory_levels);
-                if (page.length) {
+                const levels = response?.inventory_levels ?? [];
+                const page = mapLocationLevels(levels);
+                if (page.length > 0) {
                     collected.push(...page);
                 }
-                if (page.length < limit) {
+
+                if (levels.length < limit) {
                     hasMore = false;
                 } else {
                     offset += limit;
@@ -248,102 +193,89 @@ export function createInventoryService(http: Http): InventoryService {
             let hasMore = true;
 
             while (hasMore) {
-                let payload: InventoryItemsLookup | undefined;
+                let payload: AdminInventoryItemsListResponse | undefined;
                 try {
-                    payload = await http.get<InventoryItemsLookup>(
+                    payload = await http.get<AdminInventoryItemsListResponse>(
                         "/admin/inventory-items",
-                        {
-                            sku: chunk,
-                            limit,
-                            offset
-                        }
+                        { sku: chunk, limit, offset }
                     );
                 } catch {
                     break;
                 }
 
-                const items = Array.isArray(payload?.inventory_items)
-                    ? (payload!.inventory_items as any[])
-                    : [];
-
+                const items = payload?.inventory_items ?? [];
                 for (const item of items) {
-                    const skuRaw = item?.sku;
-                    const sku =
-                        typeof skuRaw === "string" && skuRaw.trim() !== ""
-                            ? skuRaw
+                    const skuValue =
+                        typeof item?.sku === "string" && item.sku.trim() !== ""
+                            ? item.sku
                             : undefined;
-                    if (!sku || !skuToVariants.has(sku)) {
+
+                    if (!skuValue || !skuToVariants.has(skuValue)) {
                         continue;
                     }
 
-                    const baseStockedRaw = toOptionalNumber((item as any)?.stocked_quantity);
-                    const baseReservedRaw = toOptionalNumber((item as any)?.reserved_quantity);
-                    const baseAvailableRaw = toOptionalNumber((item as any)?.available_quantity);
-                    const baseStocked = baseStockedRaw ?? 0;
-                    const baseReserved = baseReservedRaw ?? 0;
-                    const baseAvailable = baseAvailableRaw ?? 0;
+                    const baseStockedRaw = toOptionalNumber(item?.stocked_quantity);
+                    const baseReservedRaw = toOptionalNumber(item?.reserved_quantity);
+                    const baseAvailableRaw = toOptionalNumber(item?.available_quantity);
 
-                    let parsedLevels = mapLocationLevels(item?.location_levels);
+                    let parsedLevels = mapLocationLevels(item?.location_levels ?? undefined);
                     if (parsedLevels.length === 0) {
                         const itemId =
-                            typeof item?.id === "string" && item.id
+                            typeof item?.id === "string" && item.id.trim() !== ""
                                 ? item.id
                                 : "";
                         if (itemId) {
                             parsedLevels = await resolveLocationLevels(itemId);
                         }
                     }
+
                     if (
                         parsedLevels.length === 0 &&
-                        (baseStockedRaw != null || baseReservedRaw != null || baseAvailableRaw != null)
+                        (baseStockedRaw != null ||
+                            baseReservedRaw != null ||
+                            baseAvailableRaw != null)
                     ) {
                         parsedLevels = [
                             {
                                 location_id: null,
-                                stocked_quantity: baseStocked,
-                                reserved_quantity: baseReserved,
-                                available_quantity: baseAvailable
+                                stocked_quantity: baseStockedRaw ?? 0,
+                                reserved_quantity: baseReservedRaw ?? 0,
+                                available_quantity: baseAvailableRaw ?? 0
                             }
                         ];
                     }
 
                     const itemSummary: LowInventoryVariantInventoryItem = {
                         id:
-                            typeof item?.id === "string" && item.id
+                            typeof item?.id === "string" && item.id.trim() !== ""
                                 ? item.id
                                 : "",
-                        sku,
+                        sku: skuValue ?? null,
                         stocked_quantity: parsedLevels.reduce(
-                            (acc, lvl) => acc + lvl.stocked_quantity,
+                            (acc, level) => acc + level.stocked_quantity,
                             0
                         ),
                         reserved_quantity: parsedLevels.reduce(
-                            (acc, lvl) => acc + lvl.reserved_quantity,
+                            (acc, level) => acc + level.reserved_quantity,
                             0
                         ),
                         available_quantity: parsedLevels.reduce(
-                            (acc, lvl) => acc + lvl.available_quantity,
+                            (acc, level) => acc + level.available_quantity,
                             0
                         ),
                         location_levels: parsedLevels
                     };
 
-                    const aggregate = aggregateBySku.get(sku) ?? {
-                        totalReserved: 0,
-                        totalStocked: 0,
-                        totalAvailable: 0,
-                        items: [] as Array<LowInventoryVariantInventoryItem>
-                    };
+                    const aggregate = getOrCreateAggregate(skuValue);
 
                     aggregate.totalReserved += itemSummary.reserved_quantity;
                     aggregate.totalStocked += itemSummary.stocked_quantity;
                     aggregate.totalAvailable += itemSummary.available_quantity;
                     aggregate.items.push(itemSummary);
-
-                    aggregateBySku.set(sku, aggregate);
                 }
 
-                if (items.length < limit) {
+                const currentBatchCount = payload?.inventory_items?.length ?? 0;
+                if (currentBatchCount < limit) {
                     hasMore = false;
                 } else {
                     offset += limit;
@@ -351,20 +283,19 @@ export function createInventoryService(http: Http): InventoryService {
             }
         }
 
-        for (const [sku, variants] of skuToVariants.entries()) {
-            const aggregate = aggregateBySku.get(sku);
+        for (const [skuValue, variants] of skuToVariants.entries()) {
+            const aggregate = aggregateBySku.get(skuValue);
             if (!aggregate) {
                 continue;
             }
+
             for (const variant of variants) {
                 variant.reserved_quantity = aggregate.totalReserved;
                 variant.stocked_quantity = aggregate.totalStocked;
                 variant.available_quantity = aggregate.totalAvailable;
                 variant.inventory_items = aggregate.items.map((item) => ({
                     ...item,
-                    location_levels: item.location_levels.map((lvl) => ({
-                        ...lvl
-                    }))
+                    location_levels: item.location_levels.map((level) => ({ ...level }))
                 }));
             }
         }
@@ -383,7 +314,7 @@ export function createInventoryService(http: Http): InventoryService {
 
         let hasMore = true;
         while (hasMore) {
-            let batch: any[] = [];
+            let batch: AdminVariantPreview[] = [];
             try {
                 batch = await fetchVariantsPage(offset, limit, manageOnly);
             } catch {
@@ -392,30 +323,20 @@ export function createInventoryService(http: Http): InventoryService {
             if (batch.length === 0) {
                 break;
             }
-            for (const v of batch) {
-                if (manageOnly && v?.manage_inventory !== true) {
+            for (const variant of batch) {
+                if (manageOnly && variant?.manage_inventory !== true) {
                     continue;
                 }
-                const qtyRaw = v?.inventory_quantity as
-                    | number
-                    | string
-                    | null
-                    | undefined;
-                const qty =
-                    typeof qtyRaw === "number"
-                        ? qtyRaw
-                        : typeof qtyRaw === "string" && qtyRaw.trim() !== ""
-                        ? Number(qtyRaw)
-                        : undefined;
-                if (
-                    typeof qty === "number" &&
-                    Number.isFinite(qty) &&
-                    qty < threshold
-                ) {
+                const quantity = toOptionalNumber(variant?.inventory_quantity);
+                if (typeof quantity === "number" && quantity < threshold) {
                     variantsCount += 1;
-                    const pid = v?.product_id as string | undefined;
-                    if (pid) {
-                        productIds.add(pid);
+                    const productId =
+                        typeof variant?.product_id === "string" &&
+                        variant.product_id.trim() !== ""
+                            ? variant.product_id
+                            : undefined;
+                    if (productId) {
+                        productIds.add(productId);
                     }
                 }
             }
@@ -446,7 +367,7 @@ export function createInventoryService(http: Http): InventoryService {
 
         let hasMore = true;
         while (hasMore) {
-            let batch: any[] = [];
+            let batch: AdminVariantPreview[] = [];
             try {
                 batch = await fetchVariantsPage(offset, limit, manageOnly);
             } catch {
@@ -455,53 +376,55 @@ export function createInventoryService(http: Http): InventoryService {
             if (batch.length === 0) {
                 break;
             }
-            for (const v of batch) {
-                if (manageOnly && v?.manage_inventory !== true) {
+            for (const variant of batch) {
+                if (manageOnly && variant?.manage_inventory !== true) {
                     continue;
                 }
-                const qtyRaw = v?.inventory_quantity as
-                    | number
-                    | string
-                    | null
-                    | undefined;
-                const qty =
-                    typeof qtyRaw === "number"
-                        ? qtyRaw
-                        : typeof qtyRaw === "string" && qtyRaw.trim() !== ""
-                        ? Number(qtyRaw)
-                        : undefined;
-                if (
-                    typeof qty === "number" &&
-                    Number.isFinite(qty) &&
-                    qty < threshold
-                ) {
-                    variantsCount += 1;
-                    const pid = v?.product_id as string | undefined;
-                    if (!pid) {
-                        continue;
-                    }
-                    let row = productsOut.find((r) => r.id === pid);
-                    if (!row) {
-                        row = {
-                            id: pid,
-                            title: null,
-                            low_variants_count: 0,
-                            low_variants: []
-                        };
-                        productsOut.push(row);
-                    }
-                    row.low_variants_count += 1;
-                    row.low_variants.push({
-                        id: (v?.id ?? "") as string,
-                        title: (v?.title ?? null) as string | null,
-                        sku: (v?.sku ?? null) as string | null,
-                        inventory_quantity: qty,
-                        reserved_quantity: 0,
-                        stocked_quantity: null,
-                        available_quantity: null,
-                        inventory_items: []
-                    });
+                const quantity = toOptionalNumber(variant?.inventory_quantity);
+                if (typeof quantity !== "number" || quantity >= threshold) {
+                    continue;
                 }
+                variantsCount += 1;
+                const productId =
+                    typeof variant?.product_id === "string" &&
+                    variant.product_id.trim() !== ""
+                        ? variant.product_id
+                        : undefined;
+                if (!productId) {
+                    continue;
+                }
+                let row = productsOut.find((entry) => entry.id === productId);
+                if (!row) {
+                    row = {
+                        id: productId,
+                        title: null,
+                        low_variants_count: 0,
+                        low_variants: []
+                    };
+                    productsOut.push(row);
+                }
+                row.low_variants_count += 1;
+                const variantId =
+                    typeof variant?.id === "string" && variant.id.trim() !== ""
+                        ? variant.id
+                        : "";
+                const variantTitle =
+                    typeof variant?.title === "string" ? variant.title : null;
+                const variantSku =
+                    typeof variant?.sku === "string" && variant.sku.trim() !== ""
+                        ? variant.sku
+                        : null;
+
+                row.low_variants.push({
+                    id: variantId,
+                    title: variantTitle,
+                    sku: variantSku,
+                    inventory_quantity: quantity,
+                    reserved_quantity: 0,
+                    stocked_quantity: null,
+                    available_quantity: null,
+                    inventory_items: []
+                });
             }
             if (batch.length < limit) {
                 hasMore = false;
@@ -522,12 +445,16 @@ export function createInventoryService(http: Http): InventoryService {
                 continue;
             }
             try {
-                const d = await http.get<{
+                const response = await http.get<{
                     product?: { id?: string; title?: string | null };
                 }>(`/admin/products/${encodeURIComponent(row.id)}`, {
                     fields: ["+id", "+title"].join(",")
                 });
-                row.title = (d?.product?.title ?? null) as string | null;
+                const productTitle =
+                    typeof response?.product?.title === "string"
+                        ? response.product.title
+                        : null;
+                row.title = productTitle;
             } catch {
                 // ignore
             }
