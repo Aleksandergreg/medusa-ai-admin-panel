@@ -165,3 +165,132 @@ jobs:
         run: |
           echo "GEMINI_API_KEY is not configured; skipping live test" >&2
           exit 1
+
+  promptfoo:
+    name: Promptfoo Assistant Checks (label-gated)
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'promptfoo')
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ADMIN_EMAIL: ci-admin@example.com
+      ADMIN_PASSWORD: test-password-123
+      MEDUSA_BACKEND_URL: http://localhost:9000
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            my-medusa-store/package-lock.json
+            medusa-mcp/package-lock.json
+
+      - name: Install deps (parallel)
+        run: |
+          set -euo pipefail
+          npm ci &
+          main_pid=$!
+
+          (
+            cd medusa-mcp
+            npm ci || npm install --no-audit --no-fund
+            npm run build
+          ) &
+          mcp_pid=$!
+
+          wait "$main_pid"
+          wait "$mcp_pid"
+
+      - name: Create backend .env
+        run: |
+          cat > my-medusa-store/.env << 'EOF'
+          STORE_CORS=*
+          ADMIN_CORS=*
+          AUTH_CORS=*
+          JWT_SECRET=supersecret
+          COOKIE_SECRET=supersecret
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+          MEDUSA_BACKEND_URL=${{ env.MEDUSA_BACKEND_URL }}
+          MEDUSA_USERNAME=${{ env.ADMIN_EMAIL }}
+          MEDUSA_PASSWORD=${{ env.ADMIN_PASSWORD }}
+          GEMINI_API_KEY=${{ env.GEMINI_API_KEY }}
+          EOF
+
+      - name: Migrate DB
+        working-directory: my-medusa-store
+        run: npx medusa db:migrate
+
+      - name: Seed data
+        working-directory: my-medusa-store
+        run: npm run seed || true
+
+      - name: Create admin user (emailpass)
+        working-directory: my-medusa-store
+        run: npx medusa user --email "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" || true
+
+      - name: Start backend (background)
+        working-directory: my-medusa-store
+        run: |
+          nohup npm run dev > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
+
+      - name: Wait for backend
+        run: |
+          timeout 120 bash -c 'until curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/app | grep -qE "200|301|302|401|404"; do sleep 2; done'
+
+      - name: Acquire admin JWT
+        id: adminjwt
+        run: |
+          set -euo pipefail
+          token=$(curl -s -X POST http://localhost:9000/auth/user/emailpass \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" | jq -r '.token // .access_token // empty')
+          if [ -z "$token" ]; then echo "Failed to get admin JWT" >&2; exit 1; fi
+          echo "token=$token" >> $GITHUB_OUTPUT
+
+      - name: Create Admin API key (secret)
+        id: adminkey
+        env:
+          ADMIN_JWT: ${{ steps.adminjwt.outputs.token }}
+        run: |
+          set -euo pipefail
+          resp=$(curl -s -X POST http://localhost:9000/admin/api-keys \
+            -H "Authorization: Bearer $ADMIN_JWT" \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"CI Admin Key","type":"secret"}')
+          key=$(echo "$resp" | jq -r '.. | .token? // empty' | grep -m1 '^sk_')
+          if [ -z "$key" ]; then echo "Failed to create admin API key: $resp" >&2; exit 1; fi
+          echo "key=$key" >> $GITHUB_OUTPUT
+
+      - name: Run Promptfoo (blocking)
+        env:
+          MEDUSA_ADMIN_API_KEY: ${{ steps.adminkey.outputs.key }}
+        run: npx promptfoo@latest eval -c promptfoo/promptfooconfig.yaml promptfoo/datasets/prompts.yaml --max-concurrency 2
+
+      - name: Upload Promptfoo artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptfoo-last-run
+          path: .promptfoo/last-run
+
+      - name: Stop backend
+        if: always()
+        run: if [ -f my-medusa-store/../backend.pid ]; then kill $(cat my-medusa-store/../backend.pid) || true; fi
