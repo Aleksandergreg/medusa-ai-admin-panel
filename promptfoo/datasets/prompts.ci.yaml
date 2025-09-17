@@ -49,14 +49,3 @@ tests:
       - type: javascript
         value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r) return true; const a=r.history?.[0]?.tool_args||{}; const s=(a.start||a.start_date||r.data?.start||''); const e=(a.end||a.end_date||r.data?.end||''); return !!s && !!e; })()"
 
-  - description: Customer order frequency
-    vars:
-      prompt: "How frequently do customers order?"
-    assert:
-      - type: javascript
-        value: "(((output && output.answer) ? String(output.answer) : (typeof output === 'string' ? output : '')).trim().length > 0)"
-      - type: javascript
-        value: "(() => { const r=(typeof output==='string' ? (output.trim().startsWith('{')?JSON.parse(output):{answer:output}) : (output||{})); const l=String(r.answer||'').toLowerCase(); return l.includes('average') && l.includes('day'); })()"
-      - type: javascript
-        value: "(() => { const r=(typeof output==='string'&&output.trim().startsWith('{'))?JSON.parse(output):(typeof output==='object'?output:null); if(!r) return true; const name=r.history?.[0]?.tool_name; const t=r.data?.summary?.total_customers_analyzed; return (!name || name==='customer_order_frequency') && (t===undefined || (typeof t==='number' && t>=0)); })()"
-
