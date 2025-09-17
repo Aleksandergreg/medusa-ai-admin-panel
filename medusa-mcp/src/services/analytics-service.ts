@@ -1,11 +1,16 @@
-import type { OrdersRepo, VariantsRepo } from "../types/analytics-service";
+import type {
+    OrdersRepo,
+    VariantsRepo,
+    ProductsRepo
+} from "../types/analytics-service";
 
 const toNum = (x: unknown): number =>
     typeof x === "number" && Number.isFinite(x) ? x : Number(x) || 0;
 
 export function createAnalyticsService(
     orders: OrdersRepo,
-    variants: VariantsRepo
+    variants: VariantsRepo,
+    products: ProductsRepo
 ): {
     ordersCount: (start: string, end: string) => Promise<number>;
     salesAggregate: (params: {
@@ -71,6 +76,7 @@ export function createAnalyticsService(
         metric: "quantity" | "revenue" | "orders";
         limit?: number;
         sort?: "desc" | "asc";
+        include_zero?: boolean;
     }): Promise<
         Array<{
             product_id: string | null;
@@ -91,7 +97,8 @@ export function createAnalyticsService(
             group_by,
             metric,
             limit = 5,
-            sort = "desc"
+            sort = "desc",
+            include_zero = false
         } = params;
         const list = await orders.withItems(start, end);
 
@@ -250,7 +257,7 @@ export function createAnalyticsService(
             }
         }
 
-        const rows = [...agg.values()].map((r) => ({
+        let rows = [...agg.values()].map((r) => ({
             product_id: r.product_id ?? null,
             variant_id: r.variant_id ?? null,
             sku: r.sku ?? null,
@@ -267,6 +274,34 @@ export function createAnalyticsService(
                     ? r.revenue
                     : r.orders.size
         }));
+
+        // Optionally include zero-sale products in the result set for product grouping
+        if (include_zero && group_by === "product") {
+            try {
+                const all = await products.listAllMinimal();
+                if (Array.isArray(all) && all.length > 0) {
+                    const present = new Set(rows.map((r) => r.product_id ?? ""));
+                    for (const p of all) {
+                        const pid = p?.id;
+                        if (!pid || present.has(pid)) continue;
+                        rows.push({
+                            product_id: pid,
+                            variant_id: null,
+                            sku: null,
+                            title: p?.title ?? null,
+                            shipping_method_id: null,
+                            shipping_option_id: null,
+                            quantity: 0,
+                            revenue: 0,
+                            orders: 0,
+                            value: 0
+                        });
+                    }
+                }
+            } catch {
+                // Best-effort: if products listing fails, proceed with observed rows only
+            }
+        }
 
         rows.sort((a, b) =>
             sort === "desc" ? b.value - a.value : a.value - b.value

@@ -7,3 +7,9 @@ export type OrdersRepo = {
 export type VariantsRepo = {
     resolve: (variantId: string) => Promise<VariantResolution>;
 };
+
+export type ProductsRepo = {
+    listAllMinimal: () => Promise<
+        Array<{ id?: string; title?: string | null; status?: string | null }>
+    >;
+};

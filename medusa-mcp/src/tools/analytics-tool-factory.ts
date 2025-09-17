@@ -9,6 +9,7 @@ type AnalyticsService = {
         metric: "quantity" | "revenue" | "orders";
         limit?: number;
         sort?: "asc" | "desc";
+        include_zero?: boolean;
     }) => Promise<
         Array<{
             product_id: string | null;
@@ -430,7 +431,8 @@ export function createAnalyticsTools(
                 .default("desc"),
             order: z.string().optional(),
             order_by: z.string().optional(),
-            direction: z.string().optional()
+            direction: z.string().optional(),
+            include_zero: z.union([z.boolean(), z.string(), z.number()]).optional()
         },
         handler: async (input: Record<string, unknown>): Promise<unknown> => {
             const rng = coerceRange(input);
@@ -484,6 +486,18 @@ export function createAnalyticsTools(
                 | "asc"
                 | "desc";
 
+            // include_zero: default true unless explicitly disabled (false/0/"false")
+            const includeZero = ((): boolean => {
+                const v = (input as any).include_zero;
+                if (typeof v === "boolean") return v;
+                if (typeof v === "number") return v !== 0;
+                if (typeof v === "string") {
+                    const s = v.trim().toLowerCase();
+                    return !["0", "false", "no", "off"].includes(s);
+                }
+                return true;
+            })();
+
             const schema = z.object({
                 start: z.string().datetime(),
                 end: z.string().datetime(),
@@ -518,7 +532,8 @@ export function createAnalyticsTools(
                 group_by: parsed.data.group_by,
                 metric: parsed.data.metric,
                 limit: parsed.data.limit,
-                sort: parsed.data.sort
+                sort: parsed.data.sort,
+                include_zero: includeZero
             });
 
             const titleGroup =
