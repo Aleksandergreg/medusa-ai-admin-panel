@@ -287,22 +287,9 @@ jobs:
       - name: Run Promptfoo (blocking)
         env:
           MEDUSA_ADMIN_API_KEY: ${{ steps.adminkey.outputs.key }}
-        run: npx promptfoo@latest eval -c promptfoo/promptfooconfig.yaml promptfoo/datasets/prompts.yaml --max-concurrency 1
+        run: npx promptfoo@latest eval -c promptfoo/promptfooconfig.yaml -d promptfoo/datasets/prompts.ci.yaml --max-concurrency 1
 
-      - name: Dump Promptfoo results on failure
-        if: failure()
-        run: |
-          echo "Promptfoo last-run contents:" && ls -la .promptfoo/last-run || true
-          if [ -f .promptfoo/last-run/results.json ]; then
-            echo "--- results.json ---"
-            node -e "console.log(require('fs').readFileSync('.promptfoo/last-run/results.json','utf8'))"
-          elif [ -f .promptfoo/last-run/report.json ]; then
-            echo "--- report.json ---"
-            node -e "console.log(require('fs').readFileSync('.promptfoo/last-run/report.json','utf8'))"
-          else
-            echo "No JSON results found under .promptfoo/last-run"
-          fi
-
+   
       - name: Dump raw assistant responses (on failure)
         if: failure()
         env:
