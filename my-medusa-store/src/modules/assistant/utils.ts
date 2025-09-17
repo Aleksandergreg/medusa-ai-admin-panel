@@ -71,7 +71,7 @@ export function ensureMarkdownMinimum(answer: string): string {
 
     // If it's likely JSON, fence it for readability
     const stripped = stripJsonFences(text);
-    if (/^[[{]/.test(stripped)) {
+    if (/^[\[{]/.test(stripped)) {
       try {
         JSON.parse(stripped);
         return "```json\n" + stripped + "\n```";
