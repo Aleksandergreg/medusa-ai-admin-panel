@@ -32,6 +32,21 @@ providers:
       # Extract only the natural-language answer for scoring
       responsePath: answer
 
+  # Secondary provider returning the full JSON (no responsePath)
+  - id: http
+    label: Medusa Assistant (full JSON)
+    config:
+      url: http://localhost:9000/admin/assistant
+      method: POST
+      headers:
+        Content-Type: application/json
+        Authorization: "Basic {{env.MEDUSA_ADMIN_API_KEY}}"
+      body:
+        prompt: "{{prompt}}"
+        wantsChart: {{wantsChart | default(false)}}
+        chartType: "{{chartType | default('bar')}}"
+        chartTitle: "{{chartTitle | default('')}}"
+
 # Reference external dataset with prompts and assertions
 datasets:
   - promptfoo/datasets/prompts.yaml
