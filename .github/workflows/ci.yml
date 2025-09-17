@@ -302,6 +302,26 @@ jobs:
             echo "No JSON results found under .promptfoo/last-run"
           fi
 
+      - name: Dump raw assistant responses (on failure)
+        if: failure()
+        env:
+          MEDUSA_ADMIN_API_KEY: ${{ steps.adminkey.outputs.key }}
+        run: |
+          echo "--- Raw assistant responses for dataset prompts ---"
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            payload=$(jq -n --arg p "$line" '{prompt: $p}')
+            echo "PROMPT: $line"
+            resp=$(curl -s -X POST http://localhost:9000/admin/assistant \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Basic $MEDUSA_ADMIN_API_KEY" \
+              -d "$payload")
+            echo "$resp" | jq -r '.answer // "(no answer field)"'
+            echo "TOOL: "$(echo "$resp" | jq -r '.history[0].tool_name // "(none)"')
+            echo "ARGS: "$(echo "$resp" | jq -c '.history[0].tool_args // {}')
+            echo "---"
+          done < <(sed -n 's/^[[:space:]]*prompt:[[:space:]]*"\(.*\)".*/\1/p' promptfoo/datasets/prompts.yaml)
+
       - name: Upload Promptfoo artifacts
         if: always()
         uses: actions/upload-artifact@v4
