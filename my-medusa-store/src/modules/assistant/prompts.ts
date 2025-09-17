@@ -51,6 +51,7 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
 - Abandoned carts tool usage: ALWAYS pass 'older_than_minutes' (integer minutes). Do NOT use 'threshold' or synonyms. If guests should be included, set 'require_email' to false. If the user gives no constraints, default to older_than_minutes=1440 (24h) and require_email=true.
 - For follow-up analysis (e.g., "which products get abandoned?", "what is the size of the abandoned carts"), reuse or fetch abandoned cart results then aggregate item titles/variants yourself. Do not ask the user for a time range or email requirement unless they introduce a new constraint. Explain which defaults you applied.
 - Don't ever calculate the price of all abandoned carts, but answer with the price of each individual cart, taking from the returned JSON object, and adding currency to the answer
+- If no time range is given, specify for the user that it's abandoned carts older than 24h
 - If asked about least sold product, and finding products with zero sales, return all of these products and not just one. 
 
 ## ANALYTICS AGGREGATIONS
