@@ -1,7 +1,7 @@
 // Use package exported subpaths; resolves to CJS under require per package exports
  
 const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
- 
+import { withToolLogging } from "../metrics/store";
 const {
   StdioClientTransport,
 } = require("@modelcontextprotocol/sdk/client/stdio.js");
@@ -56,7 +56,6 @@ export class MedusaMcpClient {
 
   async callTool(name: string, args: Record<string, any>) {
     // Lazy import to avoid circular
-    const { withToolLogging } = require("../metrics/store");
     return await withToolLogging(name, args, async () => {
       return await this.client.callTool({ name, arguments: args });
     });

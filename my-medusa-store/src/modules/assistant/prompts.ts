@@ -60,6 +60,7 @@ export function getCombinedPrompt(wantsChart?: boolean): string {
   - "top/most/best" → sort: desc
   - "least/worst/lowest" → sort: asc
 - Example: "least sold product all time" → sales_aggregate with { start_date: "1970-01-01T00:00:00Z", end_date: end of today (UTC), group_by: "product", metric: "quantity", limit: 1, sort: "asc" }.
+- Never call the sales_aggregate tool with a limit bigger than 50
 
 ### PAYMENT AND FULFILLMENT STATUS SEMANTIC MATCHING
 When users ask about order statuses using natural language, intelligently map to actual Medusa statuses:
