@@ -8,3 +8,7 @@ export class ToolError extends Error {
         this.name = "ToolError";
     }
 }
+
+export function formatErrorResponse(error: unknown) {
+    // Format the error response according to the MCP protocol
+}

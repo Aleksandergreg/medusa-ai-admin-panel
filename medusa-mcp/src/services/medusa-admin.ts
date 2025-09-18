@@ -1,71 +1,213 @@
 import Medusa from "@medusajs/js-sdk";
-import {
-    IS_DEV,
-    MEDUSA_BACKEND_URL,
-    MEDUSA_PASSWORD,
-    MEDUSA_USERNAME
-} from "../config/config";
-import { createHttp } from "../http/client";
-import { createVariantsRepo } from "../repositories/variants-repo";
-import { createOrdersRepo } from "../repositories/orders-repo";
-import { createAnalyticsService } from "./analytics-service";
-import { createOpenApiTools } from "../tools/openapi-tool-factory";
-import { createAnalyticsTools } from "../tools/analytics-tool-factory";
-import { createInventoryService } from "./inventory-service";
-import { createInventoryTools } from "../tools/inventory-tool-factory";
-import { createPromotionAnalyticsService } from "./promotion-analytics-service";
-import { createPromotionAnalyticsTools } from "../tools/promotion-analytics-tool-factory";
-import { createCartsTools } from "../tools/carts-tool-factory";
-import { createProductsRepo } from "../repositories/products-repo";
+import { config } from "dotenv";
+import { ZodTypeAny } from "zod";
+import adminJson from "../oas/admin.json";
+import { SdkRequestType, Parameter } from "../types/admin-json";
+import { defineTool } from "../utils/define-tools";
+
+config();
+
+const MEDUSA_BACKEND_URL =
+    process.env.MEDUSA_BACKEND_URL ?? "http://localhost:9000";
+
+const MEDUSA_USERNAME = process.env.MEDUSA_USERNAME ?? "medusa_user";
+const MEDUSA_PASSWORD = process.env.MEDUSA_PASSWORD ?? "medusa_pass";
 
 export default class MedusaAdminService {
-    private sdk: Medusa;
-    private token = "";
-    public http;
-    public variants;
-    public orders;
-    public analytics;
-    public inventory;
-    public promotionAnalytics;
-    public tools: Array<ReturnType<typeof createOpenApiTools>[number]>;
-
+    sdk: Medusa;
+    adminToken = "";
     constructor() {
         this.sdk = new Medusa({
             baseUrl: MEDUSA_BACKEND_URL,
-            debug: IS_DEV,
+            debug: process.env.NODE_ENV === "development",
             publishableKey: process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY,
-            auth: { type: "jwt" }
+            auth: {
+                type: "jwt"
+            }
         });
-        this.http = createHttp(this.sdk, () => this.token);
-        this.variants = createVariantsRepo(this.http);
-        this.orders = createOrdersRepo(this.http);
-        const products = createProductsRepo(this.http);
-        this.analytics = createAnalyticsService(this.orders, this.variants, products);
-        this.inventory = createInventoryService(this.http);
-        this.promotionAnalytics = createPromotionAnalyticsService(this.http);
-        this.tools = [
-            ...createAnalyticsTools(this.analytics),
-            ...createInventoryTools(this.inventory),
-            ...createPromotionAnalyticsTools(this.promotionAnalytics),
-            ...createCartsTools(this.http),
-            ...createOpenApiTools(this.http)
-        ];
     }
 
     async init(): Promise<void> {
-        const res = (await (this.sdk as any).auth.login("user", "emailpass", {
+        const res = await this.sdk.auth.login("user", "emailpass", {
             email: MEDUSA_USERNAME,
             password: MEDUSA_PASSWORD
-        })) as any;
-        const token =
-            res?.token ?? res?.access_token ?? res?.jwt ?? res?.toString?.();
-        this.token =
-            typeof token === "string" && token && token !== "[object Object]"
-                ? token
-                : "";
+        });
+        this.adminToken = res.toString();
     }
 
-    defineTools(): Array<ReturnType<typeof createOpenApiTools>[number]> {
-        return this.tools;
+    wrapPath(
+        refPath: string,
+        refFunction: SdkRequestType
+    ): ReturnType<typeof defineTool> {
+        type MethodShape = {
+            operationId: string;
+            description: string;
+            parameters?: Parameter[];
+        };
+        return defineTool((z) => {
+            let name;
+            let description;
+            let parameters: Parameter[] = [];
+            let method = "get";
+            if ("get" in refFunction) {
+                method = "get";
+                const getM = (refFunction as unknown as { get: MethodShape })
+                    .get;
+                name = getM.operationId;
+                description = getM.description;
+                parameters = getM.parameters ?? [];
+            } else if ("post" in refFunction) {
+                method = "post";
+                const postM = (refFunction as unknown as { post: MethodShape })
+                    .post;
+                name = postM.operationId;
+                description = postM.description;
+                parameters = postM.parameters ?? [];
+            } else if ("delete" in refFunction) {
+                method = "delete";
+                const delM = (refFunction as unknown as { delete: MethodShape })
+                    .delete;
+                name = delM.operationId;
+                description = delM.description;
+                parameters = delM.parameters ?? [];
+            }
+            if (!name) {
+                throw new Error("No name found for path: " + refPath);
+            }
+            return {
+                name: `Admin${name}`,
+                description: `This tool helps store administors. ${description}`,
+                inputSchema: {
+                    ...parameters
+                        .filter((p) => p.in != "header")
+                        .reduce((acc, param) => {
+                            switch (param.schema.type) {
+                                case "string":
+                                    acc[param.name] = z.string().optional();
+                                    break;
+                                case "number":
+                                    acc[param.name] = z.number().optional();
+                                    break;
+                                case "boolean":
+                                    acc[param.name] = z.boolean().optional();
+                                    break;
+                                case "array":
+                                    acc[param.name] = z
+                                        .array(z.string())
+                                        .optional();
+                                    break;
+                                case "object":
+                                    acc[param.name] = z.object({}).optional();
+                                    break;
+                                default:
+                                    acc[param.name] = z.string().optional();
+                            }
+                            return acc;
+                        }, {} as Record<string, ZodTypeAny>)
+                },
+
+                handler: async (
+                    input: Record<string, unknown>
+                ): Promise<unknown> => {
+                    // Separate params by location
+                    const pathParams = parameters
+                        .filter((p) => p.in === "path")
+                        .map((p) => p.name);
+                    const queryParamNames = parameters
+                        .filter((p) => p.in === "query")
+                        .map((p) => p.name);
+
+                    // Build final path by replacing {param} occurrences
+                    let finalPath = refPath;
+                    for (const pName of pathParams) {
+                        const val = (input as Record<string, unknown>)[pName];
+                        if (val === undefined || val === null) {
+                            continue;
+                        }
+                        finalPath = finalPath.replace(
+                            new RegExp(`\\{${pName}\\}`, "g"),
+                            encodeURIComponent(String(val))
+                        );
+                    }
+
+                    // Build body from non-path, non-query inputs
+                    const body = Object.entries(input).reduce(
+                        (acc, [key, value]) => {
+                            if (
+                                pathParams.includes(key) ||
+                                queryParamNames.includes(key)
+                            ) {
+                                return acc;
+                            }
+                            if (value === undefined) {
+                                return acc;
+                            }
+                            (acc as Record<string, unknown>)[key] =
+                                value as unknown;
+                            return acc;
+                        },
+                        {} as Record<string, unknown>
+                    );
+
+                    // Build query from declared query params only
+                    const queryEntries: [string, string][] = [];
+                    for (const [key, value] of Object.entries(input)) {
+                        if (!queryParamNames.includes(key)) {
+                            continue;
+                        }
+                        if (value === undefined || value === null) {
+                            continue;
+                        }
+                        if (Array.isArray(value)) {
+                            for (const v of value) {
+                                queryEntries.push([key, String(v)]);
+                            }
+                        } else if (typeof value === "object") {
+                            queryEntries.push([key, JSON.stringify(value)]);
+                        } else {
+                            queryEntries.push([key, String(value)]);
+                        }
+                    }
+                    const query = new URLSearchParams(queryEntries);
+                    if (method === "get") {
+                        const response = await this.sdk.client.fetch(
+                            finalPath,
+                            {
+                                method: method,
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Authorization": `Bearer ${this.adminToken}`
+                                },
+                                query
+                            }
+                        );
+                        return response;
+                    } else {
+                        const response = await this.sdk.client.fetch(
+                            finalPath,
+                            {
+                                method: method,
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Authorization": `Bearer ${this.adminToken}`
+                                },
+                                body
+                            }
+                        );
+                        return response;
+                    }
+                }
+            };
+        });
+    }
+
+    defineTools(admin = adminJson): Array<ReturnType<typeof defineTool>> {
+        const paths = Object.entries(admin.paths) as [string, SdkRequestType][];
+        const tools = paths.map(([path, refFunction]) =>
+            this.wrapPath(path, refFunction)
+        );
+        return tools;
     }
 }

@@ -1,8 +1,8 @@
 import Medusa from "@medusajs/js-sdk";
 import { config } from "dotenv";
-import { ZodTypeAny } from "zod";
+import { z, ZodTypeAny } from "zod";
 import storeJson from "../oas/store.json";
-import { SdkRequestType, Parameter } from "../types/store-json";
+import { SdkRequestType, StoreJson, Parameter } from "../types/store-json";
 import { defineTool, InferToolHandlerInput } from "../utils/define-tools";
 
 config();
@@ -26,10 +26,7 @@ export default class MedusaStoreService {
         });
     }
 
-    wrapPath(
-        refPath: string,
-        refFunction: SdkRequestType
-    ): ReturnType<typeof defineTool> {
+    wrapPath(refPath: string, refFunction: SdkRequestType) {
         return defineTool((z): any => {
             let name;
             let description;
@@ -98,6 +95,7 @@ export default class MedusaStoreService {
                     for (const pName of pathParams) {
                         const val = (input as any)[pName];
                         if (val === undefined || val === null) {
+                            // If path param is missing, leave as-is; server may handle error
                             continue;
                         }
                         finalPath = finalPath.replace(
@@ -106,7 +104,7 @@ export default class MedusaStoreService {
                         );
                     }
 
-                    // Build body from non-path, non-query inputs
+                    // Build body from non-path, non-query inputs (most POST endpoints expect JSON body)
                     const body = Object.entries(input).reduce(
                         (acc, [key, value]) => {
                             if (
@@ -124,7 +122,7 @@ export default class MedusaStoreService {
                         {} as Record<string, any>
                     );
 
-                    // Build query
+                    // Build query from remaining non-path, non-body values
                     const queryEntries: [string, string][] = [];
                     for (const [key, value] of Object.entries(input)) {
                         if (
@@ -141,6 +139,7 @@ export default class MedusaStoreService {
                                 queryEntries.push([key, String(v)]);
                             }
                         } else if (typeof value === "object") {
+                            // JSON-encode objects in query if needed
                             queryEntries.push([key, JSON.stringify(value)]);
                         } else {
                             queryEntries.push([key, String(value)]);
@@ -151,32 +150,26 @@ export default class MedusaStoreService {
                         console.error(
                             `Fetching ${finalPath} with GET ${query.toString()}`
                         );
-                        const response = await this.sdk.client.fetch(
-                            finalPath,
-                            {
-                                method: method,
-                                headers: {
-                                    "Content-Type": "application/json",
-                                    "Accept": "application/json",
-                                    "Authorization": `Bearer ${process.env.PUBLISHABLE_KEY}`
-                                },
-                                query: query
-                            }
-                        );
+                        const response = await this.sdk.client.fetch(finalPath, {
+                            method: method,
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Accept": "application/json",
+                                "Authorization": `Bearer ${process.env.PUBLISHABLE_KEY}`
+                            },
+                            query: query
+                        });
                         return response;
                     } else {
-                        const response = await this.sdk.client.fetch(
-                            finalPath,
-                            {
-                                method: method,
-                                headers: {
-                                    "Content-Type": "application/json",
-                                    "Accept": "application/json",
-                                    "Authorization": `Bearer ${process.env.PUBLISHABLE_KEY}`
-                                },
-                                body
-                            }
-                        );
+                        const response = await this.sdk.client.fetch(finalPath, {
+                            method: method,
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Accept": "application/json",
+                                "Authorization": `Bearer ${process.env.PUBLISHABLE_KEY}`
+                            },
+                            body
+                        });
                         return response;
                     }
                 }
@@ -186,8 +179,8 @@ export default class MedusaStoreService {
 
     defineTools(store = storeJson): any[] {
         const paths = Object.entries(store.paths) as [string, SdkRequestType][];
-        const tools: ReturnType<typeof this.wrapPath>[] = paths.map(
-            ([path, refFunction]) => this.wrapPath(path, refFunction)
+        const tools = paths.map(([path, refFunction]) =>
+            this.wrapPath(path, refFunction)
         );
         return tools;
     }
