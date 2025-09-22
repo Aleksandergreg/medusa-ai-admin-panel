@@ -147,6 +147,36 @@ export default class OpenApiToolsService {
                             };
                         })
                         .filter(Boolean);
+
+                    // Body hints: find any 'attribute' properties with examples (e.g., items.product.id)
+                    const bodyHints = (() => {
+                        const hints = new Set<string>();
+                        const seen = new WeakSet<object>();
+                        const visit = (node: unknown): void => {
+                            if (!node || typeof node !== "object") return;
+                            if (seen.has(node as object)) return;
+                            seen.add(node as object);
+                            const o = node as Record<string, unknown>;
+                            if (o.properties && typeof o.properties === "object") {
+                                const props = o.properties as Record<string, unknown>;
+                                if (
+                                    props.attribute &&
+                                    typeof props.attribute === "object" &&
+                                    (props.attribute as any).example
+                                ) {
+                                    const ex = String((props.attribute as any).example);
+                                    hints.add(ex);
+                                }
+                                for (const v of Object.values(props)) visit(v);
+                            }
+                            if (Array.isArray(o.allOf)) o.allOf.forEach(visit);
+                            if (Array.isArray(o.oneOf)) o.oneOf.forEach(visit);
+                            if (Array.isArray(o.anyOf)) o.anyOf.forEach(visit);
+                            if (o.items) visit(o.items);
+                        };
+                        if (schemas?.requestBodySchema) visit(schemas.requestBodySchema);
+                        return hints.size ? { attributeExamples: Array.from(hints) } : undefined;
+                    })();
                     const exampleUrl = (queryParamHints as Array<{ name: string; operators: string[]; example?: string }> | undefined)
                         ?.map((h) => h?.example)
                         .filter((e): e is string => Boolean(e))
@@ -165,7 +195,8 @@ export default class OpenApiToolsService {
                         queryParams: this.summarizeParams(schemas?.queryParams ?? []),
                         headerParams: this.summarizeParams(schemas?.headerParams ?? []),
                         requestBodySchema: schemas?.requestBodySchema,
-                        queryParamHints
+                        queryParamHints,
+                        bodyParamHints: bodyHints
                     };
                 }
             }))
@@ -314,10 +345,40 @@ export default class OpenApiToolsService {
                         });
                         return res;
                     }
+                    // Preflight body normalization for known patterns (non-breaking)
+                    let body = (input.body as any) ?? {};
+                    // Fix common mistake in promotion target rules: attribute must reference items.*
+                    if (
+                        op.operationId === "AdminPostPromotions" &&
+                        body &&
+                        typeof body === "object" &&
+                        body.application_method &&
+                        Array.isArray(body.application_method.target_rules)
+                    ) {
+                        body = { ...body, application_method: { ...body.application_method } };
+                        body.application_method.target_rules = body.application_method.target_rules.map((r: any) => {
+                            if (!r || typeof r !== "object") return r;
+                            const attr = r.attribute as string | undefined;
+                            if (!attr) return r;
+                            // If user passed "product.id", normalize to "items.product.id"
+                            if (attr === "product.id") {
+                                return { ...r, attribute: "items.product.id" };
+                            }
+                            if (attr === "variant.id") {
+                                return { ...r, attribute: "items.variant.id" };
+                            }
+                            // If attribute refers to product.* without items prefix, add it
+                            if (/^(product\.|variant\.)/.test(attr)) {
+                                return { ...r, attribute: `items.${attr}` };
+                            }
+                            return r;
+                        });
+                    }
+
                     const res = await this.sdk.client.fetch(finalPath, {
                         method: op.method,
                         headers,
-                        body: (input.body as unknown) ?? {}
+                        body
                     });
                     return res;
                 }
