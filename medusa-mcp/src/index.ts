@@ -2,30 +2,29 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 // 1. Remove the MedusaStoreService import
 // import MedusaStoreService from "./services/medusa-store"; 
-import MedusaAdminService from "./services/medusa-admin";
+import OpenApiToolsService from "./openapi/tools";
 
 async function main(): Promise<void> {
     // 2. Update the startup message for clarity
-    console.error("Starting Medusa Admin MCP Server...");
+    console.error("Starting Medusa OpenAPI MCP Server...");
 
     // 3. Remove the store service and related logic
-    const medusaAdminService = new MedusaAdminService();
-    let tools = [];
+    const openApiTools = new OpenApiToolsService();
+    let tools = [] as ReturnType<typeof openApiTools.defineTools>;
     try {
-        await medusaAdminService.init();
-
-        // 4. Load tools exclusively from the admin service
-        tools = medusaAdminService.defineTools();
+        await openApiTools.init();
+        // Register only a small set of generic OpenAPI tools
+        tools = openApiTools.defineTools();
     } catch (error) {
-        // 5. Update error handling to be specific to the admin service
-        console.error("Fatal Error: Could not initialize Medusa Admin Services:", error);
+        // 5. Error handling for tool initialization
+        console.error("Fatal Error: Could not initialize OpenAPI tools:", error);
         process.exit(1);
     }
 
     const server = new McpServer(
         {
-            // 6. Rename the server to reflect its purpose
-            name: "Medusa Admin MCP Server",
+            // 6. Server name reflects generic OpenAPI capability
+            name: "Medusa OpenAPI MCP Server",
             version: "1.0.0"
         },
         {

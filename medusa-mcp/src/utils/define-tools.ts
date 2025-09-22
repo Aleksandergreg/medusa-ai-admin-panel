@@ -19,7 +19,7 @@ export const defineTool = (
     const tool = cb(z);
 
     const wrappedHandler = async (
-        input: InferToolHandlerInput<Zod.ZodAny, Zod.ZodAny>,
+        input: any,
         _: RequestHandlerExtra
     ): Promise<{
         content: CallToolResult["content"];
@@ -55,6 +55,9 @@ export const defineTool = (
 
     return {
         ...tool,
-        handler: wrappedHandler
+        handler: wrappedHandler as unknown as (
+            args: Record<string, unknown>,
+            extra: RequestHandlerExtra
+        ) => Promise<CallToolResult>
     };
 };
