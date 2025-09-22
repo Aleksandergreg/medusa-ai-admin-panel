@@ -15,7 +15,7 @@ type AskInput = {
 };
 
 class AssistantModuleService extends MedusaService({}) {
-  private readonly maxSteps = 15;
+  private readonly maxSteps = 25;
 
   constructor(container: any, options: any = {}) {
     super(container, options);

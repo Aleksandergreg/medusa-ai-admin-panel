@@ -30,6 +30,7 @@ export default class OpenApiToolsService {
     private sdk: Medusa;
     private adminToken = "";
     private registry: OpenApiRegistry;
+    private spec = loadOpenApiSpec();
 
     constructor() {
         this.sdk = new Medusa({
@@ -38,8 +39,7 @@ export default class OpenApiToolsService {
             publishableKey: process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY,
             auth: { type: "jwt" }
         });
-        const spec = loadOpenApiSpec();
-        this.registry = new OpenApiRegistry(spec);
+        this.registry = new OpenApiRegistry(this.spec);
     }
 
     async init(): Promise<void> {
@@ -148,35 +148,72 @@ export default class OpenApiToolsService {
                         })
                         .filter(Boolean);
 
-                    // Body hints: find any 'attribute' properties with examples (e.g., items.product.id)
-                    const bodyHints = (() => {
-                        const hints = new Set<string>();
-                        const seen = new WeakSet<object>();
-                        const visit = (node: unknown): void => {
-                            if (!node || typeof node !== "object") return;
-                            if (seen.has(node as object)) return;
-                            seen.add(node as object);
-                            const o = node as Record<string, unknown>;
-                            if (o.properties && typeof o.properties === "object") {
-                                const props = o.properties as Record<string, unknown>;
-                                if (
-                                    props.attribute &&
-                                    typeof props.attribute === "object" &&
-                                    (props.attribute as any).example
-                                ) {
-                                    const ex = String((props.attribute as any).example);
-                                    hints.add(ex);
-                                }
-                                for (const v of Object.values(props)) visit(v);
+                    // Generic body field example and enum extraction
+                    const bodyFieldExamples: Record<string, unknown> = {};
+                    const bodyFieldEnums: Record<string, unknown[]> = {};
+                    const requiredBodyFields = new Set<string>();
+
+                    const resolveRef = (node: any): any => {
+                        if (!node || typeof node !== "object") return node;
+                        if (node.$ref && typeof node.$ref === "string") {
+                            const ref = node.$ref as string;
+                            const m = ref.match(/^#\/components\/schemas\/(.+)$/);
+                            if (m) {
+                                const name = m[1];
+                                const resolved = this.spec.components?.schemas?.[name];
+                                if (resolved) return resolved;
                             }
-                            if (Array.isArray(o.allOf)) o.allOf.forEach(visit);
-                            if (Array.isArray(o.oneOf)) o.oneOf.forEach(visit);
-                            if (Array.isArray(o.anyOf)) o.anyOf.forEach(visit);
-                            if (o.items) visit(o.items);
+                        }
+                        return node;
+                    };
+
+                    const walk = (node: any, path: string, parentRequired?: Set<string>): void => {
+                        const n = resolveRef(node);
+                        if (!n || typeof n !== "object") return;
+
+                        // Merge required from current node
+                        const reqList: string[] = Array.isArray(n.required) ? (n.required as string[]) : [];
+                        const reqSet = new Set<string>([...(parentRequired ?? []), ...reqList]);
+
+                        const recordExampleEnum = (schema: any, p: string) => {
+                            if (!schema || typeof schema !== "object") return;
+                            if (schema.example !== undefined) {
+                                bodyFieldExamples[p] = schema.example;
+                            } else if (Array.isArray(schema.examples) && schema.examples.length) {
+                                bodyFieldExamples[p] = schema.examples[0];
+                            }
+                            if (Array.isArray(schema.enum) && schema.enum.length) {
+                                bodyFieldEnums[p] = schema.enum;
+                            }
                         };
-                        if (schemas?.requestBodySchema) visit(schemas.requestBodySchema);
-                        return hints.size ? { attributeExamples: Array.from(hints) } : undefined;
-                    })();
+
+                        // If object with properties
+                        if (n.properties && typeof n.properties === "object") {
+                            const props = n.properties as Record<string, any>;
+                            for (const [k, v] of Object.entries(props)) {
+                                const childPath = path ? `${path}.${k}` : k;
+                                const child = resolveRef(v);
+                                if (reqSet.has(k)) requiredBodyFields.add(childPath);
+                                recordExampleEnum(child, childPath);
+                                // Recurse
+                                walk(child, childPath, reqSet);
+                            }
+                        }
+                        // Handle arrays
+                        if (n.type === "array" && n.items) {
+                            const arrPath = path ? `${path}[]` : "[]";
+                            recordExampleEnum(n, arrPath);
+                            walk(n.items, arrPath, parentRequired);
+                        }
+                        // Compose
+                        if (Array.isArray(n.allOf)) n.allOf.forEach((s: any) => walk(s, path, reqSet));
+                        if (Array.isArray(n.oneOf)) n.oneOf.forEach((s: any) => walk(s, path, parentRequired));
+                        if (Array.isArray(n.anyOf)) n.anyOf.forEach((s: any) => walk(s, path, parentRequired));
+                    };
+
+                    if (schemas?.requestBodySchema) {
+                        walk(schemas.requestBodySchema as any, "");
+                    }
                     const exampleUrl = (queryParamHints as Array<{ name: string; operators: string[]; example?: string }> | undefined)
                         ?.map((h) => h?.example)
                         .filter((e): e is string => Boolean(e))
@@ -196,7 +233,9 @@ export default class OpenApiToolsService {
                         headerParams: this.summarizeParams(schemas?.headerParams ?? []),
                         requestBodySchema: schemas?.requestBodySchema,
                         queryParamHints,
-                        bodyParamHints: bodyHints
+                        bodyFieldExamples,
+                        bodyFieldEnums,
+                        requiredBodyFields: Array.from(requiredBodyFields)
                     };
                 }
             }))
@@ -345,40 +384,10 @@ export default class OpenApiToolsService {
                         });
                         return res;
                     }
-                    // Preflight body normalization for known patterns (non-breaking)
-                    let body = (input.body as any) ?? {};
-                    // Fix common mistake in promotion target rules: attribute must reference items.*
-                    if (
-                        op.operationId === "AdminPostPromotions" &&
-                        body &&
-                        typeof body === "object" &&
-                        body.application_method &&
-                        Array.isArray(body.application_method.target_rules)
-                    ) {
-                        body = { ...body, application_method: { ...body.application_method } };
-                        body.application_method.target_rules = body.application_method.target_rules.map((r: any) => {
-                            if (!r || typeof r !== "object") return r;
-                            const attr = r.attribute as string | undefined;
-                            if (!attr) return r;
-                            // If user passed "product.id", normalize to "items.product.id"
-                            if (attr === "product.id") {
-                                return { ...r, attribute: "items.product.id" };
-                            }
-                            if (attr === "variant.id") {
-                                return { ...r, attribute: "items.variant.id" };
-                            }
-                            // If attribute refers to product.* without items prefix, add it
-                            if (/^(product\.|variant\.)/.test(attr)) {
-                                return { ...r, attribute: `items.${attr}` };
-                            }
-                            return r;
-                        });
-                    }
-
                     const res = await this.sdk.client.fetch(finalPath, {
                         method: op.method,
                         headers,
-                        body
+                        body: (input.body as unknown) ?? {}
                     });
                     return res;
                 }
