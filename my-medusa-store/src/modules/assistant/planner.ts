@@ -22,7 +22,8 @@ export async function planNextStepWithGemini(
       // Default: do nothing fancy
       return {
         action: "final_answer",
-        answer: "CI mode active: this prompt does not match pre-defined routes.",
+        answer:
+          "CI mode active: this prompt does not match pre-defined routes.",
       };
     }
   } catch {
@@ -53,7 +54,7 @@ export async function planNextStepWithGemini(
   const systemMessage =
     `${Prompt}\n\n` +
     `Decide the next step based on the user's goal and the tool-call history.\n` +
-    'Do only what the user asks for and respond with nothing else but that'+
+    "Do only what the user asks for and respond with nothing else but that" +
     `Actions: 'call_tool' or 'final_answer'.\n\n` +
     `1) If you need information or must perform an action, choose 'call_tool'.\n` +
     `2) If you have enough information, choose 'final_answer' and summarize succinctly.\n\n` +
@@ -115,11 +116,18 @@ export async function planNextStepWithGemini(
   // Try to parse robustly first
   const parsed = safeParseJSON(text);
   if (parsed && typeof parsed === "object" && "action" in parsed) {
-    return parsed as { action: "call_tool" | "final_answer"; tool_name?: string; tool_args?: any; answer?: string; };
+    return parsed as {
+      action: "call_tool" | "final_answer";
+      tool_name?: string;
+      tool_args?: any;
+      answer?: string;
+    };
   }
 
   // As a last resort, treat the raw response as a final answer
-  console.error("Failed to parse LLM response as JSON. Falling back to final_answer.");
+  console.error(
+    "Failed to parse LLM response as JSON. Falling back to final_answer."
+  );
   console.error("Raw response:", text);
   return {
     action: "final_answer",
