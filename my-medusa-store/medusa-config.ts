@@ -15,10 +15,7 @@ module.exports = defineConfig({
   },
   modules: [
     {
-      resolve: "./src/modules/assistant",
-    },
-    {
-      resolve: "./src/modules/abandoned-carts",
-    },
-  ],
+      resolve: "./src/modules/assistant"
+    }
+  ]
 })

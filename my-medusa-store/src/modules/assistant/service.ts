@@ -92,26 +92,9 @@ class AssistantModuleService extends MedusaService({}) {
 
         metricsStore.noteToolUsed(turnId, plan.tool_name);
 
-        let normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
+        const normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
 
-        // Defensive: if user clearly asked for "all time" and analytics tool
-        // omitted any explicit range, set an 'all_time' intent flag. The MCP
-        // tool will expand it to [epoch, end-of-today] for consistency.
-        const isAnalyticsTool = new Set([
-          "sales_aggregate",
-          "orders_count",
-          "orders_status_analysis",
-        ]).has(plan.tool_name);
-        const mentionsAllTime = /\b(all\s*time|lifetime|since\s*(launch|start|inception)|ever)\b/i.test(
-          prompt
-        );
-        if (isAnalyticsTool && mentionsAllTime) {
-          // Always express explicit 'all_time' intent so MCP won't clamp epoch ranges
-          if (!normalizedArgs.all_time) {
-            normalizedArgs = { all_time: true, ...normalizedArgs };
-            console.log(`   Injected all_time flag for analytics tool intent.`);
-          }
-        }
+        //
 
         if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
@@ -121,7 +104,7 @@ class AssistantModuleService extends MedusaService({}) {
           plan.tool_name,
           normalizedArgs,
           async () => {
-            return mcp.callTool(plan.tool_name!, normalizedArgs);
+            return mcp.callTool(plan.tool_name!, normalizedArgs as Record<string, any>);
           }
         );
 

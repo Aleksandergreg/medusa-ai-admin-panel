@@ -13,7 +13,9 @@ export function stripJsonFences(text: string): string {
 /** A safe description of JSON values */
 export type JSONPrimitive = string | number | boolean | null;
 export type JSONValue = JSONPrimitive | JSONObject | JSONArray;
-export interface JSONObject { [key: string]: JSONValue }
+export interface JSONObject {
+  [key: string]: JSONValue;
+}
 export interface JSONArray extends Array<JSONValue> {}
 
 /** Type guards */
@@ -29,7 +31,9 @@ const isArray = (v: unknown): v is unknown[] => Array.isArray(v);
  * Parse a JSON-looking string safely. Returns T if you know the shape,
  * otherwise defaults to JSONValue.
  */
-export function safeParseJSON<T = JSONValue>(maybeJson: unknown): T | undefined {
+export function safeParseJSON<T = JSONValue>(
+  maybeJson: unknown
+): T | undefined {
   if (typeof maybeJson !== "string") return undefined;
   const stripped = stripJsonFences(maybeJson).trim();
 
@@ -83,9 +87,13 @@ const isToolContentText = (c: unknown): c is ToolContentText => {
   return type === "text" && typeof text === "string";
 };
 
-export function extractToolJsonPayload(toolResult: unknown): JSONValue | undefined {
+export function extractToolJsonPayload(
+  toolResult: unknown
+): JSONValue | undefined {
   try {
-    const content = (isObject(toolResult) ? (toolResult as { content?: unknown }).content : undefined);
+    const content = isObject(toolResult)
+      ? (toolResult as { content?: unknown }).content
+      : undefined;
     if (!Array.isArray(content)) return undefined;
 
     // find the first { type: 'text', text: string }
@@ -124,11 +132,17 @@ export function ensureMarkdownMinimum(answer: string): string {
     }
 
     // Build bullets from lines or sentences
-    const lines = stripped.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = stripped
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
     const items =
       lines.length > 1
         ? lines
-        : stripped.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+        : stripped
+            .split(/(?<=[.!?])\s+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
 
     const heading = "### Answer";
     const bullets = items.map((s) => `- ${s}`);
@@ -140,7 +154,7 @@ export function ensureMarkdownMinimum(answer: string): string {
 }
 
 // Normalize LLM tool args to match Medusa Admin expectations
-export function normalizeToolArgs(input: unknown, toolName?: string): JSONValue {
+export function normalizeToolArgs(input: unknown): JSONValue {
   const needsDollar = new Set([
     "gt",
     "gte",
@@ -182,105 +196,12 @@ export function normalizeToolArgs(input: unknown, toolName?: string): JSONValue 
       return out;
     }
     const last = keyPath[keyPath.length - 1];
-    if (last === "limit" || last === "offset") return toNumberIfNumericString(val) as JSONValue;
+    if (last === "limit" || last === "offset")
+      return toNumberIfNumericString(val) as JSONValue;
     return val;
   };
 
   const normalized = walk((input as JSONValue) ?? null);
-
-  // Special normalization for abandoned_carts tool: coerce natural keys
-  if (toolName === "abandoned_carts" && isJSONObject(normalized)) {
-    const out: JSONObject = { ...normalized };
-
-    const isDefined = (v: unknown): boolean => v !== undefined && v !== null && v !== "";
-
-    const toInt = (v: unknown): number | undefined => {
-      if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
-      if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return parseInt(v.trim(), 10);
-      return undefined;
-    };
-
-    const toBool = (v: unknown): boolean | undefined => {
-      if (typeof v === "boolean") return v;
-      if (typeof v === "number") return v !== 0;
-      if (typeof v === "string") {
-        const s = v.trim().toLowerCase();
-        if (["true", "1", "yes", "y"].includes(s)) return true;
-        if (["false", "0", "no", "n"].includes(s)) return false;
-      }
-      return undefined;
-    };
-
-    const parseMinutes = (v: unknown): number | undefined => {
-      if (typeof v === "number" && Number.isFinite(v)) return Math.max(0, Math.trunc(v));
-      if (typeof v !== "string") return undefined;
-      const s = v.trim().toLowerCase().replace(/ago$/, "").trim();
-      const m1 = s.match(/^(\d+(?:\.\d+)?)(m|h|d)$/i);
-      if (m1) {
-        const n = parseFloat(m1[1]);
-        const u = m1[2].toLowerCase();
-        if (u === "m") return Math.round(n);
-        if (u === "h") return Math.round(n * 60);
-        if (u === "d") return Math.round(n * 1440);
-      }
-      const m2 = s.match(
-        /^(\d+(?:\.\d+)?)\s*(minute|minutes|min|m|hour|hours|hr|h|day|days|d)$/i
-      );
-      if (m2) {
-        const n = parseFloat(m2[1]);
-        const u = m2[2].toLowerCase();
-        if (["minute", "minutes", "min", "m"].includes(u)) return Math.round(n);
-        if (["hour", "hours", "hr", "h"].includes(u)) return Math.round(n * 60);
-        if (["day", "days", "d"].includes(u)) return Math.round(n * 1440);
-      }
-      const num = toInt(s);
-      return typeof num === "number" ? Math.max(0, num) : undefined;
-    };
-
-    const pick = (obj: JSONObject, keys: string[]): unknown => {
-      for (const k of keys) if (isDefined(obj?.[k])) return obj[k];
-      return undefined;
-    };
-
-    // minutes: prefer explicit older_than_minutes, else map aliases
-    const olderRaw = pick(out, [
-      "older_than_minutes",
-      "threshold",
-      "threshold_minutes",
-      "min_last_updated",
-      "minutes_old",
-      "min_age",
-    ]);
-
-    if (!isDefined(out.older_than_minutes) && isDefined(olderRaw)) {
-      const unitRaw = pick(out, ["threshold_unit", "unit"]);
-      const unit = typeof unitRaw === "string" ? unitRaw.toLowerCase().trim() : "";
-      let mins: number | undefined;
-      const n = toInt(olderRaw);
-      if (typeof n === "number") {
-        if (!unit || ["m", "min", "minute", "minutes"].includes(unit)) mins = n;
-        else if (["h", "hour", "hours"].includes(unit)) mins = n * 60;
-        else if (["d", "day", "days"].includes(unit)) mins = n * 1440;
-      }
-      mins ??= parseMinutes(olderRaw);
-      if (typeof mins === "number") out.older_than_minutes = mins;
-    }
-
-    // email requirement: map various flags to require_email false
-    if (!isDefined(out.require_email)) {
-      const flags = [
-        out.include_email_less,
-        out.include_emailless,
-        out.include_without_email,
-        out.without_email,
-        out.even_without_email,
-      ];
-      const anyFlag = flags.map(toBool).some((b) => b === true);
-      if (anyFlag) out.require_email = false;
-    }
-
-    return out;
-  }
 
   // Rely on medusa-mcp analytics tools to interpret sorting hints
   return normalized;
