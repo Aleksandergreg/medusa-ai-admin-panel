@@ -125,6 +125,28 @@ export default class OpenApiToolsService {
                     }
                     const schemas = this.registry.getSchemas(id);
                     const examplePath = op.path.replace(/\{(.*?)\}/g, ":$1");
+                    // Derive operator hints for object-typed query params (e.g., created_at)
+                    const queryParamHints = (op.parameters ?? [])
+                        .filter((p) => p.in === "query")
+                        .map((p) => {
+                            const sch = p.schema as Record<string, unknown> | undefined;
+                            const props = (sch?.type === "object" && (sch?.properties as Record<string, unknown> | undefined)) || undefined;
+                            if (!props) return null;
+                            const keys = Object.keys(props);
+                            const operators = keys.filter((k) => k.startsWith("$"));
+                            let example: string | undefined;
+                            if (operators.includes("$gte") || operators.includes("$lte")) {
+                                example = `${p.name}[$gte]=2025-01-01T00:00:00Z&${p.name}[$lte]=2025-12-31T23:59:59Z`;
+                            } else if (operators.includes("$eq")) {
+                                example = `${p.name}[$eq]=value`;
+                            }
+                            return {
+                                name: p.name,
+                                operators,
+                                example
+                            };
+                        })
+                        .filter(Boolean);
                     return {
                         operationId: op.operationId,
                         method: op.method,
@@ -136,7 +158,8 @@ export default class OpenApiToolsService {
                         pathParams: this.summarizeParams(schemas?.pathParams ?? []),
                         queryParams: this.summarizeParams(schemas?.queryParams ?? []),
                         headerParams: this.summarizeParams(schemas?.headerParams ?? []),
-                        requestBodySchema: schemas?.requestBodySchema
+                        requestBodySchema: schemas?.requestBodySchema,
+                        queryParamHints
                     };
                 }
             }))
@@ -186,18 +209,84 @@ export default class OpenApiToolsService {
 
                     // Build query
                     const queryInput = (input.query as Record<string, unknown> | undefined) ?? {};
-                    const queryEntries: [string, string][] = [];
-                    for (const [k, v] of Object.entries(queryInput)) {
-                        if (v === undefined || v === null) continue;
-                        if (Array.isArray(v)) {
-                            for (const vv of v) queryEntries.push([k, String(vv)]);
-                        } else if (typeof v === "object") {
-                            queryEntries.push([k, JSON.stringify(v)]);
+                    const opLikeKeys = new Set([
+                        "$and",
+                        "$or",
+                        "$eq",
+                        "$ne",
+                        "$in",
+                        "$nin",
+                        "$not",
+                        "$gt",
+                        "$gte",
+                        "$lt",
+                        "$lte",
+                        "$like",
+                        "$re",
+                        "$ilike",
+                        "$fulltext",
+                        "$overlap",
+                        "$contains",
+                        "$contained",
+                        "$exists"
+                    ]);
+                    const normalizeOpKey = (k: string): string => {
+                        if (k.startsWith("$")) return k;
+                        const maybe = `$${k}`;
+                        return opLikeKeys.has(maybe) ? maybe : k;
+                    };
+                    const queryObj: Record<string, unknown> = {};
+
+                    const setKey = (key: string, val: unknown): void => {
+                        const existing = queryObj[key];
+                        if (existing === undefined) {
+                            queryObj[key] = val;
+                        } else if (Array.isArray(existing)) 
+                            (existing as unknown[]).push(val);
                         } else {
-                            queryEntries.push([k, String(v)]);
+                            queryObj[key] = [existing, val];
                         }
+                    };
+
+                    const append = (key: string, val: unknown): void => {
+                        if (val === undefined || val === null) return;
+                        if (val instanceof Date) {
+                            setKey(key, val.toISOString());
+                            return;
+                        }
+                        if (Array.isArray(val)) {
+                            // Repeat the key for each primitive; index objects
+                            val.forEach((item, idx) => {
+                                if (
+                                    item === null ||
+                                    item === undefined ||
+                                    typeof item === "string" ||
+                                    typeof item === "number" ||
+                                    typeof item === "boolean"
+                                ) {
+                                    setKey(key, String(item));
+                                } else if (typeof item === "object") {
+                                    append(`${key}[${idx}]`, item as Record<string, unknown>);
+                                }
+                            });
+                            return;
+                        }
+                        if (typeof val === "object") {
+                            // Flatten object as bracket notation
+                            for (const [subK, subV] of Object.entries(val as Record<string, unknown>)) {
+                                const norm = normalizeOpKey(subK);
+                                append(`${key}[${norm}]`, subV);
+                            }
+                            return;
+                        }
+                        setKey(key, String(val));
+                    };
+
+                    for (const [k, v] of Object.entries(queryInput)) {
+                        append(k, v);
                     }
-                    const query = new URLSearchParams(queryEntries);
+
+                    const query = queryObj as Record<string, any>;
 
                     // Headers
                     const headers: Record<string, string> = {
@@ -247,4 +336,3 @@ export default class OpenApiToolsService {
         return tools;
     }
 }
-
