@@ -147,11 +147,17 @@ export default class OpenApiToolsService {
                             };
                         })
                         .filter(Boolean);
+                    const exampleUrl = (queryParamHints as Array<{ name: string; operators: string[]; example?: string }> | undefined)
+                        ?.map((h) => h?.example)
+                        .filter((e): e is string => Boolean(e))
+                        .join("&");
+
                     return {
                         operationId: op.operationId,
                         method: op.method,
                         path: op.path,
                         examplePath,
+                        exampleUrl: exampleUrl && exampleUrl.length ? `${examplePath}?${exampleUrl}` : undefined,
                         summary: op.summary,
                         description: op.description,
                         tags: op.tags,
@@ -241,7 +247,7 @@ export default class OpenApiToolsService {
                         const existing = queryObj[key];
                         if (existing === undefined) {
                             queryObj[key] = val;
-                        } else if (Array.isArray(existing)) 
+                        } else if (Array.isArray(existing)) {
                             (existing as unknown[]).push(val);
                         } else {
                             queryObj[key] = [existing, val];
