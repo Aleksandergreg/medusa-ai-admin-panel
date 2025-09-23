@@ -116,13 +116,7 @@ export async function planNextStepWithGemini(
   if (!text) throw new Error("LLM returned empty response");
 
   // Try to parse robustly first
-  let parsed;
-  try {
-    parsed = safeParseJSON(text);
-  } catch {
-    // Suppress the JSON parse error logging here since we handle it below
-    console.warn("Initial JSON parse failed, will try fallback handling");
-  }
+  let parsed = safeParseJSON(text);
   
   if (parsed && typeof parsed === "object" && "action" in parsed) {
     return parsed as {
