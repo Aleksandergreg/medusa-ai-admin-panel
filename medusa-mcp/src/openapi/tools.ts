@@ -3,6 +3,7 @@ import { config } from "dotenv";
 import { defineTool } from "../utils/define-tools";
 import { loadOpenApiSpec } from "./loader";
 import { HttpMethod, OpenApiRegistry, Operation, Parameter } from "./registry";
+import { reduceResponse } from "./reducer";
 
 config();
 
@@ -390,6 +391,92 @@ export default class OpenApiToolsService {
                         body: (input.body as unknown) ?? {}
                     });
                     return res;
+                }
+            }))
+        );
+
+        // openapi.reduce
+        tools.push(
+            defineTool((z) => ({
+                name: "openapi.reduce",
+                description:
+                    "Execute a GET OpenAPI operation and reduce a response array into grouped counts. Supports arrayPath, groupByPath with [] expansion, fallbackGroupBy, normalization and pagination completeness flag.",
+                inputSchema: {
+                    operationId: z.string().min(1),
+                    pathParams: z.record(z.union([z.string(), z.number()])).optional(),
+                    query: z.record(z.any()).optional(),
+                    headers: z.record(z.string()).optional(),
+                    arrayPath: z.string().min(1),
+                    groupByPath: z.string().optional(),
+                    fallbackGroupBy: z.array(z.string()).optional(),
+                    normalize: z.enum(["lower-trim", "none"]).optional(),
+                    topN: z.number().min(1).max(100).optional(),
+                    // reuse write confirm semantics if user tries non-GET
+                    confirm: z.boolean().optional()
+                },
+                handler: async (input) => {
+                    const id = input.operationId as string;
+                    const op = this.registry.getByOperationId(id);
+                    if (!op) {
+                        throw new Error(`Unknown operationId: ${id}`);
+                    }
+                    if (op.method !== "get") {
+                        if (!input.confirm) {
+                            throw new Error(
+                                `Reducer only intended for GET; operation is ${op.method.toUpperCase()}. Set confirm=true to force.`
+                            );
+                        }
+                    }
+
+                    // Reuse execution logic (inline simplified GET fetch) instead of calling openapi.execute to avoid re-flattening query.
+                    let finalPath = op.path;
+                    const pathParams = (input.pathParams as Record<string, string | number> | undefined) ?? {};
+                    for (const p of op.parameters.filter((p) => p.in === "path")) {
+                        const v = pathParams[p.name];
+                        if (v === undefined || v === null) continue;
+                        finalPath = finalPath.replace(new RegExp(`\\{${p.name}\\}`, "g"), encodeURIComponent(String(v)));
+                    }
+
+                    // very light query build (delegate to execute's more advanced if needed later)
+                    const query = (input.query as Record<string, unknown> | undefined) ?? {};
+
+                    const headers: Record<string, string> = {
+                        "Content-Type": "application/json",
+                        Accept: "application/json"
+                    };
+                    if (this.adminToken) {
+                        headers["Authorization"] = `Bearer ${this.adminToken}`;
+                    }
+                    const extraHeaders = (input.headers as Record<string, string> | undefined) ?? {};
+                    for (const [k, v] of Object.entries(extraHeaders)) headers[k] = v;
+
+                    const res = await this.sdk.client.fetch(finalPath, {
+                        method: op.method,
+                        headers,
+                        query
+                    });
+
+                    const reduced = reduceResponse(res, {
+                        arrayPath: String(input.arrayPath),
+                        groupByPath: input.groupByPath ? String(input.groupByPath) : undefined,
+                        fallbackGroupBy: (input.fallbackGroupBy as string[] | undefined) ?? [],
+                        normalize: (input.normalize as "lower-trim" | "none" | undefined) ?? "lower-trim",
+                        topN: (input.topN as number | undefined) ?? 10
+                    });
+
+                    return {
+                        operationId: id,
+                        method: op.method,
+                        path: op.path,
+                        arrayPath: reduced.arrayPath,
+                        groupByPathUsed: reduced.groupByPathUsed,
+                        total: reduced.total,
+                        missing: reduced.missing,
+                        multiValued: reduced.multiValued,
+                        incomplete: reduced.incomplete,
+                        top: reduced.top,
+                        groups: reduced.groups
+                    };
                 }
             }))
         );
