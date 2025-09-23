@@ -19,7 +19,7 @@ export async function askAssistant(
   payload: AskPayload,
   signal?: AbortSignal
 ): Promise<AssistantResponse> {
-  const res = await fetch("/admin/assistant", {
+  const res = await fetch("/custom/assistant", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -38,7 +38,7 @@ export async function askAssistant(
 
   const parsed = AssistantResponseSchema.safeParse(json);
   if (!parsed.success) {
-    throw new Error("Invalid response from server");
+    throw new Error("Invalid response from server :(");
   }
 
   return parsed.data;
