@@ -16,7 +16,7 @@ export type JSONValue = JSONPrimitive | JSONObject | JSONArray;
 export interface JSONObject {
   [key: string]: JSONValue;
 }
-export interface JSONArray extends Array<JSONValue> {}
+export type JSONArray = JSONValue[];
 
 /** Type guards */
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -24,8 +24,6 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 
 const isJSONObject = (v: unknown): v is JSONObject =>
   isObject(v) && !Array.isArray(v);
-
-const isArray = (v: unknown): v is unknown[] => Array.isArray(v);
 
 /**
  * Parse a JSON-looking string safely. Returns T if you know the shape,
@@ -40,8 +38,8 @@ export function safeParseJSON<T = JSONValue>(
   // Try direct parse first
   try {
     return JSON.parse(stripped) as T;
-  } catch (err) {
-    console.error(err);
+  } catch {
+    // Silent fallback - errors are handled by callers
   }
 
   // Try object slice { ... }
@@ -50,8 +48,8 @@ export function safeParseJSON<T = JSONValue>(
   if (firstObj !== -1 && lastObj !== -1 && lastObj > firstObj) {
     try {
       return JSON.parse(stripped.slice(firstObj, lastObj + 1)) as T;
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Silent fallback - errors are handled by callers
     }
   }
 
@@ -61,8 +59,8 @@ export function safeParseJSON<T = JSONValue>(
   if (firstArr !== -1 && lastArr !== -1 && lastArr > firstArr) {
     try {
       return JSON.parse(stripped.slice(firstArr, lastArr + 1)) as T;
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Silent fallback - errors are handled by callers
     }
   }
   return undefined;
@@ -99,8 +97,8 @@ export function extractToolJsonPayload(
     // find the first { type: 'text', text: string }
     const textItem = (content as unknown[]).find(isToolContentText);
     if (textItem) return safeParseJSON(textItem.text);
-  } catch (err) {
-    console.error(err);
+  } catch {
+    // Silent fallback - errors are handled by callers
   }
   return undefined;
 }
@@ -122,12 +120,12 @@ export function ensureMarkdownMinimum(answer: string): string {
 
     // If it's likely JSON, fence it for readability
     const stripped = stripJsonFences(text);
-    if (/^[\[{]/.test(stripped)) {
+    if (/^[[{]/.test(stripped)) {
       try {
         JSON.parse(stripped);
         return "```json\n" + stripped + "\n```";
-      } catch (err) {
-        console.error(err);
+      } catch {
+        // Not valid JSON, continue with regular formatting
       }
     }
 
@@ -147,8 +145,8 @@ export function ensureMarkdownMinimum(answer: string): string {
     const heading = "### Answer";
     const bullets = items.map((s) => `- ${s}`);
     return [heading, "", ...bullets].join("\n");
-  } catch (err) {
-    console.error(err);
+  } catch {
+    // Silent fallback - return original answer
     return String(answer ?? "");
   }
 }
