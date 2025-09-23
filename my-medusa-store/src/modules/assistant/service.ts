@@ -2,7 +2,11 @@ import { MedusaService } from "@medusajs/framework/utils";
 import { getMcp } from "../../lib/mcp/manager";
 import { metricsStore, withToolLogging } from "../../lib/metrics/store";
 import { ChartType, HistoryEntry, McpTool } from "./types";
-import { extractToolJsonPayload, normalizeToolArgs, ensureMarkdownMinimum } from "./utils";
+import {
+  extractToolJsonPayload,
+  normalizeToolArgs,
+  ensureMarkdownMinimum,
+} from "./utils";
 import { buildChartFromAnswer, buildChartFromLatestTool } from "./charts";
 import { planNextStepWithGemini } from "./planner";
 import { collectGroundTruthNumbers } from "./validation";
@@ -12,6 +16,14 @@ type AskInput = {
   wantsChart?: boolean;
   chartType?: ChartType;
   chartTitle?: string;
+};
+
+type InitialOperation = {
+  operationId: string;
+  method: string;
+  path: string;
+  summary?: string;
+  tags?: string[];
 };
 
 class AssistantModuleService extends MedusaService({}) {
@@ -41,12 +53,60 @@ class AssistantModuleService extends MedusaService({}) {
     const tools = await mcp.listTools();
     const availableTools: McpTool[] = (tools.tools ?? []) as any;
 
+    let initialOperations: InitialOperation[] = [];
+    const hasOpenApiSearch = availableTools.some(
+      (tool) => tool.name === "openapi.search"
+    );
+    if (hasOpenApiSearch) {
+      try {
+        const rawSuggestions = await mcp.callTool("openapi.search", {
+          query: prompt,
+          limit: 8,
+        });
+        const suggestionPayload = extractToolJsonPayload(rawSuggestions);
+        if (Array.isArray(suggestionPayload)) {
+          initialOperations = suggestionPayload
+            .map((item) => {
+              if (!item || typeof item !== "object") {
+                return null;
+              }
+              const obj = item as Record<string, unknown>;
+              const operationId = obj.operationId ?? obj.operation_id ?? obj.id;
+              const method = obj.method ?? obj.httpMethod ?? obj.verb;
+              const path = obj.path ?? obj.url ?? obj.endpoint;
+              if (
+                typeof operationId !== "string" ||
+                typeof method !== "string" ||
+                typeof path !== "string"
+              ) {
+                return null;
+              }
+              return {
+                operationId,
+                method,
+                path,
+                summary:
+                  typeof obj.summary === "string" ? obj.summary : undefined,
+                tags: Array.isArray(obj.tags)
+                  ? (obj.tags as unknown[])
+                      .filter((tag) => typeof tag === "string")
+                      .map((tag) => tag as string)
+                  : undefined,
+              } satisfies InitialOperation;
+            })
+            .filter((op): op is InitialOperation => Boolean(op));
+        }
+      } catch (error) {
+        console.warn("Failed to pre-load openapi.search suggestions", error);
+      }
+    }
+
     const history: HistoryEntry[] = [];
 
     const turnId = metricsStore.startAssistantTurn({ user: prompt });
 
     for (let step = 0; step < this.maxSteps; step++) {
-      console.log(`\n--- 🔄 AGENT LOOP: STEP ${step + 1} ---`);
+      console.log(`\n--- AGENT LOOP: STEP ${step + 1} ---`);
 
       const plan = await planNextStepWithGemini(
         prompt,
@@ -54,7 +114,8 @@ class AssistantModuleService extends MedusaService({}) {
         history,
         "gemini-2.5-flash",
         wantsChart,
-        chartType
+        chartType,
+        initialOperations
       );
 
       if (plan.action === "final_answer") {
@@ -87,14 +148,12 @@ class AssistantModuleService extends MedusaService({}) {
       }
 
       if (plan.action === "call_tool" && plan.tool_name && plan.tool_args) {
-        console.log(`🧠 AI wants to call tool: ${plan.tool_name}`);
+        console.log(`AI wants to call tool: ${plan.tool_name}`);
         console.log(`   With args: ${JSON.stringify(plan.tool_args)}`);
 
         metricsStore.noteToolUsed(turnId, plan.tool_name);
 
         const normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
-
-        //
 
         if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
@@ -104,7 +163,10 @@ class AssistantModuleService extends MedusaService({}) {
           plan.tool_name,
           normalizedArgs,
           async () => {
-            return mcp.callTool(plan.tool_name!, normalizedArgs as Record<string, any>);
+            return mcp.callTool(
+              plan.tool_name!,
+              normalizedArgs as Record<string, any>
+            );
           }
         );
 
