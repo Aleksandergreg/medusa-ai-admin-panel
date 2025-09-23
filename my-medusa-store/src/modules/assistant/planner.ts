@@ -1,4 +1,4 @@
-import { McpTool, ChartType } from "./types";
+﻿import { McpTool, ChartType } from "./types";
 import { env, stripJsonFences, safeParseJSON } from "./utils";
 import { getCombinedPrompt } from "./prompts";
 
@@ -83,6 +83,7 @@ export async function planNextStepWithGemini(
     `CRITICAL API RULES:\n` +
     `- Always check tool schema carefully before making calls\n` +
     `- If a tool call fails, analyze the error and adjust your approach\n` +
+    `- If a tool response only returns IDs but you need human-friendly details, call another endpoint (e.g., AdminGetProductsId) before ending the turn` +
     `ERROR RECOVERY STRATEGIES:\n` +
     `- If product search by exact title fails, try partial keyword search\n` +
     `- If variant creation fails with "options" error, ensure options is an object not array\n` +
@@ -155,7 +156,6 @@ export async function planNextStepWithGemini(
   console.error(
     "Failed to parse LLM response as JSON. Falling back to final_answer."
   );
-  console.error("Raw response:", text);
   return {
     action: "final_answer",
     answer: stripJsonFences(String(text)).trim(),
