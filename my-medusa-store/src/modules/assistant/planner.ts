@@ -5,14 +5,14 @@ import { getCombinedPrompt } from "./prompts";
 export async function planNextStepWithGemini(
   userPrompt: string,
   tools: McpTool[],
-  history: { tool_name: string; tool_args: any; tool_result: any }[],
+  history: { tool_name: string; tool_args: unknown; tool_result: unknown }[],
   modelName: string = "gemini-2.5-flash",
   wantsChart: boolean = false,
   chartType: ChartType = "bar"
 ): Promise<{
   action: "call_tool" | "final_answer";
   tool_name?: string;
-  tool_args?: any;
+  tool_args?: unknown;
   answer?: string;
 }> {
   // Deterministic CI fallback to avoid external LLM dependency and flakiness
@@ -31,6 +31,8 @@ export async function planNextStepWithGemini(
   }
   const apiKey = env("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  
+  // Import GoogleGenAI here to avoid module resolution issues
   const { GoogleGenAI } = await import("@google/genai");
 
   const toolCatalog = tools.map((t) => ({
@@ -86,7 +88,7 @@ export async function planNextStepWithGemini(
     `What should I do next? Respond with ONLY the JSON object.`,
   ].join("\n\n");
 
-  const ai = new (GoogleGenAI as any)({ apiKey });
+  const ai = new GoogleGenAI({ apiKey });
 
   const result = await ai.models.generateContent({
     model: modelName,
@@ -110,25 +112,32 @@ export async function planNextStepWithGemini(
     ],
   });
 
-  const text = (result as any).text;
+  const text = result.text;
   if (!text) throw new Error("LLM returned empty response");
 
   // Try to parse robustly first
-  const parsed = safeParseJSON(text);
+  let parsed;
+  try {
+    parsed = safeParseJSON(text);
+  } catch {
+    // Suppress the JSON parse error logging here since we handle it below
+    console.warn("Initial JSON parse failed, will try fallback handling");
+  }
+  
   if (parsed && typeof parsed === "object" && "action" in parsed) {
     return parsed as {
       action: "call_tool" | "final_answer";
       tool_name?: string;
-      tool_args?: any;
+      tool_args?: unknown;
       answer?: string;
     };
   }
 
   // As a last resort, treat the raw response as a final answer
-  console.error(
-    "Failed to parse LLM response as JSON. Falling back to final_answer."
+  console.warn(
+    "LLM response was not in expected JSON format. Treating as final answer."
   );
-  console.error("Raw response:", text);
+  console.warn("Raw response:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
   return {
     action: "final_answer",
     answer: stripJsonFences(String(text)).trim(),
