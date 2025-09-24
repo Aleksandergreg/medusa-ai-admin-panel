@@ -29,14 +29,14 @@ type InitialOperation = {
 class AssistantModuleService extends MedusaService({}) {
   private readonly maxSteps = 25;
 
-  constructor(container: any, options: any = {}) {
+  constructor(container: unknown, options: unknown = {}) {
     super(container, options);
   }
 
   async ask(input: AskInput): Promise<{
     answer?: string;
-    chart: any | null;
-    data: any | null;
+    chart: unknown | null;
+    data: unknown | null;
     history: HistoryEntry[];
   }> {
     const prompt = input.prompt?.trim();
@@ -51,7 +51,7 @@ class AssistantModuleService extends MedusaService({}) {
 
     const mcp = await getMcp();
     const tools = await mcp.listTools();
-    const availableTools: McpTool[] = (tools.tools ?? []) as any;
+    const availableTools: McpTool[] = (tools.tools ?? []) as McpTool[];
 
     let initialOperations: InitialOperation[] = [];
     const hasOpenApiSearch = availableTools.some(
@@ -153,7 +153,7 @@ class AssistantModuleService extends MedusaService({}) {
 
         metricsStore.noteToolUsed(turnId, plan.tool_name);
 
-        const normalizedArgs = normalizeToolArgs(plan.tool_args, plan.tool_name);
+        const normalizedArgs = normalizeToolArgs(plan.tool_args);
 
         if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
@@ -163,10 +163,8 @@ class AssistantModuleService extends MedusaService({}) {
           plan.tool_name,
           normalizedArgs,
           async () => {
-            return mcp.callTool(
-              plan.tool_name!,
-              normalizedArgs as Record<string, any>
-            );
+            return mcp.callTool(plan.tool_name!, normalizedArgs as Record<string, unknown>);
+
           }
         );
 
