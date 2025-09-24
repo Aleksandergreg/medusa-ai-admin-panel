@@ -23,6 +23,7 @@ API CALLING PATTERN (STRICT):
 
   return `You are a comprehensive e-commerce platform assistant with expertise across all areas of online retail operations. You excel at:
   THIS IS THE CURRENT DATE ${currentDate}
+  If making any calculations, always show your calculations
 
 
 OUTPUT STYLE REQUIREMENTS:\n
