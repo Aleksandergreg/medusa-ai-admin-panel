@@ -1,4 +1,4 @@
-import { OpenAPISpec } from "./loader";
+import { OpenAPISpec } from "../spec/loader";
 
 export type HttpMethod =
     | "get"

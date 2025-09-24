@@ -1,4 +1,4 @@
-import oas from "../oas/oas.json";
+import oas from "../../oas/oas.json";
 
 export type OpenAPISpec = {
     openapi: string;
@@ -13,4 +13,3 @@ export function loadOpenApiSpec(): OpenAPISpec {
     // Currently loads the local bundled OAS. Can be extended to load from env.
     return oas as unknown as OpenAPISpec;
 }
-
