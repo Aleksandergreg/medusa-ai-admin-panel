@@ -1,4 +1,4 @@
-const currentDate = new Date().toISOString().split("T")[0];
+﻿const currentDate = new Date().toISOString().split("T")[0];
 // Combined prompt with all specializations for the assistant
 export function getCombinedPrompt(wantsChart?: boolean): string {
   const chartGuidance = wantsChart
@@ -17,3 +17,4 @@ OUTPUT STYLE REQUIREMENTS:\n
 - Avoid raw HTML.
 `;
 }
+

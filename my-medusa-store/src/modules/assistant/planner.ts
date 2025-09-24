@@ -1,4 +1,4 @@
-import { McpTool, ChartType } from "./types";
+﻿import { McpTool, ChartType } from "./types";
 import { env, stripJsonFences, safeParseJSON } from "./utils";
 import { getCombinedPrompt } from "./prompts";
 
