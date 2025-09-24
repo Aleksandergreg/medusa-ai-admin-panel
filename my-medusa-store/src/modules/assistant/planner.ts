@@ -71,6 +71,7 @@ export async function planNextStepWithGemini(
     `CRITICAL API RULES (ENFORCED):\n` +
     `- Always call in this order: openapi.search → openapi.schema → openapi.execute\n` +
     `- Use ONLY parameter names present in openapi.schema (path/query/header). Do not invent params like 'expand'.\n` +
+    `- Start with the bare endpoint path (only required path params). Add optional query/body params only if the base response fails to satisfy the user's goal.\n` +
     `- Use 'fields' for Medusa selection semantics: '+field' to add, '-field' to remove, or a full replacement list.\n` +
     `- Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.\n` +
     `- On any 4xx, stop and re-check openapi.schema, then correct the request. Do not retry minor variants.\n` +
