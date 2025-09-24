@@ -28,8 +28,78 @@ export type Operation = {
     requestBody?: unknown;
 };
 
+const STOPWORDS = new Set([
+    "list",
+    "lists",
+    "get",
+    "gets",
+    "show",
+    "shows",
+    "find",
+    "finds",
+    "retrieve",
+    "retrieves",
+    "fetch",
+    "fetches",
+    "what",
+    "which",
+    "where",
+    "when",
+    "give",
+    "me",
+    "tell",
+    "about",
+    "with",
+    "for",
+    "and",
+    "or",
+    "of",
+    "the",
+    "a",
+    "an"
+]);
+
+const OPERATION_KEYWORDS: Record<string, string[]> = {
+    AdminGetPromotions: [
+        "promotion",
+        "promotions",
+        "discount",
+        "discounts",
+        "coupon",
+        "coupons",
+        "deal",
+        "deals",
+        "offer",
+        "offers"
+    ],
+    AdminGetPromotionsId: [
+        "promotion",
+        "promotions",
+        "discount",
+        "discounts",
+        "coupon",
+        "coupons",
+        "deal",
+        "deals",
+        "offer",
+        "offers"
+    ],
+    AdminGetCampaigns: [
+        "campaign",
+        "campaigns",
+        "promotion",
+        "promotions"
+    ],
+    AdminGetProducts: ["product", "products", "item", "items"],
+    AdminGetProductsId: ["product", "products", "item", "items"]
+};
+
 function isObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function normalizeToken(token: string): string {
+    return token.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 function pickOperationEntries(pathItem: unknown): Array<[HttpMethod, Record<string, unknown>]> {
@@ -110,7 +180,12 @@ export class OpenApiRegistry {
         opts?: { tags?: string[]; methods?: HttpMethod[]; limit?: number }
     ): Operation[] {
         const q = query.toLowerCase().trim();
-        const tokens = q.split(/\s+/).filter(Boolean);
+        const normalizedTokens = q
+            .split(/\s+/)
+            .map((token) => normalizeToken(token))
+            .filter(Boolean);
+        const significantTokens = normalizedTokens.filter((t) => !STOPWORDS.has(t));
+        const tokens = significantTokens.length ? significantTokens : normalizedTokens;
         const tagSet = new Set((opts?.tags ?? []).map((t) => t.toLowerCase()));
         const methodSet = new Set(opts?.methods ?? []);
 
@@ -120,12 +195,14 @@ export class OpenApiRegistry {
                 (methodSet.size === 0 || methodSet.has(op.method))
             )
             .map((op) => {
+                const keywords = OPERATION_KEYWORDS[op.operationId] ?? [];
                 const hay = [
                     op.operationId,
                     op.summary ?? "",
                     op.description ?? "",
                     op.path,
-                    ...(op.tags ?? [])
+                    ...(op.tags ?? []),
+                    ...keywords
                 ]
                     .join(" \n ")
                     .toLowerCase();
