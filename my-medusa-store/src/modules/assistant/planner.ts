@@ -68,9 +68,13 @@ export async function planNextStepWithGemini(
     `- When you output {"action":"final_answer"}, the 'answer' value MUST be formatted as GitHub-Flavored Markdown (GFM)\n` +
     `- Use short paragraphs, bullet lists, bold key IDs, and code fences for JSON or commands within the answer string\n` +
     `- Do not include raw HTML in the answer\n\n` +
-    `CRITICAL API RULES:\n` +
-    `- Always check tool schema carefully before making calls\n` +
-    `- If a tool call fails, analyze the error and adjust your approach\n` +
+    `CRITICAL API RULES (ENFORCED):\n` +
+    `- Always call in this order: openapi.search → openapi.schema → openapi.execute\n` +
+    `- Use ONLY parameter names present in openapi.schema (path/query/header). Do not invent params like 'expand'.\n` +
+    `- Use 'fields' for Medusa selection semantics: '+field' to add, '-field' to remove, or a full replacement list.\n` +
+    `- Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.\n` +
+    `- On any 4xx, stop and re-check openapi.schema, then correct the request. Do not retry minor variants.\n` +
+    `- Prefer GET for retrieval; non-GET requires user intent and confirm=true.\n` +
     `ERROR RECOVERY STRATEGIES:\n` +
     `- If product search by exact title fails, try partial keyword search\n` +
     `- If variant creation fails with "options" error, ensure options is an object not array\n` +

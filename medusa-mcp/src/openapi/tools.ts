@@ -253,7 +253,9 @@ export default class OpenApiToolsService {
                     query: z.record(z.any()).optional(),
                     headers: z.record(z.string()).optional(),
                     body: z.any().optional(),
-                    confirm: z.boolean().optional()
+                    confirm: z.boolean().optional(),
+                    schemaAware: z.boolean().optional(),
+                    strictQuery: z.enum(["drop", "error"]).optional()
                 },
                 handler: async (input) => {
                     const id = input.operationId as string;
@@ -271,6 +273,13 @@ export default class OpenApiToolsService {
                         }
                     }
 
+                    // Resolve schemas for validation/filtering
+                    const schemaAware = (input.schemaAware as boolean | undefined) !== false; // default true
+                    const strictQuery = ((input.strictQuery as string | undefined) ?? "drop") as
+                        | "drop"
+                        | "error";
+                    const schemas = this.registry.getSchemas(id);
+
                     // Build path with pathParams
                     let finalPath = op.path;
                     const pathParams = (input.pathParams as Record<string, string | number> | undefined) ?? {};
@@ -284,7 +293,26 @@ export default class OpenApiToolsService {
                     }
 
                     // Build query
-                    const queryInput = (input.query as Record<string, unknown> | undefined) ?? {};
+                    const rawQueryInput = (input.query as Record<string, unknown> | undefined) ?? {};
+                    let queryInput: Record<string, unknown> = rawQueryInput;
+                    const droppedKeys: string[] = [];
+                    if (schemaAware && schemas) {
+                        const allowed = new Set((schemas.queryParams ?? []).map((p) => p.name));
+                        const filtered: Record<string, unknown> = {};
+                        for (const [k, v] of Object.entries(rawQueryInput)) {
+                            if (allowed.has(k)) {
+                                filtered[k] = v;
+                            } else {
+                                droppedKeys.push(k);
+                            }
+                        }
+                        if (strictQuery === "error" && droppedKeys.length) {
+                            throw new Error(
+                                `Query contains unsupported keys for ${id}: ${droppedKeys.join(", ")}`
+                            );
+                        }
+                        queryInput = filtered;
+                    }
                     const opLikeKeys = new Set([
                         "$and",
                         "$or",
@@ -390,166 +418,6 @@ export default class OpenApiToolsService {
                         body: (input.body as unknown) ?? {}
                     });
                     return res;
-                }
-            }))
-        );
-
-        // promotions.listDetailed
-        tools.push(
-            defineTool((z) => ({
-                name: "promotions.listDetailed",
-                description:
-                    "Return promotions with enriched metadata. Optionally look up related product titles so the model does not need to chain multiple calls.",
-                inputSchema: {
-                    status: z.string().optional(),
-                    campaign_id: z.string().optional(),
-                    includeProducts: z.boolean().optional()
-                },
-                handler: async (input) => {
-                    const includeProducts = input.includeProducts !== false;
-                    const headers: Record<string, string> = {
-                        "Content-Type": "application/json",
-                        Accept: "application/json"
-                    };
-                    if (this.adminToken) {
-                        headers["Authorization"] = `Bearer ${this.adminToken}`;
-                    }
-
-                    const promotionsQuery: Record<string, unknown> = {
-                        with_deleted: false,
-                        fields:
-                            "+application_method,+application_method.target_rules,+application_method.buy_rules,+campaign",
-                        limit: 100
-                    };
-                    if (input.status) promotionsQuery.status = input.status;
-                    if (input.campaign_id) promotionsQuery.campaign_id = input.campaign_id;
-
-                    const listResponse = (await this.sdk.client.fetch("/admin/promotions", {
-                        method: "get",
-                        headers,
-                        query: promotionsQuery
-                    })) as Record<string, any>;
-
-                    const promotions = Array.isArray(listResponse?.promotions)
-                        ? (listResponse.promotions as any[])
-                        : [];
-
-                    const productIds = new Set<string>();
-
-                    const collectRuleProducts = (rules: any[] | undefined) => {
-                        if (!includeProducts || !Array.isArray(rules)) return;
-                        for (const rule of rules) {
-                            const attribute: string | undefined =
-                                typeof rule?.attribute === "string" ? rule.attribute : undefined;
-                            if (!attribute || !attribute.toLowerCase().includes("product")) continue;
-                            const values: unknown = rule?.values;
-                            if (Array.isArray(values)) {
-                                for (const value of values) {
-                                    if (typeof value === "string" && value.trim()) {
-                                        productIds.add(value.trim());
-                                    }
-                                }
-                            }
-                        }
-                    };
-
-                    for (const promotion of promotions) {
-                        collectRuleProducts(promotion?.application_method?.target_rules);
-                        collectRuleProducts(promotion?.application_method?.buy_rules);
-                        collectRuleProducts(promotion?.rules);
-                    }
-
-                    const productTitleById: Record<string, string> = {};
-                    if (includeProducts && productIds.size) {
-                        const query: Record<string, string> = {
-                            fields: "id,title"
-                        };
-                        Array.from(productIds).forEach((id, index) => {
-                            query[`id[${index}]`] = id;
-                        });
-                        const productsResponse = (await this.sdk.client.fetch("/admin/products", {
-                            method: "get",
-                            headers,
-                            query
-                        })) as Record<string, any>;
-                        const products = Array.isArray(productsResponse?.products)
-                            ? (productsResponse.products as any[])
-                            : [];
-                        for (const product of products) {
-                            if (typeof product?.id === "string" && typeof product?.title === "string") {
-                                productTitleById[product.id] = product.title;
-                            }
-                        }
-                    }
-
-                    const mapRules = (rules: any[] | undefined) => {
-                        if (!Array.isArray(rules)) return [] as Array<Record<string, unknown>>;
-                        return rules.map((rule) => {
-                            const values: unknown = rule?.values;
-                            let productTitles: string[] | undefined;
-                            if (includeProducts && Array.isArray(values)) {
-                                productTitles = (values as unknown[])
-                                    .map((value) =>
-                                        typeof value === "string" ? productTitleById[value] ?? null : null
-                                    )
-                                    .filter((value): value is string => Boolean(value));
-                            }
-                            return {
-                                id: typeof rule?.id === "string" ? rule.id : undefined,
-                                attribute: typeof rule?.attribute === "string" ? rule.attribute : undefined,
-                                operator: typeof rule?.operator === "string" ? rule.operator : undefined,
-                                description: typeof rule?.description === "string" ? rule.description : undefined,
-                                values: Array.isArray(values) ? values : undefined,
-                                productTitles: productTitles && productTitles.length ? productTitles : undefined
-                            };
-                        });
-                    };
-
-                    const mapped = promotions.map((promotion) => {
-                        const applicationMethod = promotion?.application_method ?? {};
-                        const campaign = promotion?.campaign ?? null;
-                        return {
-                            id: promotion?.id,
-                            code: promotion?.code,
-                            status: promotion?.status,
-                            type: promotion?.type,
-                            is_automatic: promotion?.is_automatic,
-                            campaign: campaign
-                                ? {
-                                      id: campaign?.id,
-                                      name: campaign?.name,
-                                      description: campaign?.description,
-                                      starts_at: campaign?.starts_at,
-                                      ends_at: campaign?.ends_at
-                                  }
-                                : null,
-                            application_method: applicationMethod
-                                ? {
-                                      id: applicationMethod?.id,
-                                      type: applicationMethod?.type,
-                                      target_type: applicationMethod?.target_type,
-                                      allocation: applicationMethod?.allocation,
-                                      value: applicationMethod?.value,
-                                      currency_code: applicationMethod?.currency_code,
-                                      target_rules: mapRules(applicationMethod?.target_rules),
-                                      buy_rules: mapRules(applicationMethod?.buy_rules)
-                                  }
-                                : null,
-                            created_at: promotion?.created_at,
-                            updated_at: promotion?.updated_at
-                        };
-                    });
-
-                    return {
-                        promotions: mapped,
-                        metadata: {
-                            count: typeof listResponse?.count === "number" ? listResponse.count : mapped.length,
-                            limit: typeof listResponse?.limit === "number" ? listResponse.limit : promotionsQuery.limit,
-                            offset: typeof listResponse?.offset === "number" ? listResponse.offset : 0,
-                            productCount: includeProducts ? Object.keys(productTitleById).length : undefined,
-                            retrieved_at: new Date().toISOString()
-                        }
-                    };
                 }
             }))
         );
