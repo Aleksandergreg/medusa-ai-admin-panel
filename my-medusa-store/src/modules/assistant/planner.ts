@@ -31,7 +31,7 @@ export async function planNextStepWithGemini(
   }
   const apiKey = env("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
-  
+
   // Import GoogleGenAI here to avoid module resolution issues
   const { GoogleGenAI } = await import("@google/genai");
 
@@ -61,10 +61,13 @@ export async function planNextStepWithGemini(
     `1) If you need information or must perform an action, choose 'call_tool'.\n` +
     `2) If you have enough information, choose 'final_answer' and summarize succinctly.\n\n` +
     `${chartDirective}\n\n` +
-    `FINAL ANSWER FORMAT:\n` +
-    `- When you output {"action":"final_answer"}, the 'answer' value MUST be formatted as GitHub-Flavored Markdown (GFM).\n` +
-    `- Use short paragraphs, bullet lists, bold key IDs, and code fences for JSON or commands.\n` +
-    `- Do not include raw HTML.\n\n` +
+    `CRITICAL RESPONSE FORMAT REQUIREMENTS:\n` +
+    `- YOU MUST ALWAYS return ONLY a valid JSON object, nothing else\n` +
+    `- NEVER include markdown code fences like \`\`\`json or \`\`\`markdown around your response\n` +
+    `- NEVER include any text before or after the JSON object\n` +
+    `- When you output {"action":"final_answer"}, the 'answer' value MUST be formatted as GitHub-Flavored Markdown (GFM)\n` +
+    `- Use short paragraphs, bullet lists, bold key IDs, and code fences for JSON or commands within the answer string\n` +
+    `- Do not include raw HTML in the answer\n\n` +
     `CRITICAL API RULES:\n` +
     `- Always check tool schema carefully before making calls\n` +
     `- If a tool call fails, analyze the error and adjust your approach\n` +
@@ -73,10 +76,10 @@ export async function planNextStepWithGemini(
     `- If variant creation fails with "options" error, ensure options is an object not array\n` +
     `- If variant creation fails with "prices" error, include prices array in every variant\n` +
     `- If JSON parsing fails, ensure your response is valid JSON without extra text\n\n` +
-    `Always retrieve real data via the most relevant tool (Admin* list endpoints or custom tools).\n` +
-    `Return a single JSON object ONLY, no commentary.\n\n` +
-    `JSON to call a tool: {"action":"call_tool","tool_name":"string","tool_args":object}\n` +
-    `JSON for the final answer: {"action":"final_answer","answer":"string"}\n\n` +
+    `Always retrieve real data via the most relevant tool (Admin* list endpoints or custom tools).\n\n` +
+    `RESPONSE FORMAT EXAMPLES:\n` +
+    `For tool call: {"action":"call_tool","tool_name":"openapi.execute","tool_args":{"operationId":"AdminGetProducts"}}\n` +
+    `For final answer: {"action":"final_answer","answer":"Here are your products:\\n\\n- **Product 1**: Description here\\n- **Product 2**: Another description"}\n\n` +
     `AVAILABLE TOOLS:\n${JSON.stringify(toolCatalog, null, 2)}`;
 
   // DYNAMIC CONTENT (changes each loop)
@@ -85,7 +88,7 @@ export async function planNextStepWithGemini(
     history.length > 0
       ? `Previous actions taken:\n${JSON.stringify(history, null, 2)}`
       : "No previous actions taken.",
-    `What should I do next? Respond with ONLY the JSON object.`,
+    `What should I do next?\n\nIMPORTANT: Respond with ONLY a valid JSON object. Do not wrap it in markdown code fences. Do not include any text before or after the JSON.`,
   ].join("\n\n");
 
   const ai = new GoogleGenAI({ apiKey });
@@ -117,7 +120,24 @@ export async function planNextStepWithGemini(
 
   // Try to parse robustly first
   let parsed = safeParseJSON(text);
-  
+
+  // If parsing failed, try to extract JSON from markdown code blocks
+  if (!parsed) {
+    // Remove markdown code fences if present
+    const cleaned = text
+      .replace(/```(?:json|markdown)?\s*\n?([\s\S]*?)\n?```/gi, "$1")
+      .trim();
+    parsed = safeParseJSON(cleaned);
+
+    // If still no valid JSON, try to find the first JSON object
+    if (!parsed) {
+      const jsonMatch = cleaned.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/);
+      if (jsonMatch) {
+        parsed = safeParseJSON(jsonMatch[0]);
+      }
+    }
+  }
+
   if (parsed && typeof parsed === "object" && "action" in parsed) {
     return parsed as {
       action: "call_tool" | "final_answer";
@@ -131,9 +151,15 @@ export async function planNextStepWithGemini(
   console.warn(
     "LLM response was not in expected JSON format. Treating as final answer."
   );
-  console.warn("Raw response:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
+  console.warn(
+    "Raw response:",
+    text.substring(0, 200) + (text.length > 200 ? "..." : "")
+  );
+
+  // Clean up any markdown formatting before using as fallback answer
+  const cleanedAnswer = stripJsonFences(String(text)).trim();
   return {
     action: "final_answer",
-    answer: stripJsonFences(String(text)).trim(),
+    answer: cleanedAnswer,
   };
 }

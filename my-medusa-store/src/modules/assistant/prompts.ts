@@ -17,14 +17,3 @@ OUTPUT STYLE REQUIREMENTS:\n
 - Avoid raw HTML.
 `;
 }
-
-// Legacy function kept for backward compatibility during migration
-export function getCategoryPrompt(
-  category: string,
-  wantsChart?: boolean
-): string {
-  console.warn(
-    "getCategoryPrompt is deprecated, use getCombinedPrompt instead"
-  );
-  return getCombinedPrompt(wantsChart);
-}
