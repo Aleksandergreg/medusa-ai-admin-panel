@@ -29,70 +29,31 @@ export type Operation = {
 };
 
 const STOPWORDS = new Set([
-    "list",
-    "lists",
+    "a",
+    "about",
+    "an",
+    "and",
+    "for",
+    "from",
     "get",
     "gets",
+    "give",
+    "list",
+    "lists",
+    "me",
+    "of",
+    "or",
     "show",
     "shows",
-    "find",
-    "finds",
-    "retrieve",
-    "retrieves",
-    "fetch",
-    "fetches",
-    "what",
-    "which",
-    "where",
-    "when",
-    "give",
-    "me",
     "tell",
-    "about",
-    "with",
-    "for",
-    "and",
-    "or",
-    "of",
     "the",
-    "a",
-    "an"
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with"
 ]);
-
-const OPERATION_KEYWORDS: Record<string, string[]> = {
-    AdminGetPromotions: [
-        "promotion",
-        "promotions",
-        "discount",
-        "discounts",
-        "coupon",
-        "coupons",
-        "deal",
-        "deals",
-        "offer",
-        "offers"
-    ],
-    AdminGetPromotionsId: [
-        "promotion",
-        "promotions",
-        "discount",
-        "discounts",
-        "coupon",
-        "coupons",
-        "deal",
-        "deals",
-        "offer",
-        "offers"
-    ],
-    AdminGetCampaigns: [
-        "campaign",
-        "campaigns",
-        "promotion",
-        "promotions"
-    ],
-    AdminGetProducts: ["product", "products", "item", "items"],
-    AdminGetProductsId: ["product", "products", "item", "items"]
-};
 
 function isObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -100,6 +61,21 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function normalizeToken(token: string): string {
     return token.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function tokenize(value: unknown): string[] {
+    if (value === null || value === undefined) {
+        return [];
+    }
+    const text = String(value)
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/[^a-zA-Z0-9]+/g, " ")
+        .toLowerCase();
+    return text
+        .split(/\s+/)
+        .map((segment) => normalizeToken(segment))
+        .filter(Boolean)
+        .filter((segment) => !STOPWORDS.has(segment));
 }
 
 function pickOperationEntries(pathItem: unknown): Array<[HttpMethod, Record<string, unknown>]> {
@@ -174,7 +150,7 @@ export class OpenApiRegistry {
         return this.operations.find((o) => o.operationId === id);
     }
 
-    // Very lightweight keyword search across id, summary, description, path, tags
+    // Lightweight keyword search across id, summary, description, path, tags
     search(
         query: string,
         opts?: { tags?: string[]; methods?: HttpMethod[]; limit?: number }
@@ -184,8 +160,10 @@ export class OpenApiRegistry {
             .split(/\s+/)
             .map((token) => normalizeToken(token))
             .filter(Boolean);
-        const significantTokens = normalizedTokens.filter((t) => !STOPWORDS.has(t));
-        const tokens = significantTokens.length ? significantTokens : normalizedTokens;
+        const tokens = (() => {
+            const significant = normalizedTokens.filter((t) => !STOPWORDS.has(t));
+            return significant.length ? significant : normalizedTokens;
+        })();
         const tagSet = new Set((opts?.tags ?? []).map((t) => t.toLowerCase()));
         const methodSet = new Set(opts?.methods ?? []);
 
@@ -195,30 +173,35 @@ export class OpenApiRegistry {
                 (methodSet.size === 0 || methodSet.has(op.method))
             )
             .map((op) => {
-                const keywords = OPERATION_KEYWORDS[op.operationId] ?? [];
-                const hay = [
+                const fields = [
                     op.operationId,
                     op.summary ?? "",
                     op.description ?? "",
                     op.path,
-                    ...(op.tags ?? []),
-                    ...keywords
-                ]
-                    .join(" \n ")
-                    .toLowerCase();
+                    ...(op.tags ?? [])
+                ];
+                const haystack = fields.join(" \n ").toLowerCase();
                 let score = 0;
-                for (const t of tokens) {
-                    if (hay.includes(t)) {
+                for (const token of tokens) {
+                    if (token && haystack.includes(token)) {
                         score += 1;
                     }
                 }
-                // small boost to summaries and operationId exact includes
-                if ((op.summary ?? "").toLowerCase().includes(q)) score += 2;
-                if (op.operationId.toLowerCase().includes(q)) score += 2;
+                if (q && (op.summary ?? "").toLowerCase().includes(q)) {
+                    score += 2;
+                }
+                if (q && op.operationId.toLowerCase().includes(q.replace(/\s+/g, ""))) {
+                    score += 2;
+                }
                 return { op, score };
             })
             .filter(({ score }) => (tokens.length ? score > 0 : true))
-            .sort((a, b) => b.score - a.score);
+            .sort((a, b) => {
+                if (b.score !== a.score) {
+                    return b.score - a.score;
+                }
+                return a.op.operationId.localeCompare(b.op.operationId);
+            });
 
         const limit = opts?.limit ?? 10;
         return scored.slice(0, limit).map((s) => s.op);
