@@ -1,7 +1,7 @@
 import { MedusaService } from "@medusajs/framework/utils";
 import { getMcp } from "../../lib/mcp/manager";
 import { metricsStore, withToolLogging } from "../../lib/metrics/store";
-import { ChartType, HistoryEntry, McpTool } from "./types";
+import { ChartType, HistoryEntry, McpTool, InitialOperation } from "./types";
 import {
   extractToolJsonPayload,
   normalizeToolArgs,
@@ -16,14 +16,6 @@ type AskInput = {
   wantsChart?: boolean;
   chartType?: ChartType;
   chartTitle?: string;
-};
-
-type InitialOperation = {
-  operationId: string;
-  method: string;
-  path: string;
-  summary?: string;
-  tags?: string[];
 };
 
 class AssistantModuleService extends MedusaService({}) {
@@ -66,7 +58,7 @@ class AssistantModuleService extends MedusaService({}) {
         const suggestionPayload = extractToolJsonPayload(rawSuggestions);
         if (Array.isArray(suggestionPayload)) {
           initialOperations = suggestionPayload
-            .map((item) => {
+            .map((item): InitialOperation | null => {
               if (!item || typeof item !== "object") {
                 return null;
               }
@@ -163,8 +155,10 @@ class AssistantModuleService extends MedusaService({}) {
           plan.tool_name,
           normalizedArgs,
           async () => {
-            return mcp.callTool(plan.tool_name!, normalizedArgs as Record<string, unknown>);
-
+            return mcp.callTool(
+              plan.tool_name!,
+              normalizedArgs as Record<string, unknown>
+            );
           }
         );
 
