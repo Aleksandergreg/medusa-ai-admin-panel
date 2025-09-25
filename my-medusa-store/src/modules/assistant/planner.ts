@@ -78,6 +78,7 @@ export async function planNextStepWithGemini(
     `- Prefer GET for retrieval; non-GET requires user intent and confirm=true.\n` +
     `ERROR RECOVERY STRATEGIES:\n` +
     `- If product search by exact title fails, try partial keyword search\n` +
+    `- Search by the exact keyword coming from the user prompt first, before trying anything else\n` +
     `- If variant creation fails with "options" error, ensure options is an object not array\n` +
     `- If variant creation fails with "prices" error, include prices array in every variant\n` +
     `- If JSON parsing fails, ensure your response is valid JSON without extra text\n\n` +
