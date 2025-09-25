@@ -74,6 +74,7 @@ export async function planNextStepWithGemini(
     `- Start with the bare endpoint path (only required path params). Add optional query/body params only if the base response fails to satisfy the user's goal.\n` +
     `- Use 'fields' for Medusa selection semantics: '+field' to add, '-field' to remove, or a full replacement list.\n` +
     `- Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.\n` +
+    `- When openapi.schema shows a query parameter accepts an array (type array or oneOf string/array), build a single request using repeated \`param[]=value\` entries (for example \`customer_id[]=A&customer_id[]=B\`) instead of looping per ID.\n` +
     `- On any 4xx, stop and re-check openapi.schema, then correct the request. Do not retry minor variants.\n` +
     `- Prefer GET for retrieval; non-GET requires user intent and confirm=true.\n` +
     `ERROR RECOVERY STRATEGIES:\n` +
