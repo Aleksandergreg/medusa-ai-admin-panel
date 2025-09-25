@@ -16,6 +16,7 @@ type AskInput = {
   wantsChart?: boolean;
   chartType?: ChartType;
   chartTitle?: string;
+  onCancel?: (cancel: () => void) => void;
 };
 
 class AssistantModuleService extends MedusaService({}) {
@@ -97,9 +98,18 @@ class AssistantModuleService extends MedusaService({}) {
 
     const turnId = metricsStore.startAssistantTurn({ user: prompt });
 
+    let isCancelled = false;
+    if (typeof input.onCancel === "function") {
+      input.onCancel(() => {
+        isCancelled = true;
+      });
+    }
     for (let step = 0; step < this.maxSteps; step++) {
-      console.log(`\n--- AGENT LOOP: STEP ${step + 1} ---`);
-
+        if (isCancelled) {
+         throw new Error("Request was cancelled by the client.");
+      }
+      console.log(`
+--- AGENT LOOP: STEP ${step + 1} ---`);
       const plan = await planNextStepWithGemini(
         prompt,
         availableTools,
