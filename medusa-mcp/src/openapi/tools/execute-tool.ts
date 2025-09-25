@@ -122,10 +122,21 @@ function buildQuery(
         return { query: normalizeQuery(rawQuery), droppedKeys: [] };
     }
     const allowed = new Set(queryParams.map((param) => param.name));
+    const resolveAllowedKey = (key: string): string | null => {
+        if (allowed.has(key)) {
+            return key;
+        }
+        const bracketIndex = key.indexOf("[");
+        if (bracketIndex === -1) {
+            return null;
+        }
+        const baseKey = key.slice(0, bracketIndex);
+        return allowed.has(baseKey) ? baseKey : null;
+    };
     const filtered: Record<string, unknown> = {};
     const dropped: string[] = [];
     for (const [key, value] of Object.entries(rawQuery)) {
-        if (allowed.has(key)) {
+        if (resolveAllowedKey(key)) {
             filtered[key] = value;
         } else {
             dropped.push(key);
