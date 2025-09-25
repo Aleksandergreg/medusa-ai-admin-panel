@@ -201,7 +201,7 @@ class AssistantModuleService extends MedusaService({}) {
             text: JSON.stringify({ assistant_summary: summary }),
           };
           if (Array.isArray(resultObj?.content)) {
-            resultObj.content.push(textEntry);
+            resultObj.content.unshift(textEntry);
           } else if (resultObj) {
             resultObj.content = [textEntry];
           }
@@ -212,6 +212,14 @@ class AssistantModuleService extends MedusaService({}) {
           tool_args: normalizedArgs,
           tool_result: result,
         });
+
+        if (summary) {
+          history.push({
+            tool_name: "assistant.summary",
+            tool_args: { source_tool: plan.tool_name },
+            tool_result: { assistant_summary: summary },
+          });
+        }
       } else {
         throw new Error("AI returned an invalid plan. Cannot proceed.");
       }
