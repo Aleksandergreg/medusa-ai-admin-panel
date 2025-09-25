@@ -1,7 +1,7 @@
 import { MedusaService } from "@medusajs/framework/utils";
 import { getMcp } from "../../lib/mcp/manager";
 import { metricsStore, withToolLogging } from "../../lib/metrics/store";
-import { ChartType, HistoryEntry, McpTool } from "./types";
+import { ChartType, HistoryEntry, McpTool, InitialOperation } from "./types";
 import {
   extractToolJsonPayload,
   normalizeToolArgs,
@@ -16,14 +16,7 @@ type AskInput = {
   wantsChart?: boolean;
   chartType?: ChartType;
   chartTitle?: string;
-};
-
-type InitialOperation = {
-  operationId: string;
-  method: string;
-  path: string;
-  summary?: string;
-  tags?: string[];
+  onCancel?: (cancel: () => void) => void;
 };
 
 class AssistantModuleService extends MedusaService({}) {
@@ -66,7 +59,7 @@ class AssistantModuleService extends MedusaService({}) {
         const suggestionPayload = extractToolJsonPayload(rawSuggestions);
         if (Array.isArray(suggestionPayload)) {
           initialOperations = suggestionPayload
-            .map((item) => {
+            .map((item): InitialOperation | null => {
               if (!item || typeof item !== "object") {
                 return null;
               }
@@ -105,9 +98,18 @@ class AssistantModuleService extends MedusaService({}) {
 
     const turnId = metricsStore.startAssistantTurn({ user: prompt });
 
+    let isCancelled = false;
+    if (typeof input.onCancel === "function") {
+      input.onCancel(() => {
+        isCancelled = true;
+      });
+    }
     for (let step = 0; step < this.maxSteps; step++) {
-      console.log(`\n--- AGENT LOOP: STEP ${step + 1} ---`);
-
+        if (isCancelled) {
+         throw new Error("Request was cancelled by the client.");
+      }
+      console.log(`
+--- AGENT LOOP: STEP ${step + 1} ---`);
       const plan = await planNextStepWithGemini(
         prompt,
         availableTools,
@@ -163,8 +165,10 @@ class AssistantModuleService extends MedusaService({}) {
           plan.tool_name,
           normalizedArgs,
           async () => {
-            return mcp.callTool(plan.tool_name!, normalizedArgs as Record<string, unknown>);
-
+            return mcp.callTool(
+              plan.tool_name!,
+              normalizedArgs as Record<string, unknown>
+            );
           }
         );
 

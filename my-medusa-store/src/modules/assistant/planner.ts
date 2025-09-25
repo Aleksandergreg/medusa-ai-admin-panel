@@ -1,4 +1,4 @@
-﻿import { McpTool, ChartType } from "./types";
+﻿import { McpTool, ChartType, InitialOperation } from "./types";
 import { env, stripJsonFences, safeParseJSON } from "./utils";
 import { getCombinedPrompt } from "./prompts";
 
@@ -8,7 +8,8 @@ export async function planNextStepWithGemini(
   history: { tool_name: string; tool_args: unknown; tool_result: unknown }[],
   modelName: string = "gemini-2.5-flash",
   wantsChart: boolean = false,
-  chartType: ChartType = "bar"
+  chartType: ChartType = "bar",
+  initialOperations: InitialOperation[] = []
 ): Promise<{
   action: "call_tool" | "final_answer";
   tool_name?: string;
@@ -95,8 +96,20 @@ export async function planNextStepWithGemini(
     history.length > 0
       ? `Previous actions taken:\n${JSON.stringify(history, null, 2)}`
       : "No previous actions taken.",
+    initialOperations.length > 0
+      ? `Initial openapi.search suggestions:\n${initialOperations
+          .map((op) => {
+            const tagString = op.tags?.length
+              ? ` [tags: ${op.tags.join(", ")}]`
+              : "";
+            const summary = op.summary ? ` — ${op.summary}` : "";
+            return `- ${op.operationId} (${op.method.toUpperCase()} ${op.path})${tagString}${summary}`;
+          })
+          .join("\n")}`
+      : "No openapi.search suggestions provided.",
     `What should I do next?\n\nIMPORTANT: Respond with ONLY a valid JSON object. Do not wrap it in markdown code fences. Do not include any text before or after the JSON.`,
   ].join("\n\n");
+
 
   const ai = new GoogleGenAI({ apiKey });
 

@@ -21,3 +21,10 @@ export type ChartSpec = {
   data: Array<Record<string, string | number>>;
 };
 
+export type InitialOperation = {
+  operationId: string;
+  method: string;
+  path: string;
+  summary?: string;
+  tags?: string[];
+};

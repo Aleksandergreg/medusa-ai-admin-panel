@@ -24,6 +24,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       chartType: body.chartType === "line" ? "line" : "bar",
       chartTitle:
         typeof body.chartTitle === "string" ? body.chartTitle : undefined,
+      onCancel: (cancel) => {
+        req.res?.on("close", cancel);
+      },
     });
 
     return res.json(result);
