@@ -190,7 +190,7 @@ export class OpenApiRegistry {
                 if (q && (op.summary ?? "").toLowerCase().includes(q)) {
                     score += 2;
                 }
-                if (q && op.operationId.toLowerCase().includes(q.replace(/\s+/g, ""))) {
+                if (q && op.operationId.toLowerCase().includes(normalizeToken(q))) {
                     score += 2;
                 }
                 return { op, score };
