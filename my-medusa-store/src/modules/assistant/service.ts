@@ -10,6 +10,8 @@ import {
 import { buildChartFromAnswer, buildChartFromLatestTool } from "./charts";
 import { planNextStepWithGemini } from "./planner";
 import { collectGroundTruthNumbers } from "./validation";
+import { summarizePayload } from "./aggregators";
+import { MCPResult } from "./utils";
 
 type AskInput = {
   prompt: string;
@@ -176,6 +178,33 @@ class AssistantModuleService extends MedusaService({}) {
         const truth = collectGroundTruthNumbers(payload);
         if (truth) {
           metricsStore.provideGroundTruth(turnId, truth);
+        }
+
+        const summary = summarizePayload(payload);
+        if (summary) {
+          const summaryNumbers: Record<string, number> = {};
+
+          for (const aggregate of summary.aggregates) {
+            for (const entry of aggregate.counts) {
+              summaryNumbers[`${aggregate.path}:${entry.value}`] = entry.count;
+            }
+            summaryNumbers[`${aggregate.path}:__total__`] = aggregate.total;
+          }
+
+          if (Object.keys(summaryNumbers).length) {
+            metricsStore.provideGroundTruth(turnId, summaryNumbers);
+          }
+
+          const resultObj = result as MCPResult;
+          const textEntry = {
+            type: "text" as const,
+            text: JSON.stringify({ assistant_summary: summary }),
+          };
+          if (Array.isArray(resultObj?.content)) {
+            resultObj.content.push(textEntry);
+          } else if (resultObj) {
+            resultObj.content = [textEntry];
+          }
         }
 
         history.push({
