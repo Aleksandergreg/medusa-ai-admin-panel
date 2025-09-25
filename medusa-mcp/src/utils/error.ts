@@ -10,5 +10,5 @@ export class ToolError extends Error {
 }
 
 export function formatErrorResponse(error: unknown) {
-    // Format the error response according to the MCP protocol
+    console.log(error);
 }

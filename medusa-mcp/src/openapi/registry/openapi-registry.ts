@@ -1,4 +1,4 @@
-import { OpenAPISpec } from "./loader";
+import { OpenAPISpec } from "../spec/loader";
 
 export type HttpMethod =
     | "get"
@@ -28,8 +28,54 @@ export type Operation = {
     requestBody?: unknown;
 };
 
+const STOPWORDS = new Set([
+    "a",
+    "about",
+    "an",
+    "and",
+    "for",
+    "from",
+    "get",
+    "gets",
+    "give",
+    "list",
+    "lists",
+    "me",
+    "of",
+    "or",
+    "show",
+    "shows",
+    "tell",
+    "the",
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with"
+]);
+
 function isObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function normalizeToken(token: string): string {
+    return token.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function tokenize(value: unknown): string[] {
+    if (value === null || value === undefined) {
+        return [];
+    }
+    const text = String(value)
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/[^a-zA-Z0-9]+/g, " ")
+        .toLowerCase();
+    return text
+        .split(/\s+/)
+        .map((segment) => normalizeToken(segment))
+        .filter(Boolean)
+        .filter((segment) => !STOPWORDS.has(segment));
 }
 
 function pickOperationEntries(pathItem: unknown): Array<[HttpMethod, Record<string, unknown>]> {
@@ -104,13 +150,20 @@ export class OpenApiRegistry {
         return this.operations.find((o) => o.operationId === id);
     }
 
-    // Very lightweight keyword search across id, summary, description, path, tags
+    // Lightweight keyword search across id, summary, description, path, tags
     search(
         query: string,
         opts?: { tags?: string[]; methods?: HttpMethod[]; limit?: number }
     ): Operation[] {
         const q = query.toLowerCase().trim();
-        const tokens = q.split(/\s+/).filter(Boolean);
+        const normalizedTokens = q
+            .split(/\s+/)
+            .map((token) => normalizeToken(token))
+            .filter(Boolean);
+        const tokens = (() => {
+            const significant = normalizedTokens.filter((t) => !STOPWORDS.has(t));
+            return significant.length ? significant : normalizedTokens;
+        })();
         const tagSet = new Set((opts?.tags ?? []).map((t) => t.toLowerCase()));
         const methodSet = new Set(opts?.methods ?? []);
 
@@ -120,28 +173,35 @@ export class OpenApiRegistry {
                 (methodSet.size === 0 || methodSet.has(op.method))
             )
             .map((op) => {
-                const hay = [
+                const fields = [
                     op.operationId,
                     op.summary ?? "",
                     op.description ?? "",
                     op.path,
                     ...(op.tags ?? [])
-                ]
-                    .join(" \n ")
-                    .toLowerCase();
+                ];
+                const haystack = fields.join(" \n ").toLowerCase();
                 let score = 0;
-                for (const t of tokens) {
-                    if (hay.includes(t)) {
+                for (const token of tokens) {
+                    if (token && haystack.includes(token)) {
                         score += 1;
                     }
                 }
-                // small boost to summaries and operationId exact includes
-                if ((op.summary ?? "").toLowerCase().includes(q)) score += 2;
-                if (op.operationId.toLowerCase().includes(q)) score += 2;
+                if (q && (op.summary ?? "").toLowerCase().includes(q)) {
+                    score += 2;
+                }
+                if (q && op.operationId.toLowerCase().includes(normalizeToken(q))) {
+                    score += 2;
+                }
                 return { op, score };
             })
             .filter(({ score }) => (tokens.length ? score > 0 : true))
-            .sort((a, b) => b.score - a.score);
+            .sort((a, b) => {
+                if (b.score !== a.score) {
+                    return b.score - a.score;
+                }
+                return a.op.operationId.localeCompare(b.op.operationId);
+            });
 
         const limit = opts?.limit ?? 10;
         return scored.slice(0, limit).map((s) => s.op);
