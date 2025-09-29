@@ -152,9 +152,10 @@ class AssistantModuleService extends MedusaService({}) {
       }
 
       if (plan.action === "call_tool" && plan.tool_name && plan.tool_args) {
-        console.log(`AI wants to call tool: ${plan.tool_name}`);
+        console.log(` 🧠 AI wants to call tool: ${plan.tool_name}`);
         console.log(`   With args: ${JSON.stringify(plan.tool_args)}`);
 
+        
         metricsStore.noteToolUsed(turnId, plan.tool_name);
 
         const normalizedArgs = normalizeToolArgs(plan.tool_args);
@@ -163,16 +164,51 @@ class AssistantModuleService extends MedusaService({}) {
           console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
         }
 
-        const result = await withToolLogging(
-          plan.tool_name,
-          normalizedArgs,
-          async () => {
-            return mcp.callTool(
-              plan.tool_name!,
-              normalizedArgs as Record<string, unknown>
-            );
+        let result: unknown;
+        try {
+          result = await withToolLogging(
+            plan.tool_name,
+            normalizedArgs,
+            async () => {
+              return mcp.callTool(
+                plan.tool_name!,
+                normalizedArgs as Record<string, unknown>
+              );
+            }
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          console.warn(`   Tool ${plan.tool_name} failed: ${message}`);
+
+          const toolError: Record<string, unknown> = {
+            error: true,
+            message,
+          };
+
+          const maybeCode = (error as { code?: unknown })?.code;
+          if (typeof maybeCode === "number" || typeof maybeCode === "string") {
+            toolError.code = maybeCode;
           }
-        );
+
+          const maybeData = (error as { data?: unknown })?.data;
+          if (maybeData !== undefined) {
+            toolError.data = maybeData;
+          }
+
+          const maybeResult = (error as { result?: unknown })?.result;
+          if (maybeResult !== undefined) {
+            toolError.result = maybeResult;
+          }
+
+          history.push({
+            tool_name: plan.tool_name,
+            tool_args: normalizedArgs,
+            tool_result: toolError,
+          });
+
+          continue;
+        }
 
         console.log(
           `   Tool Result: ${JSON.stringify(result).substring(0, 200)}...`
