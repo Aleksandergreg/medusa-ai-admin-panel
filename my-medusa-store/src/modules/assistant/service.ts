@@ -1,17 +1,17 @@
 import { MedusaService } from "@medusajs/framework/utils";
 import { getMcp } from "../../lib/mcp/manager";
 import { metricsStore, withToolLogging } from "../../lib/metrics/store";
-import { ChartType, HistoryEntry, McpTool, InitialOperation } from "./types";
+import { ChartType, HistoryEntry, McpTool, InitialOperation } from "./lib/types";
 import {
   extractToolJsonPayload,
   normalizeToolArgs,
   ensureMarkdownMinimum,
-} from "./utils";
+} from "./lib/utils";
 import { buildChartFromAnswer, buildChartFromLatestTool } from "./charts";
-import { planNextStepWithGemini } from "./planner";
-import { collectGroundTruthNumbers } from "./validation";
-import { summarizePayload } from "./aggregators";
-import { MCPResult } from "./utils";
+import { planNextStepWithGemini } from "./core/planner";
+import { collectGroundTruthNumbers } from "./core/validation";
+import { summarizePayload } from "./core/aggregators";
+import { MCPResult } from "./lib/utils";
 import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
 
 type AskInput = {

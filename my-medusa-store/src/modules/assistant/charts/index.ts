@@ -1,9 +1,9 @@
-import { ChartSpec, ChartType, HistoryEntry } from "./types";
+import { ChartSpec, ChartType, HistoryEntry } from "../lib/types";
 import {
   extractToolJsonPayload,
   safeParseJSON,
   stripJsonFences,
-} from "./utils";
+} from "../lib/utils";
 
 const MONTHS_SHORT = [
   "Jan",
@@ -415,4 +415,3 @@ export function buildChartFromAnswer(
   // As a last resort, try the generic fallback on this JSON
   return genericChartFromPayload(maybe, chartType, title);
 }
-

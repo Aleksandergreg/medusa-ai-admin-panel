@@ -1,7 +1,7 @@
-﻿import { McpTool, ChartType, InitialOperation } from "./types";
-import { env, stripJsonFences, safeParseJSON } from "./utils";
-import { getCombinedPrompt } from "./prompts";
-import { AssistantModuleOptions } from "./config";
+﻿import { McpTool, ChartType, InitialOperation } from "../lib/types";
+import { env, stripJsonFences, safeParseJSON } from "../lib/utils";
+import { getCombinedPrompt } from "../prompts";
+import { AssistantModuleOptions } from "../config";
 
 export async function planNextStepWithGemini(
   userPrompt: string,

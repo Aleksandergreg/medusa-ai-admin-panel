@@ -1,4 +1,4 @@
-import { JSONObject } from "./utils";
+import { JSONObject } from "../lib/utils";
 
 export type CountEntry = {
   value: string;
@@ -115,4 +115,3 @@ export function summarizePayload(payload: unknown): AssistantSummary | undefined
 
   return { aggregates: summaries } satisfies AssistantSummary;
 }
-
