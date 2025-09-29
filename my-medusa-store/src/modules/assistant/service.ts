@@ -8,9 +8,9 @@ import {
   ensureMarkdownMinimum,
 } from "./lib/utils";
 import { buildChartFromAnswer, buildChartFromLatestTool } from "./charts";
-import { planNextStepWithGemini } from "./core/planner";
-import { collectGroundTruthNumbers } from "./core/validation";
-import { summarizePayload } from "./core/aggregators";
+import { planNextStepWithGemini } from "./agent/planner";
+import { collectGroundTruthNumbers } from "./analysis/validation";
+import { summarizePayload } from "./analysis/aggregators";
 import { MCPResult } from "./lib/utils";
 import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
 
