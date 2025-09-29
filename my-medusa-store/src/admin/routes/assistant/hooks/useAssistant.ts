@@ -24,8 +24,14 @@ export function useAssistant() {
   );
 
   // derived/ephemeral state
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [chart, setChart] = useState<ChartSpec | null>(null);
+  const [answer, setAnswer] = useLocalStorageState<string | null>(
+    STORAGE_KEYS.answer,
+    null
+  );
+  const [chart, setChart] = useLocalStorageState<ChartSpec | null>(
+    STORAGE_KEYS.chart,
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortController = useRef<AbortController | null>(null);
@@ -57,12 +63,12 @@ export function useAssistant() {
       const res = await askAssistant(payload, signal);
       setAnswer(res.answer ?? "");
       setChart((res.chart as ChartSpec) ?? null);
-    } catch (e: any) {
-      if (e.name === "AbortError") {
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === "AbortError") {
         console.log("Request aborted");
         // Do not set error state for AbortError
       } else {
-        setError(e?.message ?? "Unknown error");
+        setError((e as Error)?.message ?? "Unknown error");
       }
     } finally {
       setLoading(false);
@@ -82,7 +88,7 @@ export function useAssistant() {
     setError(null);
     setPrompt("");
     cancel(); // Cancel any ongoing request when clearing
-  }, [setPrompt, cancel]);
+  }, [setPrompt, setAnswer, setChart, cancel]);
 
   return {
     // state
@@ -96,7 +102,9 @@ export function useAssistant() {
     setChartTitle,
 
     answer,
+    setAnswer,
     chart,
+    setChart,
     loading,
     error,
 
