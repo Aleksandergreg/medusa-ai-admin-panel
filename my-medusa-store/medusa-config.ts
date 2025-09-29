@@ -1,6 +1,6 @@
-import { loadEnv, defineConfig } from '@medusajs/framework/utils'
+import { loadEnv, defineConfig } from "@medusajs/framework/utils";
 
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
 module.exports = defineConfig({
   projectConfig: {
@@ -20,8 +20,8 @@ module.exports = defineConfig({
         maxSteps: 25,
         modelName: process.env.ASSISTANT_MODEL_NAME || "gemini-2.5-flash",
         geminiApiKey: process.env.GEMINI_API_KEY,
-        plannerMode: process.env.ASSISTANT_PLANNER_MODE || "live"
-      }
-    }
-  ]
-})
+        plannerMode: process.env.ASSISTANT_PLANNER_MODE || "live",
+      },
+    },
+  ],
+});
