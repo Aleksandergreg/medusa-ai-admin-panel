@@ -15,7 +15,13 @@ module.exports = defineConfig({
   },
   modules: [
     {
-      resolve: "./src/modules/assistant"
+      resolve: "./src/modules/assistant",
+      options: {
+        maxSteps: 25,
+        modelName: process.env.ASSISTANT_MODEL_NAME || "gemini-2.5-flash",
+        geminiApiKey: process.env.GEMINI_API_KEY,
+        plannerMode: process.env.ASSISTANT_PLANNER_MODE || "live"
+      }
     }
   ]
 })
