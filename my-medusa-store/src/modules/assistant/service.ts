@@ -12,6 +12,7 @@ import { planNextStepWithGemini } from "./planner";
 import { collectGroundTruthNumbers } from "./validation";
 import { summarizePayload } from "./aggregators";
 import { MCPResult } from "./utils";
+import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
 
 type AskInput = {
   prompt: string;
@@ -22,10 +23,11 @@ type AskInput = {
 };
 
 class AssistantModuleService extends MedusaService({}) {
-  private readonly maxSteps = 25;
+  private readonly config: AssistantModuleOptions;
 
-  constructor(container: unknown, options: unknown = {}) {
+  constructor(container: unknown, options: AssistantModuleOptions = DEFAULT_ASSISTANT_OPTIONS) {
     super(container, options);
+    this.config = { ...DEFAULT_ASSISTANT_OPTIONS, ...options };
   }
 
   async ask(input: AskInput): Promise<{
@@ -106,7 +108,7 @@ class AssistantModuleService extends MedusaService({}) {
         isCancelled = true;
       });
     }
-    for (let step = 0; step < this.maxSteps; step++) {
+    for (let step = 0; step < this.config.maxSteps; step++) {
         if (isCancelled) {
          throw new Error("Request was cancelled by the client.");
       }
@@ -116,10 +118,11 @@ class AssistantModuleService extends MedusaService({}) {
         prompt,
         availableTools,
         history,
-        "gemini-2.5-flash",
+        this.config.modelName,
         wantsChart,
         chartType,
-        initialOperations
+        initialOperations,
+        this.config
       );
 
       if (plan.action === "final_answer") {
