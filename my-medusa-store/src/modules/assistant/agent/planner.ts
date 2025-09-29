@@ -20,7 +20,9 @@ export async function planNextStepWithGemini(
 }> {
   // Deterministic CI fallback to avoid external LLM dependency and flakiness
   try {
-    const ciMode = config?.plannerMode === "ci" || process.env.ASSISTANT_PLANNER_MODE === "ci";
+    const ciMode =
+      config?.plannerMode === "ci" ||
+      process.env.ASSISTANT_PLANNER_MODE === "ci";
     if (ciMode) {
       // Default: do nothing fancy
       return {
@@ -72,12 +74,13 @@ export async function planNextStepWithGemini(
     `- Use short paragraphs, bullet lists, bold key IDs, and code fences for JSON or commands within the answer string\n` +
     `- Do not include raw HTML in the answer\n\n` +
     `CRITICAL API RULES (ENFORCED):\n` +
+    `- ANTI-LOOPING RULE: If the user's request involves multiple items (e.g., 'products A and B', 'orders X, Y, Z'), you MUST use an API endpoint that accepts multiple values for a filter (e.g., an array of IDs or titles). Make ONE single call for all items. DO NOT make separate, sequential calls for each item.\n` +
     `- Always call in this order: openapi.search → openapi.schema → openapi.execute\n` +
     `- Use ONLY parameter names present in openapi.schema (path/query/header). Do not invent params like 'expand'.\n` +
     `- Start with the bare endpoint path (only required path params). Add optional query/body params only if the base response fails to satisfy the user's goal.\n` +
     `- Use 'fields' for Medusa selection semantics: '+field' to add, '-field' to remove, or a full replacement list.\n` +
     `- Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.\n` +
-    `- When openapi.schema shows a query parameter accepts an array (type array or oneOf string/array), build a single request using repeated \`param[]=value\` entries (for example \`customer_id[]=A&customer_id[]=B\`) instead of looping per ID.\n` +
+    `- To batch a request for a parameter that accepts an array, provide a JSON array in 'tool_args'. For example: \`{"operationId":"AdminGetProducts","query":{"title":["Sweatshirt", "Sweatpants"]}}\`. The system handles URL formatting. Do not create loops.\n` +
     `- On any 4xx, stop and re-check openapi.schema, then correct the request. Do not retry minor variants.\n` +
     `- Prefer GET for retrieval; non-GET requires user intent and confirm=true.\n` +
     `- When a tool result includes {"assistant_summary":...}, treat those aggregates as the authoritative counts instead of rescanning raw JSON.\n` +
@@ -106,13 +109,14 @@ export async function planNextStepWithGemini(
               ? ` [tags: ${op.tags.join(", ")}]`
               : "";
             const summary = op.summary ? ` — ${op.summary}` : "";
-            return `- ${op.operationId} (${op.method.toUpperCase()} ${op.path})${tagString}${summary}`;
+            return `- ${op.operationId} (${op.method.toUpperCase()} ${
+              op.path
+            })${tagString}${summary}`;
           })
           .join("\n")}`
       : "No openapi.search suggestions provided.",
     `What should I do next?\n\nIMPORTANT: Respond with ONLY a valid JSON object. Do not wrap it in markdown code fences. Do not include any text before or after the JSON.`,
   ].join("\n\n");
-
 
   const ai = new GoogleGenAI({ apiKey });
 
