@@ -33,7 +33,7 @@ export async function planNextStepWithGemini(
     // fallthrough to live LLM below if CI routing fails
   }
   const apiKey = config?.geminiApiKey;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  if (!apiKey) throw new Error("Gemini API key is not configured");
 
   // Import GoogleGenAI here to avoid module resolution issues
   const { GoogleGenAI } = await import("@google/genai");
