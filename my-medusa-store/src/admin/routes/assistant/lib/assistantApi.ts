@@ -1,10 +1,11 @@
 import { z } from "zod";
 import type { AssistantResponse } from "../types";
+import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 const ChartSpecSchema = z.any(); // if you have a stricter ChartSpec, swap it in
 
 const AssistantResponseSchema = z.object({
-  answer: z.string().default(""),
+  response: z.string().default(""),
   chart: ChartSpecSchema.nullish(),
 });
 
@@ -13,6 +14,7 @@ export type AskPayload = {
   wantsChart: boolean;
   chartType: "bar" | "line";
   chartTitle?: string;
+  history?: ConversationEntry[];
 };
 
 export async function askAssistant(
@@ -41,5 +43,8 @@ export async function askAssistant(
     throw new Error("Invalid response from server :(");
   }
 
-  return parsed.data;
+  return {
+    answer: parsed.data.response,
+    chart: parsed.data.chart,
+  };
 }

@@ -3,6 +3,7 @@ import { useLocalStorageState } from "../../../hooks/useLocalStorageState";
 import { STORAGE_KEYS } from "../lib/storageKeys";
 import { askAssistant } from "../lib/assistantApi";
 import type { ChartSpec } from "../ChartRenderer";
+import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 export function useAssistant() {
   // persisted user prefs + prompt
@@ -21,6 +22,11 @@ export function useAssistant() {
   const [chartTitle, setChartTitle] = useLocalStorageState<string>(
     STORAGE_KEYS.chartTitle,
     ""
+  );
+
+  const [history, setHistory] = useLocalStorageState<ConversationEntry[]>(
+    STORAGE_KEYS.history,
+    []
   );
 
   // derived/ephemeral state
@@ -52,17 +58,28 @@ export function useAssistant() {
     setChart(null);
     setError(null);
 
+    const currentHistory = [
+      ...history,
+      { role: "user", content: prompt },
+    ] as ConversationEntry[];
+    setHistory(currentHistory);
+
     try {
       const payload = {
         prompt,
         wantsChart,
         chartType,
         ...(chartTitle.trim() ? { chartTitle: chartTitle.trim() } : {}),
+        history: currentHistory,
       } as const;
 
       const res = await askAssistant(payload, signal);
       setAnswer(res.answer ?? "");
       setChart((res.chart as ChartSpec) ?? null);
+      setHistory([
+        ...currentHistory,
+        { role: "assistant", content: res.answer ?? "" },
+      ]);
     } catch (e: unknown) {
       if (e instanceof Error && e.name === "AbortError") {
         console.log("Request aborted");
@@ -74,7 +91,7 @@ export function useAssistant() {
       setLoading(false);
       abortController.current = null;
     }
-  }, [canSubmit, prompt, wantsChart, chartType, chartTitle]);
+  }, [canSubmit, prompt, wantsChart, chartType, chartTitle, history]);
 
   const cancel = useCallback(() => {
     if (abortController.current) {
@@ -87,8 +104,9 @@ export function useAssistant() {
     setChart(null);
     setError(null);
     setPrompt("");
+    setHistory([]);
     cancel(); // Cancel any ongoing request when clearing
-  }, [setPrompt, setAnswer, setChart, cancel]);
+  }, [setPrompt, setAnswer, setChart, setHistory, cancel]);
 
   return {
     // state
@@ -100,6 +118,7 @@ export function useAssistant() {
     setChartType,
     chartTitle,
     setChartTitle,
+    history,
 
     answer,
     setAnswer,

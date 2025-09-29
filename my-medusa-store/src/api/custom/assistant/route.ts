@@ -1,35 +1,27 @@
-import { MedusaResponse, MedusaRequest } from "@medusajs/framework/http";
+import { MedusaRequest, MedusaResponse } from "@medusajs/framework";
 import AssistantModuleService from "../../../modules/assistant/service";
-import { ASSISTANT_MODULE } from "../../../modules/assistant";
+import { ConversationEntry } from "../../../modules/assistant/lib/types";
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
-    const body = (req.body ?? {}) as {
-      prompt?: string;
-      wantsChart?: boolean;
-      chartType?: "bar" | "line";
-      chartTitle?: string;
+    const {
+      prompt,
+      history = [],
+    } = req.body as {
+      prompt: string;
+      history?: ConversationEntry[];
     };
 
-    const prompt = body.prompt?.trim();
-    if (!prompt) {
-      return res.status(400).json({ error: "Missing prompt" });
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "Missing or invalid prompt" });
     }
 
-    const assistant =
-      req.scope.resolve<AssistantModuleService>(ASSISTANT_MODULE);
-    const result = await assistant.ask({
-      prompt,
-      wantsChart: Boolean(body.wantsChart),
-      chartType: body.chartType === "line" ? "line" : "bar",
-      chartTitle:
-        typeof body.chartTitle === "string" ? body.chartTitle : undefined,
-      onCancel: (cancel) => {
-        req.res?.on("close", cancel);
-      },
-    });
+    const assistantService =
+      req.scope.resolve<AssistantModuleService>("assistant");
 
-    return res.json(result);
+    const response = await assistantService.prompt(prompt, history);
+
+    return res.json({ response });
   } catch (e: unknown) {
     console.error("\n--- 💥 ASSISTANT ROUTE ERROR ---\n", e);
     return res

@@ -6,7 +6,10 @@ import { askAgent } from "./agent/ask";
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
 
-  constructor(container: unknown, options: AssistantModuleOptions = DEFAULT_ASSISTANT_OPTIONS) {
+  constructor(
+    container: unknown,
+    options: AssistantModuleOptions = DEFAULT_ASSISTANT_OPTIONS
+  ) {
     super(container, options);
     this.config = { ...DEFAULT_ASSISTANT_OPTIONS, ...options };
   }
@@ -26,7 +29,9 @@ class AssistantModuleService extends MedusaService({}) {
       },
       { config: this.config }
     );
-    return result.answer ?? "Sorry, I could not find an answer to your question.";
+    return (
+      result.answer ?? "Sorry, I could not find an answer to your question."
+    );
   }
 }
 

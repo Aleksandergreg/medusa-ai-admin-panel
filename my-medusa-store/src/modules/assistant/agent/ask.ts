@@ -19,6 +19,7 @@ import { executeTool } from "./tool-executor";
 
 type AskInput = {
   prompt: string;
+  history?: HistoryEntry[];
   wantsChart?: boolean;
   chartType?: ChartType;
   chartTitle?: string;
@@ -53,7 +54,7 @@ export async function askAgent(
     availableTools
   );
 
-  const history: HistoryEntry[] = [];
+  const history: HistoryEntry[] = [...(input.history || [])];
 
   const turnId = metricsStore.startAssistantTurn({ user: prompt });
 
