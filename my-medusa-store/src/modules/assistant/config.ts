@@ -6,7 +6,7 @@ export interface AssistantModuleOptions {
   /** Gemini API key for AI integration */
   geminiApiKey?: string;
   /** Planner mode: 'ci' for deterministic CI mode, 'live' for LLM integration */
-  plannerMode: string;
+  plannerMode: 'ci' | 'live';
 }
 
 export const DEFAULT_ASSISTANT_OPTIONS: AssistantModuleOptions = {
