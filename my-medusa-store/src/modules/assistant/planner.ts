@@ -1,6 +1,7 @@
 ﻿import { McpTool, ChartType, InitialOperation } from "./types";
 import { env, stripJsonFences, safeParseJSON } from "./utils";
 import { getCombinedPrompt } from "./prompts";
+import { AssistantModuleOptions } from "./config";
 
 export async function planNextStepWithGemini(
   userPrompt: string,
@@ -9,7 +10,8 @@ export async function planNextStepWithGemini(
   modelName: string = "gemini-2.5-flash",
   wantsChart: boolean = false,
   chartType: ChartType = "bar",
-  initialOperations: InitialOperation[] = []
+  initialOperations: InitialOperation[] = [],
+  config?: AssistantModuleOptions
 ): Promise<{
   action: "call_tool" | "final_answer";
   tool_name?: string;
@@ -18,7 +20,7 @@ export async function planNextStepWithGemini(
 }> {
   // Deterministic CI fallback to avoid external LLM dependency and flakiness
   try {
-    const ciMode = process.env.ASSISTANT_PLANNER_MODE === "ci";
+    const ciMode = config?.plannerMode === "ci" || process.env.ASSISTANT_PLANNER_MODE === "ci";
     if (ciMode) {
       // Default: do nothing fancy
       return {
@@ -30,7 +32,7 @@ export async function planNextStepWithGemini(
   } catch {
     // fallthrough to live LLM below if CI routing fails
   }
-  const apiKey = env("GEMINI_API_KEY");
+  const apiKey = config?.geminiApiKey;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
 
   // Import GoogleGenAI here to avoid module resolution issues
