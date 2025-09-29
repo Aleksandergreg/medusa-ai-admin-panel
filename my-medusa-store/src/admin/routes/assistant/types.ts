@@ -5,6 +5,7 @@ export type Category = "" | "customers" | "orders" | "products" | "promotions";
 
 
 export interface AssistantResponse {
-answer: string;
-chart?: ChartSpec | null;
+  answer: string;
+  chart?: ChartSpec | null;
+  sessionId?: string;
 }
