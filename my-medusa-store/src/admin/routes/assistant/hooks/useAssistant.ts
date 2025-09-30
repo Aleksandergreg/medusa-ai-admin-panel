@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorageState } from "../../../hooks/useLocalStorageState";
 import { STORAGE_KEYS } from "../lib/storageKeys";
-import { askAssistant } from "../lib/assistantApi";
+import { askAssistant, fetchAssistantSession } from "../lib/assistantApi";
 import type { ChartSpec } from "../ChartRenderer";
+import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 export function useAssistant() {
   // persisted user prefs + prompt
@@ -22,19 +23,77 @@ export function useAssistant() {
     STORAGE_KEYS.chartTitle,
     ""
   );
+  const [sessionId, setSessionId] = useLocalStorageState<string | null>(
+    STORAGE_KEYS.sessionId,
+    null
+  );
 
-  // derived/ephemeral state
-  const [answer, setAnswer] = useLocalStorageState<string | null>(
-    STORAGE_KEYS.answer,
-    null
-  );
-  const [chart, setChart] = useLocalStorageState<ChartSpec | null>(
-    STORAGE_KEYS.chart,
-    null
-  );
+  const [history, setHistory] = useState<ConversationEntry[]>([]);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [chart, setChart] = useState<ChartSpec | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortController = useRef<AbortController | null>(null);
+  const lastFetchedSession = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) {
+      lastFetchedSession.current = null;
+      setHistory([]);
+      setAnswer(null);
+      setChart(null);
+      return;
+    }
+
+    if (lastFetchedSession.current === sessionId) {
+      return;
+    }
+
+    let isActive = true;
+    const controller = new AbortController();
+
+    setLoading(true);
+    fetchAssistantSession(sessionId, controller.signal)
+      .then((session) => {
+        if (!isActive) {
+          return;
+        }
+        lastFetchedSession.current = session.sessionId;
+        setHistory(session.history);
+        setChart(null);
+        const latestAssistant = [...session.history]
+          .reverse()
+          .find((entry) => entry.role === "assistant");
+        setAnswer(latestAssistant?.content ?? null);
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        if (!isActive) {
+          return;
+        }
+        lastFetchedSession.current = null;
+        const message = (e as Error)?.message ?? "Failed to load assistant session";
+        if (message && message !== "Session not found") {
+          setError(message);
+        } else {
+          setError(null);
+        }
+        setHistory([]);
+        setAnswer(null);
+        setChart(null);
+        setSessionId(null);
+      })
+      .finally(() => {
+        if (isActive) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [sessionId, setSessionId]);
 
   const canSubmit = useMemo(
     () => prompt.trim().length > 0 && !loading,
@@ -44,29 +103,55 @@ export function useAssistant() {
   const ask = useCallback(async () => {
     if (!canSubmit) return;
 
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) {
+      return;
+    }
+
+    if (abortController.current) {
+      abortController.current.abort();
+    }
     abortController.current = new AbortController();
     const signal = abortController.current.signal;
 
+    const previousHistory = history;
+    const optimisticHistory: ConversationEntry[] = [
+      ...history,
+      { role: "user", content: trimmedPrompt },
+    ];
+
+    setHistory(optimisticHistory);
     setLoading(true);
     setAnswer(null);
     setChart(null);
     setError(null);
 
     try {
+      const trimmedTitle = chartTitle.trim();
       const payload = {
-        prompt,
+        prompt: trimmedPrompt,
         wantsChart,
         chartType,
-        ...(chartTitle.trim() ? { chartTitle: chartTitle.trim() } : {}),
+        ...(trimmedTitle ? { chartTitle: trimmedTitle } : {}),
+        ...(sessionId ? { sessionId } : {}),
       } as const;
 
       const res = await askAssistant(payload, signal);
-      setAnswer(res.answer ?? "");
-      setChart((res.chart as ChartSpec) ?? null);
+      if (signal.aborted) {
+        return;
+      }
+
+      const resolvedSessionId = res.sessionId ?? sessionId ?? null;
+
+      setHistory(res.history);
+      setAnswer(res.answer);
+      setChart(res.chart ?? null);
+      setSessionId(resolvedSessionId);
+      lastFetchedSession.current = resolvedSessionId;
     } catch (e: unknown) {
+      setHistory(previousHistory);
       if (e instanceof Error && e.name === "AbortError") {
         console.log("Request aborted");
-        // Do not set error state for AbortError
       } else {
         setError((e as Error)?.message ?? "Unknown error");
       }
@@ -74,7 +159,15 @@ export function useAssistant() {
       setLoading(false);
       abortController.current = null;
     }
-  }, [canSubmit, prompt, wantsChart, chartType, chartTitle]);
+  }, [
+    canSubmit,
+    prompt,
+    wantsChart,
+    chartType,
+    chartTitle,
+    sessionId,
+    history,
+  ]);
 
   const cancel = useCallback(() => {
     if (abortController.current) {
@@ -83,12 +176,15 @@ export function useAssistant() {
   }, []);
 
   const clear = useCallback(() => {
+    lastFetchedSession.current = null;
     setAnswer(null);
     setChart(null);
     setError(null);
     setPrompt("");
+    setHistory([]);
+    setSessionId(null);
     cancel(); // Cancel any ongoing request when clearing
-  }, [setPrompt, setAnswer, setChart, cancel]);
+  }, [setPrompt, setSessionId, cancel]);
 
   return {
     // state
@@ -100,6 +196,9 @@ export function useAssistant() {
     setChartType,
     chartTitle,
     setChartTitle,
+    sessionId,
+    setSessionId,
+    history,
 
     answer,
     setAnswer,
