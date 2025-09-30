@@ -10,7 +10,7 @@ const ConversationEntrySchema = z.object({
 });
 
 const AssistantResponseSchema = z.object({
-  answer: z.string().default(""),
+  response: z.string().default(""),
   chart: ChartSpecSchema.nullish(),
   history: z.array(ConversationEntrySchema).default([]),
   sessionId: z.string().optional(),
