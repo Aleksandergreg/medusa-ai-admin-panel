@@ -8,6 +8,10 @@ import {
   ensureMarkdownMinimum,
 } from "../lib/utils";
 import {
+  FALLBACK_MESSAGE,
+  normalizePlan,
+} from "../lib/plan-normalizer";
+import {
   ChartType,
   HistoryEntry,
   InitialOperation,
@@ -72,7 +76,7 @@ export async function askAgent(
     }
     console.log(`\n--- AGENT LOOP: STEP ${step + 1} ---`);
 
-    const plan = await planNextStepWithGemini(
+    const rawPlan = await planNextStepWithGemini(
       prompt,
       availableTools,
       history,
@@ -83,8 +87,26 @@ export async function askAgent(
       options.config
     );
 
+    const plan = normalizePlan(rawPlan);
+
+    if (!plan) {
+      console.warn("Planner returned an unrecognized plan", rawPlan);
+      metricsStore.endAssistantTurn(turnId, FALLBACK_MESSAGE);
+      return {
+        answer: FALLBACK_MESSAGE,
+        chart: null,
+        data: null,
+        history,
+      };
+    }
+
     if (plan.action === "final_answer") {
-      metricsStore.endAssistantTurn(turnId, plan.answer ?? "");
+      const chosenAnswer =
+        plan.answer && plan.answer.trim().length
+          ? plan.answer
+          : FALLBACK_MESSAGE;
+
+      metricsStore.endAssistantTurn(turnId, chosenAnswer);
 
       const t = metricsStore.getLastTurn?.();
       const grounded = t?.groundedNumbers ?? {};
@@ -98,12 +120,12 @@ export async function askAgent(
         history[history.length - 1]?.tool_result
       );
       const chart = wantsChart
-        ? buildChartFromAnswer(plan.answer, chartType, chartTitle) ||
+        ? buildChartFromAnswer(chosenAnswer, chartType, chartTitle) ||
           buildChartFromLatestTool(history, chartType, chartTitle) ||
           null
         : null;
 
-      const formattedAnswer = ensureMarkdownMinimum(plan.answer ?? "");
+      const formattedAnswer = ensureMarkdownMinimum(chosenAnswer);
       return {
         answer: formattedAnswer,
         chart,
