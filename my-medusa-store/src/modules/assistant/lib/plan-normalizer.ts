@@ -91,7 +91,30 @@ function extractOperationId(plan: any): string | undefined {
   return undefined;
 }
 
-function buildToolArgs(plan: any, defaultOperationId?: string): Record<string, unknown> {
+function buildToolName(plan: any): string | undefined {
+  const action = plan?.action;
+  if (typeof action === "string" && action.includes(".")) {
+    return action.trim();
+  }
+
+  const tool =
+    plan?.tool_name ??
+    plan?.toolName ??
+    plan?.tool ??
+    plan?.call_tool ??
+    plan?.tool_call;
+
+  if (typeof tool === "string" && tool.trim().length) {
+    return tool.trim();
+  }
+
+  return undefined;
+}
+
+function buildToolArgs(
+  plan: any,
+  defaultOperationId?: string
+): Record<string, unknown> {
   const rawArgs =
     plan?.tool_args ?? plan?.toolArgs ?? plan?.arguments ?? plan?.args ?? null;
 
@@ -107,65 +130,45 @@ function buildToolArgs(plan: any, defaultOperationId?: string): Record<string, u
   return args;
 }
 
-export function normalizePlan(plan: unknown): NormalizedPlan | null {
-  if (!plan || typeof plan !== "object") {
-    return null;
-  }
-
-  const rawAction =
-    typeof (plan as any).action === "string" ? (plan as any).action.trim() : undefined;
-
-  const action =
-    normalizeAction(rawAction) ??
-    normalizeAction((plan as any).intent) ??
-    normalizeAction((plan as any).type);
-
-  if (!action) {
-    return null;
-  }
-
-  if (action === "final_answer") {
+export function normalizePlan(rawPlan: unknown): NormalizedPlan {
+  if (!rawPlan || Array.isArray(rawPlan)) {
     return {
-      action,
-      answer: coerceAnswer(plan),
-      raw: plan,
+      action: "final_answer",
+      answer: FALLBACK_MESSAGE,
+      raw: rawPlan,
     };
   }
 
-  const operationId = extractOperationId(plan);
+  const plan = rawPlan as Record<string, unknown>;
+  const normalizedAction = normalizeAction(plan.action);
 
-  const toolNameCandidate = (() => {
-    const direct =
-      (plan as any).tool_name ??
-      (plan as any).toolName ??
-      (plan as any).tool ??
-      (plan as any).name;
-    if (typeof direct === "string" && direct.trim()) {
-      return direct.trim();
-    }
-
-    if (rawAction && rawAction.trim() && rawAction.trim().toLowerCase() !== "call_tool") {
-      return rawAction.trim();
-    }
-
-    if (operationId) {
-      // Default to executing the openapi tool when only an operation is provided.
-      return "openapi.execute";
-    }
-
-    return null;
-  })();
-
-  if (!toolNameCandidate) {
-    return null;
+  if (normalizedAction === "final_answer") {
+    const answer = coerceAnswer(plan);
+    return {
+      action: "final_answer",
+      answer: answer,
+      raw: rawPlan,
+    };
   }
 
-  const toolArgs = buildToolArgs(plan, operationId);
+  if (normalizedAction === "call_tool") {
+    const operationId = extractOperationId(plan);
+    const tool_name = buildToolName(plan) ?? operationId;
+    const tool_args = buildToolArgs(plan, operationId);
+
+    if (tool_name) {
+      return {
+        action: "call_tool",
+        tool_name,
+        tool_args,
+        raw: rawPlan,
+      };
+    }
+  }
 
   return {
-    action: "call_tool",
-    tool_name: toolNameCandidate,
-    tool_args: toolArgs,
-    raw: plan,
+    action: "final_answer",
+    answer: FALLBACK_MESSAGE,
+    raw: rawPlan,
   };
 }
