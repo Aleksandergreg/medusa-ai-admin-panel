@@ -10,6 +10,11 @@ export type HistoryEntry = {
   tool_result: any;
 };
 
+export type ConversationEntry = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type ChartType = "bar" | "line";
 
 export type ChartSpec = {
