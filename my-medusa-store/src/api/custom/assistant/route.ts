@@ -12,13 +12,34 @@ type AssistantPayload = {
   chartTitle?: string;
 };
 
+// Define the expected session structure
+interface SessionWithAuthContext {
+  auth_context?: {
+    actor_id?: string;
+  };
+}
+
+// Type guard for session
+function hasAuthContext(session: unknown): session is SessionWithAuthContext {
+  return (
+    typeof session === "object" &&
+    session !== null &&
+    "auth_context" in session &&
+    typeof (session as any).auth_context === "object" &&
+    (session as any).auth_context !== null
+  );
+}
+
 function getActorId(req: AuthenticatedMedusaRequest): string | null {
   const fromAuthContext = req.auth_context?.actor_id;
   if (fromAuthContext) {
     return fromAuthContext;
   }
 
-  const sessionActor = (req.session as any)?.auth_context?.actor_id;
+  let sessionActor: string | undefined;
+  if (hasAuthContext(req.session)) {
+    sessionActor = req.session.auth_context?.actor_id;
+  }
   if (sessionActor && typeof sessionActor === "string" && sessionActor.trim()) {
     return sessionActor;
   }
