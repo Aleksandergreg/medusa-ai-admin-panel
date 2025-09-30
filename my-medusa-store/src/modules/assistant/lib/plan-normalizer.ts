@@ -59,14 +59,14 @@ function normalizeAction(action: unknown): "final_answer" | "call_tool" | null {
   }
 }
 
-function coerceAnswer(rawPlan: any): string | undefined {
+function coerceAnswer(rawPlan: unknown): string | undefined {
   const candidates = [
-    rawPlan?.answer,
-    rawPlan?.response,
-    rawPlan?.final_answer,
-    rawPlan?.final,
-    rawPlan?.message,
-    rawPlan?.text,
+    (rawPlan as any)?.answer,
+    (rawPlan as any)?.response,
+    (rawPlan as any)?.final_answer,
+    (rawPlan as any)?.final,
+    (rawPlan as any)?.message,
+    (rawPlan as any)?.text,
   ];
 
   for (const candidate of candidates) {
