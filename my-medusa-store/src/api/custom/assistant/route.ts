@@ -13,7 +13,22 @@ type AssistantPayload = {
 };
 
 function getActorId(req: AuthenticatedMedusaRequest): string | null {
-  return req.auth_context?.actor_id ?? null;
+  const fromAuthContext = req.auth_context?.actor_id;
+  if (fromAuthContext) {
+    return fromAuthContext;
+  }
+
+  const sessionActor = (req.session as any)?.auth_context?.actor_id;
+  if (sessionActor && typeof sessionActor === "string" && sessionActor.trim()) {
+    return sessionActor;
+  }
+
+  const legacyUserId = (req as any)?.user?.id;
+  if (legacyUserId && typeof legacyUserId === "string" && legacyUserId.trim()) {
+    return legacyUserId;
+  }
+
+  return null;
 }
 
 export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
