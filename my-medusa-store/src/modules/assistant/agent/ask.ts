@@ -111,7 +111,7 @@ export async function askAgent(
     }
 
     if (plan.action === "call_tool" && plan.tool_name && plan.tool_args) {
-      console.log(` 🧠 AI wants to call tool: ${plan.tool_name}`);
+      console.log(`  AI wants to call tool: ${plan.tool_name}`);
       console.log(`   With args: ${JSON.stringify(plan.tool_args)}`);
 
       metricsStore.noteToolUsed(turnId, plan.tool_name);
