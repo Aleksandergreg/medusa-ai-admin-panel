@@ -4,10 +4,7 @@ import { ConversationEntry } from "../../../modules/assistant/lib/types";
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
-    const {
-      prompt,
-      history = [],
-    } = req.body as {
+    const { prompt, history = [] } = req.body as {
       prompt: string;
       history?: ConversationEntry[];
     };

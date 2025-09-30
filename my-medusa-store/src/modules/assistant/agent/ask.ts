@@ -42,7 +42,8 @@ export async function askAgent(
 
   const wantsChart = Boolean(input.wantsChart);
   const chartType: ChartType = input.chartType === "line" ? "line" : "bar";
-  const chartTitle = typeof input.chartTitle === "string" ? input.chartTitle : undefined;
+  const chartTitle =
+    typeof input.chartTitle === "string" ? input.chartTitle : undefined;
 
   const mcp = await getMcp();
   const tools = await mcp.listTools();
