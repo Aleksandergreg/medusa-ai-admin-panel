@@ -79,6 +79,7 @@ export async function planNextStepWithGemini(
     `- Use ONLY parameter names present in openapi.schema (path/query/header). Do not invent params like 'expand'.\n` +
     `- Start with the bare endpoint path (only required path params). Add optional query/body params only if the base response fails to satisfy the user's goal.\n` +
     `- Use 'fields' for Medusa selection semantics: '+field' to add, '-field' to remove, or a full replacement list.\n` +
+    `- DATA COMPLETENESS RULE: When the user's request implies fetching a list of items (e.g., 'all orders', 'every product'), you should use the 'limit at a max 50000 parameter to retrieve all available data.\n` +
     `- Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.\n` +
     `- To batch a request for a parameter that accepts an array, provide a JSON array in 'tool_args'. For example: \`{"operationId":"AdminGetProducts","query":{"title":["Sweatshirt", "Sweatpants"]}}\`. The system handles URL formatting. Do not create loops.\n` +
     `- On any 4xx, stop and re-check openapi.schema, then correct the request. Do not retry minor variants.\n` +
