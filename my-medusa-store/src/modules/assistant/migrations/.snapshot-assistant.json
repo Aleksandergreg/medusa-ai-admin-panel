@@ -16,6 +16,16 @@
           "length": 255,
           "mappedType": "string"
         },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "length": 255,
+          "mappedType": "string"
+        },
         "history": {
           "name": "history",
           "type": "jsonb",
@@ -49,6 +59,16 @@
           "constraint": true,
           "primary": true,
           "unique": true
+        },
+        {
+          "keyName": "conversation_session_actor_id_idx",
+          "columnNames": [
+            "actor_id"
+          ],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false
         }
       ],
       "checks": [],

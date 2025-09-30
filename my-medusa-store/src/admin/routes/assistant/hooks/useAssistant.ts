@@ -72,7 +72,12 @@ export function useAssistant() {
           return;
         }
         lastFetchedSession.current = null;
-        setError((e as Error)?.message ?? "Failed to load assistant session");
+        const message = (e as Error)?.message ?? "Failed to load assistant session";
+        if (message && message !== "Session not found") {
+          setError(message);
+        } else {
+          setError(null);
+        }
         setHistory([]);
         setAnswer(null);
         setChart(null);

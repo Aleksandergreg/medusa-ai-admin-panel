@@ -14,7 +14,8 @@ import {
 
 type PromptInput = {
   prompt: string;
-  sessionId?: string;
+  actorId: string;
+  sessionId?: string | null;
   wantsChart?: boolean;
   chartType?: ChartType;
   chartTitle?: string;
@@ -29,6 +30,7 @@ type PromptResult = {
 
 type ConversationSessionRow = {
   session_id: string;
+  actor_id: string;
   history: unknown;
   updated_at: Date | string | null;
 };
@@ -56,8 +58,13 @@ class AssistantModuleService extends MedusaService({}) {
       throw new Error("Missing prompt");
     }
 
+    const actorId = input.actorId?.trim();
+    if (!actorId) {
+      throw new Error("Missing actor identifier");
+    }
+
     const existing = input.sessionId
-      ? await this.getSession(input.sessionId)
+      ? await this.getSession(input.sessionId, actorId)
       : null;
 
     const sessionId = existing?.sessionId ?? randomUUID();
@@ -90,7 +97,7 @@ class AssistantModuleService extends MedusaService({}) {
       { role: "assistant", content: answer },
     ];
 
-    await this.persistSession(sessionId, finalHistory);
+    await this.persistSession(sessionId, actorId, finalHistory, Boolean(existing));
 
     return {
       answer,
@@ -100,16 +107,20 @@ class AssistantModuleService extends MedusaService({}) {
     };
   }
 
-  async getSession(sessionId: string | null | undefined): Promise<
+  async getSession(
+    sessionId: string | null | undefined,
+    actorId: string
+  ): Promise<
     | { sessionId: string; history: ConversationEntry[]; updatedAt: Date | null }
     | null
   > {
-    if (!sessionId) {
+    const resolvedActorId = actorId?.trim();
+    if (!sessionId || !resolvedActorId) {
       return null;
     }
 
     const row = await this.db<ConversationSessionRow>(CONVERSATION_TABLE)
-      .where({ session_id: sessionId })
+      .where({ session_id: sessionId, actor_id: resolvedActorId })
       .first();
 
     if (!row) {
@@ -171,18 +182,28 @@ class AssistantModuleService extends MedusaService({}) {
 
   private async persistSession(
     sessionId: string,
-    history: ConversationEntry[]
+    actorId: string,
+    history: ConversationEntry[],
+    hasExisting: boolean
   ): Promise<void> {
     const payload = {
       session_id: sessionId,
+      actor_id: actorId,
       history: JSON.stringify(history),
       updated_at: new Date(),
     };
 
-    await this.db(CONVERSATION_TABLE)
-      .insert(payload)
-      .onConflict("session_id")
-      .merge({ history: payload.history, updated_at: payload.updated_at });
+    if (hasExisting) {
+      await this.db(CONVERSATION_TABLE)
+        .where({ session_id: sessionId, actor_id: actorId })
+        .update({
+          history: payload.history,
+          updated_at: payload.updated_at,
+        });
+      return;
+    }
+
+    await this.db(CONVERSATION_TABLE).insert(payload);
   }
 }
 

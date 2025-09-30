@@ -1,21 +1,33 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework";
+import type {
+  AuthenticatedMedusaRequest,
+  MedusaResponse,
+} from "@medusajs/framework/http";
 import AssistantModuleService from "../../../modules/assistant/service";
 
 type AssistantPayload = {
   prompt: string;
-  sessionId?: string;
+  sessionId?: string | null;
   wantsChart?: boolean;
   chartType?: "bar" | "line";
   chartTitle?: string;
 };
 
-export async function POST(req: MedusaRequest, res: MedusaResponse) {
+function getActorId(req: AuthenticatedMedusaRequest): string | null {
+  return req.auth_context?.actor_id ?? null;
+}
+
+export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
   try {
     const { prompt, sessionId, wantsChart, chartType, chartTitle } =
       (req.body as AssistantPayload) ?? {};
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing or invalid prompt" });
+    }
+
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
     const assistantService =
@@ -27,6 +39,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       wantsChart,
       chartType,
       chartTitle,
+      actorId,
     });
 
     return res.json({
@@ -43,7 +56,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 }
 
-export async function GET(req: MedusaRequest, res: MedusaResponse) {
+export async function GET(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
   try {
     const queryParam = (req.query?.sessionId ?? req.query?.session_id) as
       | string
@@ -55,10 +68,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       return res.status(400).json({ error: "Missing sessionId" });
     }
 
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const assistantService =
       req.scope.resolve<AssistantModuleService>("assistant");
 
-    const session = await assistantService.getSession(sessionId);
+    const session = await assistantService.getSession(sessionId, actorId);
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
