@@ -10,7 +10,7 @@ export class ConversationSession {
   actor_id!: string;
 
   @Property({ type: "jsonb", nullable: true })
-  history!: ConversationEntry[];
+  history?: ConversationEntry[] | null;
 
   @Property({ type: "timestamptz", defaultRaw: "now()" })
   updated_at = new Date();
