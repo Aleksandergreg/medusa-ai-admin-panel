@@ -1,81 +1,14 @@
 import { OpenAPISpec } from "../spec/loader";
+import { logSearchInvocation, logSearchResults } from "./debug";
+import { buildIndexedOperation, IndexedOperation } from "./indexed-operation";
+import { buildQueryContext, scoreOperation } from "./scorer";
+import { tokenizeQuery } from "./tokenizer";
+import { HttpMethod, Operation, Parameter } from "./types";
 
-export type HttpMethod =
-    | "get"
-    | "post"
-    | "put"
-    | "patch"
-    | "delete"
-    | "head"
-    | "options";
-
-export type Parameter = {
-    name: string;
-    in: "path" | "query" | "header" | "cookie";
-    required?: boolean;
-    description?: string;
-    schema?: { type?: string; [k: string]: unknown };
-};
-
-export type Operation = {
-    operationId: string;
-    method: HttpMethod;
-    path: string;
-    summary?: string;
-    description?: string;
-    tags?: string[];
-    parameters: Parameter[];
-    requestBody?: unknown;
-};
-
-const STOPWORDS = new Set([
-    "a",
-    "about",
-    "an",
-    "and",
-    "for",
-    "from",
-    "get",
-    "gets",
-    "give",
-    "list",
-    "lists",
-    "me",
-    "of",
-    "or",
-    "show",
-    "shows",
-    "tell",
-    "the",
-    "to",
-    "what",
-    "when",
-    "where",
-    "which",
-    "with"
-]);
+export type { HttpMethod, Operation, Parameter } from "./types";
 
 function isObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-function normalizeToken(token: string): string {
-    return token.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
-
-function tokenize(value: unknown): string[] {
-    if (value === null || value === undefined) {
-        return [];
-    }
-    const text = String(value)
-        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-        .replace(/[^a-zA-Z0-9]+/g, " ")
-        .toLowerCase();
-    return text
-        .split(/\s+/)
-        .map((segment) => normalizeToken(segment))
-        .filter(Boolean)
-        .filter((segment) => !STOPWORDS.has(segment));
 }
 
 function pickOperationEntries(pathItem: unknown): Array<[HttpMethod, Record<string, unknown>]> {
@@ -103,7 +36,7 @@ function pickOperationEntries(pathItem: unknown): Array<[HttpMethod, Record<stri
 
 export class OpenApiRegistry {
     private spec: OpenAPISpec;
-    private operations: Operation[] = [];
+    private operations: IndexedOperation[] = [];
 
     constructor(spec: OpenAPISpec) {
         this.spec = spec;
@@ -111,7 +44,7 @@ export class OpenApiRegistry {
     }
 
     private index(): void {
-        const ops: Operation[] = [];
+        const ops: IndexedOperation[] = [];
         for (const [path, pathItem] of Object.entries(this.spec.paths ?? {})) {
             const pi = pathItem as Record<string, unknown>;
             const pathParams: Parameter[] = Array.isArray(pi?.parameters)
@@ -127,7 +60,7 @@ export class OpenApiRegistry {
                 const description = typeof op.description === "string" ? op.description : undefined;
                 const tags = Array.isArray(op.tags) ? (op.tags as string[]) : undefined;
                 const requestBody = op.requestBody;
-                ops.push({
+                const operation: Operation = {
                     operationId,
                     method,
                     path,
@@ -136,7 +69,9 @@ export class OpenApiRegistry {
                     tags,
                     parameters,
                     requestBody
-                });
+                };
+
+                ops.push(buildIndexedOperation(operation));
             }
         }
         this.operations = ops;
@@ -155,17 +90,20 @@ export class OpenApiRegistry {
         query: string,
         opts?: { tags?: string[]; methods?: HttpMethod[]; limit?: number }
     ): Operation[] {
-        const q = query.toLowerCase().trim();
-        const normalizedTokens = q
-            .split(/\s+/)
-            .map((token) => normalizeToken(token))
-            .filter(Boolean);
-        const tokens = (() => {
-            const significant = normalizedTokens.filter((t) => !STOPWORDS.has(t));
-            return significant.length ? significant : normalizedTokens;
-        })();
-        const tagSet = new Set((opts?.tags ?? []).map((t) => t.toLowerCase()));
+        const { tokens, original } = tokenizeQuery(query);
+        const queryContext = buildQueryContext(tokens, original);
+        const tagSet = new Set((opts?.tags ?? []).map((t: string) => t.toLowerCase()));
         const methodSet = new Set(opts?.methods ?? []);
+
+        const debug = process.env.OPENAPI_SEARCH_DEBUG === "1";
+
+        if (debug) {
+            logSearchInvocation(query, tokens, {
+                tags: opts?.tags,
+                methods: opts?.methods,
+                limit: opts?.limit
+            });
+        }
 
         const scored = this.operations
             .filter((op) =>
@@ -173,27 +111,8 @@ export class OpenApiRegistry {
                 (methodSet.size === 0 || methodSet.has(op.method))
             )
             .map((op) => {
-                const fields = [
-                    op.operationId,
-                    op.summary ?? "",
-                    op.description ?? "",
-                    op.path,
-                    ...(op.tags ?? [])
-                ];
-                const haystack = fields.join(" \n ").toLowerCase();
-                let score = 0;
-                for (const token of tokens) {
-                    if (token && haystack.includes(token)) {
-                        score += 1;
-                    }
-                }
-                if (q && (op.summary ?? "").toLowerCase().includes(q)) {
-                    score += 2;
-                }
-                if (q && op.operationId.toLowerCase().includes(normalizeToken(q))) {
-                    score += 2;
-                }
-                return { op, score };
+                const analyzed = scoreOperation(op, queryContext);
+                return { op, score: analyzed.score, details: analyzed.details };
             })
             .filter(({ score }) => (tokens.length ? score > 0 : true))
             .sort((a, b) => {
@@ -204,7 +123,13 @@ export class OpenApiRegistry {
             });
 
         const limit = opts?.limit ?? 10;
-        return scored.slice(0, limit).map((s) => s.op);
+        const top = scored.slice(0, limit);
+
+        if (debug) {
+            logSearchResults(top);
+        }
+
+        return top.map((s) => s.op);
     }
 
     // Returns a simplified schema view useful for models
