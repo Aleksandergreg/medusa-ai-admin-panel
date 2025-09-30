@@ -8,6 +8,10 @@ import {
   ensureMarkdownMinimum,
 } from "../lib/utils";
 import {
+  FALLBACK_MESSAGE,
+  normalizePlan,
+} from "../lib/plan-normalizer";
+import {
   ChartType,
   HistoryEntry,
   InitialOperation,
@@ -25,111 +29,6 @@ type AskInput = {
   chartTitle?: string;
   onCancel?: (cancel: () => void) => void;
 };
-
-type NormalizedPlan =
-  | {
-      action: "final_answer";
-      answer?: string;
-      raw: any;
-    }
-  | {
-      action: "call_tool";
-      tool_name: string;
-      tool_args: unknown;
-      raw: any;
-    };
-
-const FALLBACK_MESSAGE = ensureMarkdownMinimum(
-  "I'm sorry, I couldn't complete that request. Please try rephrasing your question."
-);
-
-function normalizeAction(action: unknown): "final_answer" | "call_tool" | null {
-  if (typeof action !== "string") {
-    return null;
-  }
-
-  const snake = action
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replace(/[\s-]+/g, "_")
-    .toLowerCase();
-
-  switch (snake) {
-    case "final_answer":
-    case "finalanswer":
-    case "final_answer_step":
-    case "answer":
-    case "respond":
-      return "final_answer";
-    case "call_tool":
-    case "calltool":
-    case "tool_call":
-    case "toolcall":
-    case "use_tool":
-    case "tool":
-      return "call_tool";
-    default:
-      return null;
-  }
-}
-
-function coerceAnswer(rawPlan: any): string | undefined {
-  const candidates = [
-    rawPlan?.answer,
-    rawPlan?.response,
-    rawPlan?.final_answer,
-    rawPlan?.final,
-    rawPlan?.message,
-    rawPlan?.text,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim().length) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
-
-function normalizePlan(plan: any): NormalizedPlan | null {
-  if (!plan || typeof plan !== "object") {
-    return null;
-  }
-
-  const action =
-    normalizeAction(plan.action) ??
-    normalizeAction(plan.intent) ??
-    normalizeAction(plan.type);
-
-  if (!action) {
-    return null;
-  }
-
-  if (action === "final_answer") {
-    return {
-      action,
-      answer: coerceAnswer(plan),
-      raw: plan,
-    };
-  }
-
-  const toolNameCandidate =
-    plan.tool_name ?? plan.toolName ?? plan.tool ?? plan.name;
-
-  if (typeof toolNameCandidate !== "string" || !toolNameCandidate.trim()) {
-    return null;
-  }
-
-  const toolArgsCandidate =
-    plan.tool_args ?? plan.toolArgs ?? plan.arguments ?? plan.args ?? {};
-
-  return {
-    action: "call_tool",
-    tool_name: toolNameCandidate,
-    tool_args: toolArgsCandidate,
-    raw: plan,
-  };
-}
 
 export async function askAgent(
   input: AskInput,
@@ -202,9 +101,12 @@ export async function askAgent(
     }
 
     if (plan.action === "final_answer") {
-      const finalAnswer =
-        plan.answer && plan.answer.trim().length ? plan.answer : FALLBACK_MESSAGE;
-      metricsStore.endAssistantTurn(turnId, finalAnswer);
+      const chosenAnswer =
+        plan.answer && plan.answer.trim().length
+          ? plan.answer
+          : FALLBACK_MESSAGE;
+
+      metricsStore.endAssistantTurn(turnId, chosenAnswer);
 
       const t = metricsStore.getLastTurn?.();
       const grounded = t?.groundedNumbers ?? {};
@@ -218,12 +120,12 @@ export async function askAgent(
         history[history.length - 1]?.tool_result
       );
       const chart = wantsChart
-        ? buildChartFromAnswer(finalAnswer, chartType, chartTitle) ||
+        ? buildChartFromAnswer(chosenAnswer, chartType, chartTitle) ||
           buildChartFromLatestTool(history, chartType, chartTitle) ||
           null
         : null;
 
-      const formattedAnswer = ensureMarkdownMinimum(finalAnswer);
+      const formattedAnswer = ensureMarkdownMinimum(chosenAnswer);
       return {
         answer: formattedAnswer,
         chart,
