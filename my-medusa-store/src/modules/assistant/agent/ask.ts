@@ -26,6 +26,111 @@ type AskInput = {
   onCancel?: (cancel: () => void) => void;
 };
 
+type NormalizedPlan =
+  | {
+      action: "final_answer";
+      answer?: string;
+      raw: any;
+    }
+  | {
+      action: "call_tool";
+      tool_name: string;
+      tool_args: unknown;
+      raw: any;
+    };
+
+const FALLBACK_MESSAGE = ensureMarkdownMinimum(
+  "I'm sorry, I couldn't complete that request. Please try rephrasing your question."
+);
+
+function normalizeAction(action: unknown): "final_answer" | "call_tool" | null {
+  if (typeof action !== "string") {
+    return null;
+  }
+
+  const snake = action
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s-]+/g, "_")
+    .toLowerCase();
+
+  switch (snake) {
+    case "final_answer":
+    case "finalanswer":
+    case "final_answer_step":
+    case "answer":
+    case "respond":
+      return "final_answer";
+    case "call_tool":
+    case "calltool":
+    case "tool_call":
+    case "toolcall":
+    case "use_tool":
+    case "tool":
+      return "call_tool";
+    default:
+      return null;
+  }
+}
+
+function coerceAnswer(rawPlan: any): string | undefined {
+  const candidates = [
+    rawPlan?.answer,
+    rawPlan?.response,
+    rawPlan?.final_answer,
+    rawPlan?.final,
+    rawPlan?.message,
+    rawPlan?.text,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizePlan(plan: any): NormalizedPlan | null {
+  if (!plan || typeof plan !== "object") {
+    return null;
+  }
+
+  const action =
+    normalizeAction(plan.action) ??
+    normalizeAction(plan.intent) ??
+    normalizeAction(plan.type);
+
+  if (!action) {
+    return null;
+  }
+
+  if (action === "final_answer") {
+    return {
+      action,
+      answer: coerceAnswer(plan),
+      raw: plan,
+    };
+  }
+
+  const toolNameCandidate =
+    plan.tool_name ?? plan.toolName ?? plan.tool ?? plan.name;
+
+  if (typeof toolNameCandidate !== "string" || !toolNameCandidate.trim()) {
+    return null;
+  }
+
+  const toolArgsCandidate =
+    plan.tool_args ?? plan.toolArgs ?? plan.arguments ?? plan.args ?? {};
+
+  return {
+    action: "call_tool",
+    tool_name: toolNameCandidate,
+    tool_args: toolArgsCandidate,
+    raw: plan,
+  };
+}
+
 export async function askAgent(
   input: AskInput,
   options: { config: AssistantModuleOptions }
@@ -72,7 +177,7 @@ export async function askAgent(
     }
     console.log(`\n--- AGENT LOOP: STEP ${step + 1} ---`);
 
-    const plan = await planNextStepWithGemini(
+    const rawPlan = await planNextStepWithGemini(
       prompt,
       availableTools,
       history,
@@ -83,8 +188,23 @@ export async function askAgent(
       options.config
     );
 
+    const plan = normalizePlan(rawPlan);
+
+    if (!plan) {
+      console.warn("Planner returned an unrecognized plan", rawPlan);
+      metricsStore.endAssistantTurn(turnId, FALLBACK_MESSAGE);
+      return {
+        answer: FALLBACK_MESSAGE,
+        chart: null,
+        data: null,
+        history,
+      };
+    }
+
     if (plan.action === "final_answer") {
-      metricsStore.endAssistantTurn(turnId, plan.answer ?? "");
+      const finalAnswer =
+        plan.answer && plan.answer.trim().length ? plan.answer : FALLBACK_MESSAGE;
+      metricsStore.endAssistantTurn(turnId, finalAnswer);
 
       const t = metricsStore.getLastTurn?.();
       const grounded = t?.groundedNumbers ?? {};
@@ -98,12 +218,12 @@ export async function askAgent(
         history[history.length - 1]?.tool_result
       );
       const chart = wantsChart
-        ? buildChartFromAnswer(plan.answer, chartType, chartTitle) ||
+        ? buildChartFromAnswer(finalAnswer, chartType, chartTitle) ||
           buildChartFromLatestTool(history, chartType, chartTitle) ||
           null
         : null;
 
-      const formattedAnswer = ensureMarkdownMinimum(plan.answer ?? "");
+      const formattedAnswer = ensureMarkdownMinimum(finalAnswer);
       return {
         answer: formattedAnswer,
         chart,
