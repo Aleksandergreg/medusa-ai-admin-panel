@@ -1,5 +1,5 @@
 ﻿import { McpTool, ChartType, InitialOperation } from "../lib/types";
-import { env, stripJsonFences, safeParseJSON } from "../lib/utils";
+import { stripJsonFences, safeParseJSON } from "../lib/utils";
 import { getCombinedPrompt } from "../prompts";
 import { AssistantModuleOptions } from "../config";
 
@@ -91,6 +91,13 @@ export async function planNextStepWithGemini(
     `- If variant creation fails with "options" error, ensure options is an object not array\n` +
     `- If variant creation fails with "prices" error, include prices array in every variant\n` +
     `- If JSON parsing fails, ensure your response is valid JSON without extra text\n\n` +
+    `CRITICAL: CONVERSATION HISTORY AND RETRY BEHAVIOR:\n` +
+    `- DO NOT reuse previous failed answers from conversation history\n` +
+    `- If you previously said "cannot retrieve" or "I don't have access", DO NOT repeat that answer\n` +
+    `- Each new user question is a fresh opportunity - always attempt to find a solution using available tools\n` +
+    `- Previous failures should inform your strategy (try different tools/parameters), NOT cause you to give up\n` +
+    `- Only provide a "cannot retrieve" answer if you've exhausted all reasonable tool options in THIS turn\n` +
+    `- When the user rephrases or asks again about something, treat it as a new request and try different approaches\n\n` +
     `Always retrieve real data via the most relevant tool (Admin* list endpoints or custom tools).\n\n` +
     `RESPONSE FORMAT EXAMPLES:\n` +
     `For tool call: {"action":"call_tool","tool_name":"openapi.execute","tool_args":{"operationId":"AdminGetProducts"}}\n` +
