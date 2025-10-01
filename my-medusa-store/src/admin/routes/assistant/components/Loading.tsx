@@ -6,12 +6,13 @@ export function AssistantLoading() {
       <div className="flex items-center gap-3">
         <PulseAvatar />
         <div>
-          <div className="text-ui-fg-base font-medium">Assistant is thinking…</div>
+          <div className="text-ui-fg-base font-medium">
+            Assistant is thinking…
+          </div>
           <TypingDots />
         </div>
       </div>
       <ProgressStripe />
-      <ChartGhost height={300} />
       <AnswerSkeleton lines={5} />
     </div>
   );
@@ -66,21 +67,6 @@ export function ProgressStripe() {
   );
 }
 
-export function ChartGhost({ height = 280 }: { height?: number }) {
-  return (
-    <div
-      className="rounded-md border"
-      style={{
-        height,
-        background:
-          "repeating-linear-gradient(0deg, var(--bg,#0b0b0b00), var(--bg,#0b0b0b00) 18px, rgba(100,116,139,0.08) 18px, rgba(100,116,139,0.08) 19px)",
-      }}
-    >
-      <style>{`:root { --bg: transparent; }`}</style>
-    </div>
-  );
-}
-
 export function AnswerSkeleton({ lines = 5 }: { lines?: number }) {
   return (
     <div className="grid gap-2">
@@ -106,7 +92,10 @@ export function AnswerSkeleton({ lines = 5 }: { lines?: number }) {
 
 export function PulseAvatar() {
   return (
-    <div style={{ position: "relative", width: 28, height: 28 }} aria-hidden="true">
+    <div
+      style={{ position: "relative", width: 28, height: 28 }}
+      aria-hidden="true"
+    >
       <style>
         {`@keyframes pulse { 0% { opacity: .6; transform: scale(1);} 50% { opacity: 1; transform: scale(1.06);} 100% { opacity: .6; transform: scale(1);} }`}
       </style>

@@ -1,22 +1,13 @@
 import { getMcp } from "../../../lib/mcp/manager";
 import { metricsStore } from "../../../lib/metrics/store";
 import { planNextStepWithGemini } from "./planner";
-import { buildChartFromAnswer, buildChartFromLatestTool } from "../charts";
 import {
   extractToolJsonPayload,
   normalizeToolArgs,
   ensureMarkdownMinimum,
 } from "../lib/utils";
-import {
-  FALLBACK_MESSAGE,
-  normalizePlan,
-} from "../lib/plan-normalizer";
-import {
-  ChartType,
-  HistoryEntry,
-  InitialOperation,
-  McpTool,
-} from "../lib/types";
+import { FALLBACK_MESSAGE, normalizePlan } from "../lib/plan-normalizer";
+import { HistoryEntry, InitialOperation, McpTool } from "../lib/types";
 import { AssistantModuleOptions } from "../config";
 import { preloadOpenApiSuggestions } from "./preload";
 import { executeTool } from "./tool-executor";
@@ -24,9 +15,6 @@ import { executeTool } from "./tool-executor";
 type AskInput = {
   prompt: string;
   history?: HistoryEntry[];
-  wantsChart?: boolean;
-  chartType?: ChartType;
-  chartTitle?: string;
   onCancel?: (cancel: () => void) => void;
 };
 
@@ -35,7 +23,6 @@ export async function askAgent(
   options: { config: AssistantModuleOptions }
 ): Promise<{
   answer?: string;
-  chart: unknown | null;
   data: unknown | null;
   history: HistoryEntry[];
 }> {
@@ -43,11 +30,6 @@ export async function askAgent(
   if (!prompt) {
     throw new Error("Missing prompt");
   }
-
-  const wantsChart = Boolean(input.wantsChart);
-  const chartType: ChartType = input.chartType === "line" ? "line" : "bar";
-  const chartTitle =
-    typeof input.chartTitle === "string" ? input.chartTitle : undefined;
 
   const mcp = await getMcp();
   const tools = await mcp.listTools();
@@ -81,8 +63,6 @@ export async function askAgent(
       availableTools,
       history,
       options.config.modelName,
-      wantsChart,
-      chartType,
       initialOperations,
       options.config
     );
@@ -94,7 +74,6 @@ export async function askAgent(
       metricsStore.endAssistantTurn(turnId, FALLBACK_MESSAGE);
       return {
         answer: FALLBACK_MESSAGE,
-        chart: null,
         data: null,
         history,
       };
@@ -119,16 +98,10 @@ export async function askAgent(
       const latestPayload = extractToolJsonPayload(
         history[history.length - 1]?.tool_result
       );
-      const chart = wantsChart
-        ? buildChartFromAnswer(chosenAnswer, chartType, chartTitle) ||
-          buildChartFromLatestTool(history, chartType, chartTitle) ||
-          null
-        : null;
 
       const formattedAnswer = ensureMarkdownMinimum(chosenAnswer);
       return {
         answer: formattedAnswer,
-        chart,
         data: latestPayload ?? null,
         history,
       };

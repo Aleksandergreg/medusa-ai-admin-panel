@@ -1,6 +1,5 @@
 "use client";
 import { useAssistant } from "./hooks/useAssistant";
-import { ChartControls } from "./components/ChartControls";
 import { PromptInput } from "./components/PromptInput";
 import { ResponseView } from "./components/ResponseView";
 import { AssistantLoading } from "./components/Loading";
@@ -12,14 +11,7 @@ const AssistantPage = () => {
   const {
     prompt,
     setPrompt,
-    wantsChart,
-    setWantsChart,
-    chartType,
-    setChartType,
-    chartTitle,
-    setChartTitle,
     answer,
-    chart,
     loading,
     error,
     canSubmit,
@@ -41,20 +33,6 @@ const AssistantPage = () => {
         </Text>
 
         <PromptInput value={prompt} onChange={setPrompt} onSubmit={ask} />
-
-        <ChartControls
-          wantsChart={wantsChart}
-          setWantsChart={(v) => {
-            setWantsChart(v);
-            if (!v) {
-              /* hide chart if toggled off */
-            }
-          }}
-          chartType={chartType}
-          setChartType={setChartType}
-          chartTitle={chartTitle}
-          setChartTitle={setChartTitle}
-        />
 
         <div className="flex gap-2">
           <button
@@ -93,7 +71,7 @@ const AssistantPage = () => {
           </div>
         )}
 
-        <ResponseView wantsChart={wantsChart} chart={chart} answer={answer} />
+        <ResponseView answer={answer} />
       </div>
     </Container>
   );

@@ -2,25 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorageState } from "../../../hooks/useLocalStorageState";
 import { STORAGE_KEYS } from "../lib/storageKeys";
 import { askAssistant, fetchAssistantSession } from "../lib/assistantApi";
-import type { ChartSpec } from "../ChartRenderer";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 export function useAssistant() {
   // persisted user prefs + prompt
   const [prompt, setPrompt] = useLocalStorageState<string>(
     STORAGE_KEYS.prompt,
-    ""
-  );
-  const [wantsChart, setWantsChart] = useLocalStorageState<boolean>(
-    STORAGE_KEYS.wantsChart,
-    false
-  );
-  const [chartType, setChartType] = useLocalStorageState<"bar" | "line">(
-    STORAGE_KEYS.chartType,
-    "bar"
-  );
-  const [chartTitle, setChartTitle] = useLocalStorageState<string>(
-    STORAGE_KEYS.chartTitle,
     ""
   );
   const [sessionId, setSessionId] = useLocalStorageState<string | null>(
@@ -30,7 +17,6 @@ export function useAssistant() {
 
   const [history, setHistory] = useState<ConversationEntry[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
-  const [chart, setChart] = useState<ChartSpec | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortController = useRef<AbortController | null>(null);
@@ -41,7 +27,6 @@ export function useAssistant() {
       lastFetchedSession.current = null;
       setHistory([]);
       setAnswer(null);
-      setChart(null);
       return;
     }
 
@@ -60,7 +45,6 @@ export function useAssistant() {
         }
         lastFetchedSession.current = session.sessionId;
         setHistory(session.history);
-        setChart(null);
         const latestAssistant = [...session.history]
           .reverse()
           .find((entry) => entry.role === "assistant");
@@ -72,7 +56,8 @@ export function useAssistant() {
           return;
         }
         lastFetchedSession.current = null;
-        const message = (e as Error)?.message ?? "Failed to load assistant session";
+        const message =
+          (e as Error)?.message ?? "Failed to load assistant session";
         if (message && message !== "Session not found") {
           setError(message);
         } else {
@@ -80,7 +65,6 @@ export function useAssistant() {
         }
         setHistory([]);
         setAnswer(null);
-        setChart(null);
         setSessionId(null);
       })
       .finally(() => {
@@ -123,16 +107,11 @@ export function useAssistant() {
     setHistory(optimisticHistory);
     setLoading(true);
     setAnswer(null);
-    setChart(null);
     setError(null);
 
     try {
-      const trimmedTitle = chartTitle.trim();
       const payload = {
         prompt: trimmedPrompt,
-        wantsChart,
-        chartType,
-        ...(trimmedTitle ? { chartTitle: trimmedTitle } : {}),
         ...(sessionId ? { sessionId } : {}),
       } as const;
 
@@ -145,7 +124,6 @@ export function useAssistant() {
 
       setHistory(res.history);
       setAnswer(res.answer);
-      setChart(res.chart ?? null);
       setSessionId(resolvedSessionId);
       lastFetchedSession.current = resolvedSessionId;
     } catch (e: unknown) {
@@ -159,15 +137,7 @@ export function useAssistant() {
       setLoading(false);
       abortController.current = null;
     }
-  }, [
-    canSubmit,
-    prompt,
-    wantsChart,
-    chartType,
-    chartTitle,
-    sessionId,
-    history,
-  ]);
+  }, [canSubmit, prompt, sessionId, history]);
 
   const cancel = useCallback(() => {
     if (abortController.current) {
@@ -178,7 +148,6 @@ export function useAssistant() {
   const clear = useCallback(() => {
     lastFetchedSession.current = null;
     setAnswer(null);
-    setChart(null);
     setError(null);
     setPrompt("");
     setHistory([]);
@@ -190,20 +159,12 @@ export function useAssistant() {
     // state
     prompt,
     setPrompt,
-    wantsChart,
-    setWantsChart,
-    chartType,
-    setChartType,
-    chartTitle,
-    setChartTitle,
     sessionId,
     setSessionId,
     history,
 
     answer,
     setAnswer,
-    chart,
-    setChart,
     loading,
     error,
 

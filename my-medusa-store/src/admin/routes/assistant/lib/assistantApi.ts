@@ -2,8 +2,6 @@ import { z } from "zod";
 import type { AssistantResponse, AssistantSession } from "../types";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
-const ChartSpecSchema = z.any(); // if you have a stricter ChartSpec, swap it in
-
 const ConversationEntrySchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
@@ -11,7 +9,6 @@ const ConversationEntrySchema = z.object({
 
 const AssistantResponseSchema = z.object({
   response: z.string().default(""),
-  chart: ChartSpecSchema.nullish(),
   history: z.array(ConversationEntrySchema).default([]),
   sessionId: z.string().optional(),
 });
@@ -24,9 +21,6 @@ const AssistantSessionSchema = z.object({
 
 export type AskPayload = {
   prompt: string;
-  wantsChart: boolean;
-  chartType: "bar" | "line";
-  chartTitle?: string;
   sessionId?: string;
 };
 
@@ -58,7 +52,6 @@ export async function askAssistant(
 
   return {
     answer: parsed.data.response,
-    chart: parsed.data.chart ?? null,
     history: parsed.data.history as ConversationEntry[],
     sessionId: parsed.data.sessionId ?? null,
   };
