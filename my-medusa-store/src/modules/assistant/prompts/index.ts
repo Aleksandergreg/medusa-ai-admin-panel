@@ -1,10 +1,6 @@
 ﻿const currentDate = new Date().toISOString().split("T")[0];
 // Combined prompt with all specializations for the assistant
-export function getCombinedPrompt(wantsChart?: boolean): string {
-  const chartGuidance = wantsChart
-    ? "\nWhen providing data for charts, focus on quantitative metrics that can be visualized effectively."
-    : "";
-
+export function getCombinedPrompt(): string {
   const medusaGlossary = `MEDUSA GLOSSARY AND MAPPINGS:\n
 - "discounts" → promotions 
 - "items" → products 
@@ -41,6 +37,6 @@ OUTPUT STYLE REQUIREMENTS:\n
 - Bold important identifiers (like order IDs, cart IDs, and customer emails).\n
 - Use backticked code blocks for JSON or CLI snippets when appropriate.\n
 - Avoid raw HTML.
-\n\n${medusaGlossary}${chartGuidance}
+\n\n${medusaGlossary}
 `;
 }
