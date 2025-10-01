@@ -7,9 +7,6 @@ import AssistantModuleService from "../../../modules/assistant/service";
 type AssistantPayload = {
   prompt: string;
   sessionId?: string | null;
-  wantsChart?: boolean;
-  chartType?: "bar" | "line";
-  chartTitle?: string;
 };
 
 // Define the expected session structure
@@ -52,10 +49,12 @@ function getActorId(req: AuthenticatedMedusaRequest): string | null {
   return null;
 }
 
-export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
+export async function POST(
+  req: AuthenticatedMedusaRequest,
+  res: MedusaResponse
+) {
   try {
-    const { prompt, sessionId, wantsChart, chartType, chartTitle } =
-      (req.body as AssistantPayload) ?? {};
+    const { prompt, sessionId } = (req.body as AssistantPayload) ?? {};
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing or invalid prompt" });
@@ -72,15 +71,11 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
     const result = await assistantService.prompt({
       prompt,
       sessionId,
-      wantsChart,
-      chartType,
-      chartTitle,
       actorId,
     });
 
     return res.json({
       response: result.answer,
-      chart: result.chart,
       history: result.history,
       sessionId: result.sessionId,
     });
@@ -92,7 +87,10 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   }
 }
 
-export async function GET(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
+export async function GET(
+  req: AuthenticatedMedusaRequest,
+  res: MedusaResponse
+) {
   try {
     const queryParam = (req.query?.sessionId ?? req.query?.session_id) as
       | string

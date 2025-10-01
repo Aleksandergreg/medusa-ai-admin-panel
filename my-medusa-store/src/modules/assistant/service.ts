@@ -1,29 +1,21 @@
-import { ContainerRegistrationKeys, MedusaService } from "@medusajs/framework/utils";
+import {
+  ContainerRegistrationKeys,
+  MedusaService,
+} from "@medusajs/framework/utils";
 import type { Knex } from "knex";
 import { randomUUID } from "node:crypto";
 import { askAgent } from "./agent/ask";
-import {
-  AssistantModuleOptions,
-  DEFAULT_ASSISTANT_OPTIONS,
-} from "./config";
-import {
-  ChartType,
-  ConversationEntry,
-  HistoryEntry,
-} from "./lib/types";
+import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
+import { ConversationEntry, HistoryEntry } from "./lib/types";
 
 type PromptInput = {
   prompt: string;
   actorId: string;
   sessionId?: string | null;
-  wantsChart?: boolean;
-  chartType?: ChartType;
-  chartTitle?: string;
 };
 
 type PromptResult = {
   answer: string;
-  chart: unknown | null;
   history: ConversationEntry[];
   sessionId: string;
 };
@@ -81,9 +73,6 @@ class AssistantModuleService extends MedusaService({}) {
       {
         prompt: trimmedPrompt,
         history: this.toAgentHistory(workingHistory),
-        wantsChart: input.wantsChart,
-        chartType: input.chartType,
-        chartTitle: input.chartTitle,
       },
       { config: this.config }
     );
@@ -97,11 +86,15 @@ class AssistantModuleService extends MedusaService({}) {
       { role: "assistant", content: answer },
     ];
 
-    await this.persistSession(sessionId, actorId, finalHistory, Boolean(existing));
+    await this.persistSession(
+      sessionId,
+      actorId,
+      finalHistory,
+      Boolean(existing)
+    );
 
     return {
       answer,
-      chart: agentResult.chart ?? null,
       history: finalHistory,
       sessionId,
     };
@@ -110,10 +103,11 @@ class AssistantModuleService extends MedusaService({}) {
   async getSession(
     sessionId: string | null | undefined,
     actorId: string
-  ): Promise<
-    | { sessionId: string; history: ConversationEntry[]; updatedAt: Date | null }
-    | null
-  > {
+  ): Promise<{
+    sessionId: string;
+    history: ConversationEntry[];
+    updatedAt: Date | null;
+  } | null> {
     const resolvedActorId = actorId?.trim();
     if (!sessionId || !resolvedActorId) {
       return null;

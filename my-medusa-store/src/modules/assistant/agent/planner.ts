@@ -1,4 +1,4 @@
-﻿import { McpTool, ChartType, InitialOperation } from "../lib/types";
+﻿import { McpTool, InitialOperation } from "../lib/types";
 import { stripJsonFences, safeParseJSON } from "../lib/utils";
 import { getCombinedPrompt } from "../prompts";
 import { AssistantModuleOptions } from "../config";
@@ -8,8 +8,6 @@ export async function planNextStepWithGemini(
   tools: McpTool[],
   history: { tool_name: string; tool_args: unknown; tool_result: unknown }[],
   modelName: string = "gemini-2.5-flash",
-  wantsChart: boolean = false,
-  chartType: ChartType = "bar",
   initialOperations: InitialOperation[] = [],
   config?: AssistantModuleOptions
 ): Promise<{
@@ -46,16 +44,8 @@ export async function planNextStepWithGemini(
     schema: t.input_schema ?? undefined,
   }));
 
-  const chartDirective = wantsChart
-    ? `The user wants a chart visualization. When providing your final answer:
-- Call tools that return arrays of data with numeric values (e.g., order counts, revenue amounts, product quantities)
-- Prefer data grouped by time periods (dates, months, years) or categories for meaningful charts
-- The system will automatically convert your data response into a ${chartType} chart
-- Focus on retrieving data that can be visualized effectively in chart format`
-    : "Do NOT include any chart/graph JSON. Provide concise text only. If data is needed, call the right tool.";
-
   // Get the combined prompt for all specializations
-  const Prompt = getCombinedPrompt(wantsChart);
+  const Prompt = getCombinedPrompt();
 
   // STATIC CONTENT (sent once as system message)
   const systemMessage =
@@ -65,7 +55,7 @@ export async function planNextStepWithGemini(
     `Actions: 'call_tool' or 'final_answer'.\n\n` +
     `1) If you need information or must perform an action, choose 'call_tool'.\n` +
     `2) If you have enough information, choose 'final_answer' and summarize succinctly.\n\n` +
-    `${chartDirective}\n\n` +
+    `Provide concise text only. If data is needed, call the right tool.\n\n` +
     `CRITICAL RESPONSE FORMAT REQUIREMENTS:\n` +
     `- YOU MUST ALWAYS return ONLY a valid JSON object, nothing else\n` +
     `- NEVER include markdown code fences like \`\`\`json or \`\`\`markdown around your response\n` +
