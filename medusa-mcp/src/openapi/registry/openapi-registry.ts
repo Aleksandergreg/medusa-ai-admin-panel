@@ -1,5 +1,4 @@
 import { OpenAPISpec } from "../spec/loader";
-import { logSearchInvocation, logSearchResults } from "./debug";
 import { buildIndexedOperation, IndexedOperation } from "./indexed-operation";
 import { buildQueryContext, scoreOperation } from "./scorer";
 import { tokenizeQuery } from "./tokenizer";
@@ -95,16 +94,6 @@ export class OpenApiRegistry {
         const tagSet = new Set((opts?.tags ?? []).map((t: string) => t.toLowerCase()));
         const methodSet = new Set(opts?.methods ?? []);
 
-        const debug = process.env.OPENAPI_SEARCH_DEBUG === "1";
-
-        if (debug) {
-            logSearchInvocation(query, tokens, {
-                tags: opts?.tags,
-                methods: opts?.methods,
-                limit: opts?.limit
-            });
-        }
-
         const scored = this.operations
             .filter((op) =>
                 (tagSet.size === 0 || (op.tags ?? []).some((t) => tagSet.has(t.toLowerCase()))) &&
@@ -124,10 +113,6 @@ export class OpenApiRegistry {
 
         const limit = opts?.limit ?? 10;
         const top = scored.slice(0, limit);
-
-        if (debug) {
-            logSearchResults(top);
-        }
 
         return top.map((s) => s.op);
     }
