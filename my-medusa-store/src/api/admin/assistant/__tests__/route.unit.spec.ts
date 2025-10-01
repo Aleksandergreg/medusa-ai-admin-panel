@@ -1,4 +1,7 @@
-import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http";
+import type {
+  AuthenticatedMedusaRequest,
+  MedusaResponse,
+} from "@medusajs/framework/http";
 import { POST } from "../route";
 
 describe("admin/assistant POST route", () => {
@@ -16,7 +19,10 @@ describe("admin/assistant POST route", () => {
   }
 
   it("400 when prompt is missing", async () => {
-    const req = { body: {}, scope: { resolve: jest.fn() } } as unknown as AuthenticatedMedusaRequest;
+    const req = {
+      body: {},
+      scope: { resolve: jest.fn() },
+    } as unknown as AuthenticatedMedusaRequest;
     const res = buildRes();
     await POST(req, res);
     expect(res.code).toBe(400);
@@ -25,10 +31,12 @@ describe("admin/assistant POST route", () => {
 
   it("calls assistant.ask and returns its result", async () => {
     const fakeAssistant = {
-      ask: jest.fn().mockResolvedValue({ answer: "ok", chart: null, data: null, history: [] }),
+      ask: jest
+        .fn()
+        .mockResolvedValue({ answer: "ok", data: null, history: [] }),
     };
     const req = {
-      body: { prompt: "hi", wantsChart: true, chartType: "line", chartTitle: "T" },
+      body: { prompt: "hi" },
       scope: { resolve: jest.fn().mockReturnValue(fakeAssistant) },
     } as unknown as AuthenticatedMedusaRequest;
     const res = buildRes();
@@ -38,11 +46,8 @@ describe("admin/assistant POST route", () => {
     expect(req.scope.resolve).toHaveBeenCalled();
     expect(fakeAssistant.ask).toHaveBeenCalledWith({
       prompt: "hi",
-      wantsChart: true,
-      chartType: "line",
-      chartTitle: "T",
     });
-    expect(res.body).toEqual({ answer: "ok", chart: null, data: null, history: [] });
+    expect(res.body).toEqual({ answer: "ok", data: null, history: [] });
   });
 
   it("returns 500 when assistant.ask throws", async () => {
