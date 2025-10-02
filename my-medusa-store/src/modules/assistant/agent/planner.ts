@@ -1,6 +1,6 @@
 ﻿import { McpTool, InitialOperation } from "../lib/types";
 import { stripJsonFences, safeParseJSON } from "../lib/utils";
-import { getCombinedPrompt } from "../prompts";
+import { buildSystemMessage } from "../prompts/system-message";
 import { AssistantModuleOptions } from "../config";
 
 export async function planNextStepWithGemini(
@@ -38,61 +38,8 @@ export async function planNextStepWithGemini(
   // Import GoogleGenAI here to avoid module resolution issues
   const { GoogleGenAI } = await import("@google/genai");
 
-  const toolCatalog = tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    schema: t.input_schema ?? undefined,
-  }));
-
-  // Get the combined prompt for all specializations
-  const Prompt = getCombinedPrompt();
-
-  // STATIC CONTENT (sent once as system message)
-  const systemMessage =
-    `${Prompt}\n\n` +
-    `Decide the next step based on the user's goal and the tool-call history.\n` +
-    "Do only what the user asks for and respond with nothing else but that" +
-    `Actions: 'call_tool' or 'final_answer'.\n\n` +
-    `1) If you need information or must perform an action, choose 'call_tool'.\n` +
-    `2) If you have enough information, choose 'final_answer' and summarize succinctly.\n\n` +
-    `Provide concise text only. If data is needed, call the right tool.\n\n` +
-    `CRITICAL RESPONSE FORMAT REQUIREMENTS:\n` +
-    `- YOU MUST ALWAYS return ONLY a valid JSON object, nothing else\n` +
-    `- NEVER include markdown code fences like \`\`\`json or \`\`\`markdown around your response\n` +
-    `- NEVER include any text before or after the JSON object\n` +
-    `- When you output {"action":"final_answer"}, the 'answer' value MUST be formatted as GitHub-Flavored Markdown (GFM)\n` +
-    `- Use short paragraphs, bullet lists, bold key IDs, and code fences for JSON or commands within the answer string\n` +
-    `- Do not include raw HTML in the answer\n\n` +
-    `CRITICAL API RULES (ENFORCED):\n` +
-    `- ANTI-LOOPING RULE: If the user's request involves multiple items (e.g., 'products A and B', 'orders X, Y, Z'), you MUST use an API endpoint that accepts multiple values for a filter (e.g., an array of IDs or titles). Make ONE single call for all items. DO NOT make separate, sequential calls for each item.\n` +
-    `- Always call in this order: openapi.search → openapi.schema → openapi.execute\n` +
-    `- Use ONLY parameter names present in openapi.schema (path/query/header). Do not invent params like 'expand'.\n` +
-    `- Start with the bare endpoint path (only required path params). Add optional query/body params only if the base response fails to satisfy the user's goal.\n` +
-    `- Use 'fields' for Medusa selection semantics: '+field' to add, '-field' to remove, or a full replacement list.\n` +
-    `- DATA COMPLETENESS RULE: When the user's request implies fetching a list of items (e.g., 'all orders', 'every product'), you should use the 'limit at a max 50000 parameter to retrieve all available data.\n` +
-    `- Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.\n` +
-    `- To batch a request for a parameter that accepts an array, provide a JSON array in 'tool_args'. For example: \`{"operationId":"AdminGetProducts","query":{"title":["Sweatshirt", "Sweatpants"]}}\`. The system handles URL formatting. Do not create loops.\n` +
-    `- On any 4xx, stop and re-check openapi.schema, then correct the request. Do not retry minor variants.\n` +
-    `- Prefer GET for retrieval; non-GET requires user intent and confirm=true.\n` +
-    `- When a tool result includes {"assistant_summary":...}, treat those aggregates as the authoritative counts instead of rescanning raw JSON.\n` +
-    `ERROR RECOVERY STRATEGIES:\n` +
-    `- If product search by exact title fails, try partial keyword search\n` +
-    `- Search by the exact keyword coming from the user prompt first, before trying anything else\n` +
-    `- If variant creation fails with "options" error, ensure options is an object not array\n` +
-    `- If variant creation fails with "prices" error, include prices array in every variant\n` +
-    `- If JSON parsing fails, ensure your response is valid JSON without extra text\n\n` +
-    `CRITICAL: CONVERSATION HISTORY AND RETRY BEHAVIOR:\n` +
-    `- DO NOT reuse previous failed answers from conversation history\n` +
-    `- If you previously said "cannot retrieve" or "I don't have access", DO NOT repeat that answer\n` +
-    `- Each new user question is a fresh opportunity - always attempt to find a solution using available tools\n` +
-    `- Previous failures should inform your strategy (try different tools/parameters), NOT cause you to give up\n` +
-    `- Only provide a "cannot retrieve" answer if you've exhausted all reasonable tool options in THIS turn\n` +
-    `- When the user rephrases or asks again about something, treat it as a new request and try different approaches\n\n` +
-    `Always retrieve real data via the most relevant tool (Admin* list endpoints or custom tools).\n\n` +
-    `RESPONSE FORMAT EXAMPLES:\n` +
-    `For tool call: {"action":"call_tool","tool_name":"openapi.execute","tool_args":{"operationId":"AdminGetProducts"}}\n` +
-    `For final answer: {"action":"final_answer","answer":"Here are your products:\\n\\n- **Product 1**: Description here\\n- **Product 2**: Another description"}\n\n` +
-    `AVAILABLE TOOLS:\n${JSON.stringify(toolCatalog, null, 2)}`;
+  // Build the system message from modular prompt components
+  const systemMessage = buildSystemMessage(tools);
 
   // DYNAMIC CONTENT (changes each loop)
   const userMessage = [
