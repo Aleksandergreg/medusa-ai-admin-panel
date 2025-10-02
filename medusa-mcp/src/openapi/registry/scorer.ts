@@ -32,7 +32,10 @@ export type QueryContext = {
     compactQuery: string;
 };
 
-export function buildQueryContext(tokens: string[], rawQuery: string): QueryContext {
+export function buildQueryContext(
+    tokens: string[],
+    rawQuery: string
+): QueryContext {
     const nonStopTokens = tokens.filter((token) => !STOPWORDS.has(token));
     return {
         tokens,
@@ -104,7 +107,10 @@ export function scoreOperation(
             }
         }
 
-        if (entry.field === "description" && fieldTokens.length > DESCRIPTION_LENGTH_THRESHOLD) {
+        if (
+            entry.field === "description" &&
+            fieldTokens.length > DESCRIPTION_LENGTH_THRESHOLD
+        ) {
             const over = fieldTokens.length - DESCRIPTION_LENGTH_THRESHOLD;
             const penalty = Math.min(
                 DESCRIPTION_LENGTH_PENALTY_CAP,

@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "inspector": "mcp-inspector m",
+    "lint": "npx eslint \"src/**/*.{ts,tsx}\" --fix --ignore-pattern \"src/types/*-json.ts\"",
     "dev:inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
   },
   "keywords": [],

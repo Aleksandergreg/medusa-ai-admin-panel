@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 // 1. Remove the MedusaStoreService import
-// import MedusaStoreService from "./services/medusa-store"; 
+// import MedusaStoreService from "./services/medusa-store";
 import OpenApiToolsService from "./openapi/tools";
 
 async function main(): Promise<void> {
@@ -17,7 +17,10 @@ async function main(): Promise<void> {
         tools = openApiTools.defineTools();
     } catch (error) {
         // 5. Error handling for tool initialization
-        console.error("Fatal Error: Could not initialize OpenAPI tools:", error);
+        console.error(
+            "Fatal Error: Could not initialize OpenAPI tools:",
+            error
+        );
         process.exit(1);
     }
 

@@ -71,11 +71,18 @@ function walkSchema(
     };
 
     const baseRequired = parentRequired ? Array.from(parentRequired) : [];
-    const declaredRequired = Array.isArray(casted.required) ? (casted.required as string[]) : [];
-    const currentRequired = new Set<string>([...baseRequired, ...declaredRequired]);
+    const declaredRequired = Array.isArray(casted.required)
+        ? (casted.required as string[])
+        : [];
+    const currentRequired = new Set<string>([
+        ...baseRequired,
+        ...declaredRequired
+    ]);
 
     const recordExample = (schemaNode: unknown, schemaPath: string): void => {
-        if (!schemaNode || typeof schemaNode !== "object") return;
+        if (!schemaNode || typeof schemaNode !== "object") {
+            return;
+        }
         const s = schemaNode as {
             example?: unknown;
             examples?: unknown[];
@@ -109,7 +116,13 @@ function walkSchema(
         walkSchema(spec, casted.items, arrayPath, parentRequired, meta);
     }
 
-    (casted.allOf ?? []).forEach((child) => walkSchema(spec, child, path, currentRequired, meta));
-    (casted.oneOf ?? []).forEach((child) => walkSchema(spec, child, path, parentRequired, meta));
-    (casted.anyOf ?? []).forEach((child) => walkSchema(spec, child, path, parentRequired, meta));
+    (casted.allOf ?? []).forEach((child) =>
+        walkSchema(spec, child, path, currentRequired, meta)
+    );
+    (casted.oneOf ?? []).forEach((child) =>
+        walkSchema(spec, child, path, parentRequired, meta)
+    );
+    (casted.anyOf ?? []).forEach((child) =>
+        walkSchema(spec, child, path, parentRequired, meta)
+    );
 }

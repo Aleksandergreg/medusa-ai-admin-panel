@@ -17,9 +17,13 @@ function buildQueryParamHints(operation: Operation): QueryParamHint[] {
             const schema = param.schema as Record<string, unknown> | undefined;
             const props =
                 schema?.type === "object"
-                    ? (schema?.properties as Record<string, unknown> | undefined)
+                    ? (schema?.properties as
+                          | Record<string, unknown>
+                          | undefined)
                     : undefined;
-            if (!props) return null;
+            if (!props) {
+                return null;
+            }
             const keys = Object.keys(props);
             const operators = keys.filter((key) => key.startsWith("$"));
             let example: string | undefined;
@@ -68,7 +72,9 @@ export function createSchemaTool(spec: OpenAPISpec, registry: OpenApiRegistry) {
                 method: operation.method,
                 path: operation.path,
                 examplePath,
-                exampleUrl: exampleUrl.length ? `${examplePath}?${exampleUrl}` : undefined,
+                exampleUrl: exampleUrl.length
+                    ? `${examplePath}?${exampleUrl}`
+                    : undefined,
                 summary: operation.summary,
                 description: operation.description,
                 tags: operation.tags,

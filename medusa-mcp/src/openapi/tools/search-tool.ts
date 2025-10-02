@@ -36,9 +36,9 @@ export function createSearchTool(registry: OpenApiRegistry) {
             limit: z.number().min(1).max(50).optional()
         },
         handler: async (input) => {
-            const methods = (input.methods as string[] | undefined)?.map((m) => toMethod(m)!) as
-                | HttpMethod[]
-                | undefined;
+            const methods = (input.methods as string[] | undefined)?.map(
+                (m) => toMethod(m)!
+            ) as HttpMethod[] | undefined;
             const results = registry.search(input.query as string, {
                 tags: input.tags as string[] | undefined,
                 methods,
@@ -50,8 +50,12 @@ export function createSearchTool(registry: OpenApiRegistry) {
                 path: operation.path,
                 summary: operation.summary,
                 tags: operation.tags,
-                pathParams: summarizeParams(operation.parameters.filter((p) => p.in === "path")),
-                queryParams: summarizeParams(operation.parameters.filter((p) => p.in === "query"))
+                pathParams: summarizeParams(
+                    operation.parameters.filter((p) => p.in === "path")
+                ),
+                queryParams: summarizeParams(
+                    operation.parameters.filter((p) => p.in === "query")
+                )
             }));
         }
     }));
