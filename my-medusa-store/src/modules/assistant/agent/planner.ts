@@ -16,6 +16,43 @@ export async function planNextStepWithGemini(
   tool_args?: unknown;
   answer?: string;
 }> {
+  // Helper to robustly extract text from Google GenAI SDK results
+  const extractText = (res: any): string | undefined => {
+    try {
+      // Common shapes
+      if (typeof res?.text === "string" && res.text.trim()) return res.text;
+      if (typeof res?.text === "function") {
+        const t = res.text();
+        if (typeof t === "string" && t.trim()) return t;
+      }
+      if (typeof res?.response?.text === "string" && res.response.text.trim())
+        return res.response.text;
+      if (typeof res?.response?.text === "function") {
+        const t = res.response.text();
+        if (typeof t === "string" && t.trim()) return t;
+      }
+
+      const pickFromCandidates = (cands: any[]): string | undefined => {
+        for (const c of cands ?? []) {
+          const parts = c?.content?.parts ?? c?.content?.[0]?.parts ?? [];
+          const txtParts = (Array.isArray(parts) ? parts : [])
+            .map((p: any) => p?.text)
+            .filter((s: any) => typeof s === "string");
+          const joined = txtParts.join("").trim();
+          if (joined) return joined;
+        }
+        return undefined;
+      };
+
+      const fromTop = pickFromCandidates(res?.candidates);
+      if (fromTop) return fromTop;
+      const fromResp = pickFromCandidates(res?.response?.candidates);
+      if (fromResp) return fromResp;
+    } catch {
+      // fallthrough
+    }
+    return undefined;
+  };
   // Deterministic CI fallback to avoid external LLM dependency and flakiness
   try {
     const ciMode =
@@ -65,30 +102,48 @@ export async function planNextStepWithGemini(
 
   const ai = new GoogleGenAI({ apiKey });
 
-  const result = await ai.models.generateContent({
-    model: modelName,
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: systemMessage }],
-      },
-      {
-        role: "model",
-        parts: [
-          {
-            text: "I understand. I'm ready to help with your e-commerce platform. I'll analyze your request and decide whether to call a tool or provide a final answer. Please provide the current situation.",
-          },
-        ],
-      },
-      {
-        role: "user",
-        parts: [{ text: userMessage }],
-      },
-    ],
-  });
+  const generate = async () =>
+    ai.models.generateContent({
+      model: modelName,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: systemMessage }],
+        },
+        {
+          role: "model",
+          parts: [
+            {
+              text: "I understand. I'm ready to help with your e-commerce platform. I'll analyze your request and decide whether to call a tool or provide a final answer. Please provide the current situation.",
+            },
+          ],
+        },
+        {
+          role: "user",
+          parts: [{ text: userMessage }],
+        },
+      ],
+    });
 
-  const text = result.text;
-  if (!text) throw new Error("LLM returned empty response");
+  let result = await generate();
+  let text = extractText(result);
+  if (!text) {
+    // Single retry to mitigate transient empty generations
+    try {
+      result = await generate();
+      text = extractText(result);
+    } catch {
+      // ignore and handle fallback below
+    }
+  }
+  if (!text) {
+    console.warn("LLM returned empty response (no text). Returning fallback answer.");
+    return {
+      action: "final_answer",
+      answer:
+        "I couldn't generate a response from the AI model just now. Please try again, or rephrase your request.",
+    };
+  }
 
   // Try to parse robustly first
   let parsed = safeParseJSON(text);

@@ -5,9 +5,15 @@ export function env(key: string): string | undefined {
 }
 
 export function stripJsonFences(text: string): string {
-  const fence = /```(?:json)?\n([\s\S]*?)\n```/i;
-  const m = text?.match?.(fence);
-  return m ? m[1] : text;
+  try {
+    const t = String(text ?? "");
+    // Match any fenced block (```lang\n...\n```), prefer the first
+    const fence = /```[a-zA-Z0-9_-]*\n([\s\S]*?)\n```/i;
+    const m = t.match(fence);
+    return m ? m[1] : t;
+  } catch {
+    return String(text ?? "");
+  }
 }
 
 /** A safe description of JSON values */
@@ -33,36 +39,133 @@ export function safeParseJSON<T = JSONValue>(
   maybeJson: unknown
 ): T | undefined {
   if (typeof maybeJson !== "string") return undefined;
-  const stripped = stripJsonFences(maybeJson).trim();
 
-  // Try direct parse first
+  // Normalize input: remove BOM, strip fences, and trim
+  const source = stripJsonFences(maybeJson)
+    .replace(/^\uFEFF/, "")
+    .trim();
+
+  // 1) Try direct strict parse
   try {
-    return JSON.parse(stripped) as T;
+    return JSON.parse(source) as T;
   } catch {
-    // Silent fallback - errors are handled by callers
+    // continue
   }
 
-  // Try object slice { ... }
-  const firstObj = stripped.indexOf("{");
-  const lastObj = stripped.lastIndexOf("}");
-  if (firstObj !== -1 && lastObj !== -1 && lastObj > firstObj) {
+  // Helper: extract the first complete top-level JSON block ({...} or [...])
+  const extractFirstJsonBlock = (s: string): string | undefined => {
+    let inString = false;
+    let escape = false;
+    let start = -1;
+    let depth = 0;
+    let opener: "{" | "[" | null = null;
+
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (ch === "{" || ch === "[") {
+        if (depth === 0) {
+          start = i;
+          opener = ch as "{" | "[";
+        }
+        depth++;
+        continue;
+      }
+      if (ch === "}" || ch === "]") {
+        if (depth > 0) depth--;
+        if (depth === 0 && start !== -1) {
+          // Validate matching pair
+          if (
+            (opener === "{" && ch !== "}") ||
+            (opener === "[" && ch !== "]")
+          ) {
+            return undefined;
+          }
+          return s.slice(start, i + 1);
+        }
+      }
+    }
+    return undefined;
+  };
+
+  // Helper: remove trailing commas that commonly sneak into LLM JSON
+  const removeTrailingCommas = (s: string): string => {
+    let inString = false;
+    let escape = false;
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (inString) {
+        out += ch;
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        out += ch;
+        continue;
+      }
+      if (ch === ",") {
+        // Look ahead: if the next non-space is '}' or ']', drop this comma
+        let j = i + 1;
+        while (j < s.length && /\s/.test(s[j])) j++;
+        if (j < s.length && (s[j] === "}" || s[j] === "]")) {
+          // skip this comma
+          continue;
+        }
+      }
+      out += ch;
+    }
+    return out;
+  };
+
+  // 2) Try to extract the first JSON block inside free text
+  const block = extractFirstJsonBlock(source);
+  if (block) {
+    // Try strict parse first
     try {
-      return JSON.parse(stripped.slice(firstObj, lastObj + 1)) as T;
+      return JSON.parse(block) as T;
     } catch {
-      // Silent fallback - errors are handled by callers
+      // Attempt to repair common JSON mistakes (e.g., trailing commas)
+      try {
+        const repaired = removeTrailingCommas(block);
+        return JSON.parse(repaired) as T;
+      } catch {
+        // fall through
+      }
     }
   }
 
-  // Try array slice [ ... ]
-  const firstArr = stripped.indexOf("[");
-  const lastArr = stripped.lastIndexOf("]");
-  if (firstArr !== -1 && lastArr !== -1 && lastArr > firstArr) {
-    try {
-      return JSON.parse(stripped.slice(firstArr, lastArr + 1)) as T;
-    } catch {
-      // Silent fallback - errors are handled by callers
-    }
+  // 3) As a final fallback, try repairing the whole source
+  try {
+    const repaired = removeTrailingCommas(source);
+    return JSON.parse(repaired) as T;
+  } catch {
+    // give up
   }
+
   return undefined;
 }
 

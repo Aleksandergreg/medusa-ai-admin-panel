@@ -1,6 +1,10 @@
 import { defineTool } from "../../utils/define-tools";
 import { MedusaClient } from "../../clients/medusa/client";
-import { OpenApiRegistry, Operation, Parameter } from "../registry/openapi-registry";
+import {
+    OpenApiRegistry,
+    Operation,
+    Parameter
+} from "../registry/openapi-registry";
 
 type StrictQueryMode = "drop" | "error";
 
@@ -31,7 +35,10 @@ const OPERATOR_KEYS = new Set([
     "$exists"
 ]);
 
-export function createExecuteTool(registry: OpenApiRegistry, medusa: MedusaClient) {
+export function createExecuteTool(
+    registry: OpenApiRegistry,
+    medusa: MedusaClient
+) {
     return defineTool((z) => ({
         name: "openapi.execute",
         description:
@@ -53,13 +60,24 @@ export function createExecuteTool(registry: OpenApiRegistry, medusa: MedusaClien
                 throw new Error(`Unknown operationId: ${id}`);
             }
 
-            guardWriteOperations(operation, input.confirm as boolean | undefined);
+            guardWriteOperations(
+                operation,
+                input.confirm as boolean | undefined
+            );
 
-            const schemaAware = (input.schemaAware as boolean | undefined) !== false;
-            const strictQuery = ((input.strictQuery as StrictQueryMode | undefined) ?? "drop") as StrictQueryMode;
+            const schemaAware =
+                (input.schemaAware as boolean | undefined) !== false;
+            const strictQuery = ((input.strictQuery as
+                | StrictQueryMode
+                | undefined) ?? "drop") as StrictQueryMode;
             const schemas = registry.getSchemas(id);
 
-            const finalPath = buildPath(operation, (input.pathParams as Record<string, string | number> | undefined) ?? {});
+            const finalPath = buildPath(
+                operation,
+                (input.pathParams as
+                    | Record<string, string | number>
+                    | undefined) ?? {}
+            );
 
             const { query, droppedKeys } = buildQuery(
                 operation,
@@ -69,10 +87,15 @@ export function createExecuteTool(registry: OpenApiRegistry, medusa: MedusaClien
             );
 
             if (strictQuery === "error" && droppedKeys.length) {
-                throw new Error(`Query contains unsupported keys for ${id}: ${droppedKeys.join(", ")}`);
+                throw new Error(
+                    `Query contains unsupported keys for ${id}: ${droppedKeys.join(
+                        ", "
+                    )}`
+                );
             }
 
-            const extraHeaders = (input.headers as Record<string, string> | undefined) ?? {};
+            const extraHeaders =
+                (input.headers as Record<string, string> | undefined) ?? {};
 
             if (operation.method === "get" || operation.method === "head") {
                 return medusa.fetch(finalPath, {
@@ -91,23 +114,36 @@ export function createExecuteTool(registry: OpenApiRegistry, medusa: MedusaClien
     }));
 }
 
-function guardWriteOperations(operation: Operation, confirm: boolean | undefined): void {
+function guardWriteOperations(
+    operation: Operation,
+    confirm: boolean | undefined
+): void {
     if (operation.method === "get" || operation.method === "head") {
         return;
     }
     if (!confirm) {
-        throw new Error(`Operation ${operation.operationId} uses ${operation.method.toUpperCase()}. Set confirm=true to proceed.`);
+        throw new Error(
+            `Operation ${
+                operation.operationId
+            } uses ${operation.method.toUpperCase()}. Set confirm=true to proceed.`
+        );
     }
 }
 
-function buildPath(operation: Operation, pathParams: Record<string, string | number>): string {
+function buildPath(
+    operation: Operation,
+    pathParams: Record<string, string | number>
+): string {
     let finalPath = operation.path;
     for (const param of operation.parameters.filter((p) => p.in === "path")) {
         const value = pathParams[param.name];
         if (value === undefined || value === null) {
             continue;
         }
-        finalPath = finalPath.replace(new RegExp(`\\{${param.name}\\}`, "g"), encodeURIComponent(String(value)));
+        finalPath = finalPath.replace(
+            new RegExp(`\\{${param.name}\\}`, "g"),
+            encodeURIComponent(String(value))
+        );
     }
     return finalPath;
 }
@@ -148,7 +184,9 @@ function buildQuery(
     };
 }
 
-function normalizeQuery(input: Record<string, unknown>): Record<string, unknown> {
+function normalizeQuery(
+    input: Record<string, unknown>
+): Record<string, unknown> {
     const queryObj: Record<string, unknown> = {};
 
     const setKey = (key: string, value: unknown) => {
@@ -187,7 +225,9 @@ function normalizeQuery(input: Record<string, unknown>): Record<string, unknown>
             return;
         }
         if (typeof value === "object") {
-            for (const [subKey, subValue] of Object.entries(value as Record<string, unknown>)) {
+            for (const [subKey, subValue] of Object.entries(
+                value as Record<string, unknown>
+            )) {
                 const normalizedKey = normalizeOpKey(subKey);
                 append(`${key}[${normalizedKey}]`, subValue);
             }

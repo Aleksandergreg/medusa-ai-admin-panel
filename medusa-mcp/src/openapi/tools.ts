@@ -11,7 +11,11 @@ export default class OpenApiToolsService {
     private readonly spec: OpenAPISpec;
     private readonly registry: OpenApiRegistry;
 
-    constructor(options?: { medusa?: MedusaClient; spec?: OpenAPISpec; registry?: OpenApiRegistry }) {
+    constructor(options?: {
+        medusa?: MedusaClient;
+        spec?: OpenAPISpec;
+        registry?: OpenApiRegistry;
+    }) {
         this.spec = options?.spec ?? loadOpenApiSpec();
         this.medusa = options?.medusa ?? new MedusaClient();
         this.registry = options?.registry ?? new OpenApiRegistry(this.spec);

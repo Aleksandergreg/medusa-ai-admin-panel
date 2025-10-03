@@ -50,7 +50,7 @@ export class MedusaClient {
 
     async fetch(path: string, options: FetchOptions): Promise<unknown> {
         const headers: Record<string, string> = {
-            Accept: "application/json",
+            "Accept": "application/json",
             "Content-Type": "application/json",
             ...(options.headers ?? {})
         };
