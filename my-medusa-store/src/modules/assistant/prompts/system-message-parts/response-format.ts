@@ -5,6 +5,7 @@ export const RESPONSE_FORMAT_REQUIREMENTS = `CRITICAL RESPONSE FORMAT REQUIREMEN
 - YOU MUST ALWAYS return ONLY a valid JSON object, nothing else
 - NEVER include markdown code fences like \`\`\`json or \`\`\`markdown around your response
 - NEVER include any text before or after the JSON object
+- The ONLY place Markdown is allowed is inside the 'answer' string when you output {"action":"final_answer"}.
 - When you output {"action":"final_answer"}, the 'answer' value MUST be formatted as GitHub-Flavored Markdown (GFM)
 - Use short paragraphs, bullet lists, bold key IDs, and code fences for JSON or commands within the answer string
 - Do not include raw HTML in the answer`;
