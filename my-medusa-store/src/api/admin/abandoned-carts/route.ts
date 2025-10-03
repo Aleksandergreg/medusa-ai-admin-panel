@@ -2,6 +2,62 @@ import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/frame
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import AbandonedCartsService from "../../../modules/abandoned-carts/service"
 import { ABANDONED_CARTS_MODULE } from "../../../modules/abandoned-carts"
+/**
+ * @oas [get] /admin/abandoned-carts
+ * operationId: AdminGetAbandonedCarts
+ * summary: List abandoned carts
+ * x-authenticated: true
+ * tags:
+ *   - Admin Abandoned Carts
+ * parameters:
+ *   - in: query
+ *     name: older_than_minutes
+ *     schema: { type: integer, minimum: 0, default: 1440 }
+ *   - in: query
+ *     name: require_email
+ *     schema: { type: boolean, default: true }
+ *   - in: query
+ *     name: min_items
+ *     schema: { type: integer, minimum: 0, default: 1 }
+ *   - in: query
+ *     name: limit
+ *     schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+ *   - in: query
+ *     name: offset
+ *     schema: { type: integer, minimum: 0, default: 0 }
+ *   - in: query
+ *     name: with_customer
+ *     schema: { type: boolean, default: true }
+ * responses:
+ *   "200":
+ *     description: OK
+ *     content:
+ *       application/json:
+ *         schema:
+ *           type: object
+ *           properties:
+ *             total_matching: { type: integer }
+ *             filtered_count: { type: integer }
+ *             limit: { type: integer }
+ *             offset: { type: integer }
+ *             older_than_minutes: { type: integer }
+ *             require_email: { type: boolean }
+ *             min_items: { type: integer }
+ *             carts:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 description: Abandoned cart (partial). Structure may vary.
+ *                 additionalProperties: true
+ *   "500":
+ *     description: Server error
+ *     content:
+ *       application/json:
+ *         schema:
+ *           type: object
+ *           properties:
+ *             message: { type: string }
+ */
 
 /**
  * GET /admin/abandoned-carts
