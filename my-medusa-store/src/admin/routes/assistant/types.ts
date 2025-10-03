@@ -9,7 +9,7 @@ export interface AssistantResponse {
 }
 
 export type AssistantSession = {
-  sessionId: string;
+  sessionId: string | null;
   history: ConversationEntry[];
   updatedAt: Date | null;
 };

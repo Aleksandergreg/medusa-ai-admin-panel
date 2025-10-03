@@ -11,7 +11,6 @@ import { ConversationEntry, HistoryEntry } from "./lib/types";
 type PromptInput = {
   prompt: string;
   actorId: string;
-  sessionId?: string | null;
 };
 
 type PromptResult = {
@@ -55,9 +54,7 @@ class AssistantModuleService extends MedusaService({}) {
       throw new Error("Missing actor identifier");
     }
 
-    const existing = input.sessionId
-      ? await this.getSession(input.sessionId, actorId)
-      : null;
+    const existing = await this.getConversation(actorId);
 
     const sessionId = existing?.sessionId ?? randomUUID();
     const existingHistory = existing?.history ?? [];
@@ -86,9 +83,9 @@ class AssistantModuleService extends MedusaService({}) {
       { role: "assistant", content: answer },
     ];
 
-    await this.persistSession(
-      sessionId,
+    await this.persistConversation(
       actorId,
+      sessionId,
       finalHistory,
       Boolean(existing)
     );
@@ -100,8 +97,7 @@ class AssistantModuleService extends MedusaService({}) {
     };
   }
 
-  async getSession(
-    sessionId: string | null | undefined,
+  async getConversation(
     actorId: string
   ): Promise<{
     sessionId: string;
@@ -109,12 +105,13 @@ class AssistantModuleService extends MedusaService({}) {
     updatedAt: Date | null;
   } | null> {
     const resolvedActorId = actorId?.trim();
-    if (!sessionId || !resolvedActorId) {
+    if (!resolvedActorId) {
       return null;
     }
 
     const row = await this.db<ConversationSessionRow>(CONVERSATION_TABLE)
-      .where({ session_id: sessionId, actor_id: resolvedActorId })
+      .where({ actor_id: resolvedActorId })
+      .orderBy("updated_at", "desc")
       .first();
 
     if (!row) {
@@ -174,15 +171,13 @@ class AssistantModuleService extends MedusaService({}) {
     }));
   }
 
-  private async persistSession(
-    sessionId: string,
+  private async persistConversation(
     actorId: string,
+    sessionId: string,
     history: ConversationEntry[],
     hasExisting: boolean
   ): Promise<void> {
     const payload = {
-      session_id: sessionId,
-      actor_id: actorId,
       history: JSON.stringify(history),
       updated_at: new Date(),
     };
@@ -197,7 +192,12 @@ class AssistantModuleService extends MedusaService({}) {
       return;
     }
 
-    await this.db(CONVERSATION_TABLE).insert(payload);
+    await this.db(CONVERSATION_TABLE).insert({
+      session_id: sessionId,
+      actor_id: actorId,
+      history: payload.history,
+      updated_at: payload.updated_at,
+    });
   }
 }
 
