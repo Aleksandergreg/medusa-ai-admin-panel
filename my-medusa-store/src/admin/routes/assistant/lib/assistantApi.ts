@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AssistantResponse, AssistantSession } from "../types";
+import type { AssistantResponse, AssistantConversation } from "../types";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 const ConversationEntrySchema = z.object({
@@ -10,11 +10,10 @@ const ConversationEntrySchema = z.object({
 const AssistantResponseSchema = z.object({
   response: z.string().default(""),
   history: z.array(ConversationEntrySchema).default([]),
-  sessionId: z.string().nullish(),
+  updatedAt: z.string().nullish().default(null),
 });
 
 const AssistantConversationSchema = z.object({
-  sessionId: z.string().nullish(),
   history: z.array(ConversationEntrySchema).default([]),
   updatedAt: z.string().nullish().default(null),
 });
@@ -52,13 +51,15 @@ export async function askAssistant(
   return {
     answer: parsed.data.response,
     history: parsed.data.history as ConversationEntry[],
-    sessionId: parsed.data.sessionId ?? null,
+    updatedAt: parsed.data.updatedAt
+      ? new Date(parsed.data.updatedAt)
+      : null,
   };
 }
 
 export async function fetchAssistantConversation(
   signal?: AbortSignal
-): Promise<AssistantSession> {
+): Promise<AssistantConversation> {
   const res = await fetch("/custom/assistant", {
     method: "GET",
     credentials: "include",
@@ -80,8 +81,9 @@ export async function fetchAssistantConversation(
   }
 
   return {
-    sessionId: parsed.data.sessionId ?? null,
     history: parsed.data.history as ConversationEntry[],
-    updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
+    updatedAt: parsed.data.updatedAt
+      ? new Date(parsed.data.updatedAt)
+      : null,
   };
 }

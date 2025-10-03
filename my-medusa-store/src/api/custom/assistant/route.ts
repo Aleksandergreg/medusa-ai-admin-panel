@@ -75,7 +75,7 @@ export async function POST(
     return res.json({
       response: result.answer,
       history: result.history,
-      sessionId: result.sessionId,
+      updatedAt: result.updatedAt.toISOString(),
     });
   } catch (e: unknown) {
     console.error("\n--- Assistant Route Error ---\n", e);
@@ -101,7 +101,6 @@ export async function GET(
     const conversation = await assistantService.getConversation(actorId);
 
     return res.json({
-      sessionId: conversation?.sessionId ?? null,
       history: conversation?.history ?? [],
       updatedAt: conversation?.updatedAt?.toISOString() ?? null,
     });

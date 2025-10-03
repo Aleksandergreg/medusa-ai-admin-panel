@@ -5,11 +5,10 @@ export type Category = "" | "customers" | "orders" | "products" | "promotions";
 export interface AssistantResponse {
   answer: string;
   history: ConversationEntry[];
-  sessionId: string | null;
+  updatedAt: Date | null;
 }
 
-export type AssistantSession = {
-  sessionId: string | null;
+export type AssistantConversation = {
   history: ConversationEntry[];
   updatedAt: Date | null;
 };

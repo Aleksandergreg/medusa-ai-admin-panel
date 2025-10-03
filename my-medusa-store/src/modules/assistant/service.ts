@@ -3,7 +3,6 @@ import {
   MedusaService,
 } from "@medusajs/framework/utils";
 import type { Knex } from "knex";
-import { randomUUID } from "node:crypto";
 import { askAgent } from "./agent/ask";
 import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
 import { ConversationEntry, HistoryEntry } from "./lib/types";
@@ -16,11 +15,10 @@ type PromptInput = {
 type PromptResult = {
   answer: string;
   history: ConversationEntry[];
-  sessionId: string;
+  updatedAt: Date;
 };
 
-type ConversationSessionRow = {
-  session_id: string;
+type ConversationRow = {
   actor_id: string;
   history: unknown;
   updated_at: Date | string | null;
@@ -55,8 +53,6 @@ class AssistantModuleService extends MedusaService({}) {
     }
 
     const existing = await this.getConversation(actorId);
-
-    const sessionId = existing?.sessionId ?? randomUUID();
     const existingHistory = existing?.history ?? [];
 
     const userTurn: ConversationEntry = {
@@ -83,24 +79,19 @@ class AssistantModuleService extends MedusaService({}) {
       { role: "assistant", content: answer },
     ];
 
-    await this.persistConversation(
-      actorId,
-      sessionId,
-      finalHistory,
-      Boolean(existing)
-    );
+    const updatedAt = new Date();
+    await this.persistConversation(actorId, finalHistory, updatedAt);
 
     return {
       answer,
       history: finalHistory,
-      sessionId,
+      updatedAt,
     };
   }
 
   async getConversation(
     actorId: string
   ): Promise<{
-    sessionId: string;
     history: ConversationEntry[];
     updatedAt: Date | null;
   } | null> {
@@ -109,7 +100,7 @@ class AssistantModuleService extends MedusaService({}) {
       return null;
     }
 
-    const row = await this.db<ConversationSessionRow>(CONVERSATION_TABLE)
+    const row = await this.db<ConversationRow>(CONVERSATION_TABLE)
       .where({ actor_id: resolvedActorId })
       .orderBy("updated_at", "desc")
       .first();
@@ -119,7 +110,6 @@ class AssistantModuleService extends MedusaService({}) {
     }
 
     return {
-      sessionId: row.session_id,
       history: this.deserializeHistory(row.history),
       updatedAt: row.updated_at ? new Date(row.updated_at) : null,
     };
@@ -173,31 +163,22 @@ class AssistantModuleService extends MedusaService({}) {
 
   private async persistConversation(
     actorId: string,
-    sessionId: string,
     history: ConversationEntry[],
-    hasExisting: boolean
+    updatedAt: Date
   ): Promise<void> {
-    const payload = {
-      history: JSON.stringify(history),
-      updated_at: new Date(),
-    };
+    const serializedHistory = JSON.stringify(history);
 
-    if (hasExisting) {
-      await this.db(CONVERSATION_TABLE)
-        .where({ session_id: sessionId, actor_id: actorId })
-        .update({
-          history: payload.history,
-          updated_at: payload.updated_at,
-        });
-      return;
-    }
-
-    await this.db(CONVERSATION_TABLE).insert({
-      session_id: sessionId,
-      actor_id: actorId,
-      history: payload.history,
-      updated_at: payload.updated_at,
-    });
+    await this.db(CONVERSATION_TABLE)
+      .insert({
+        actor_id: actorId,
+        history: serializedHistory,
+        updated_at: updatedAt,
+      })
+      .onConflict("actor_id")
+      .merge({
+        history: serializedHistory,
+        updated_at: updatedAt,
+      });
   }
 }
 
