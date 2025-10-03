@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AssistantResponse, AssistantSession } from "../types";
+import type { AssistantResponse, AssistantConversation } from "../types";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 const ConversationEntrySchema = z.object({
@@ -10,18 +10,16 @@ const ConversationEntrySchema = z.object({
 const AssistantResponseSchema = z.object({
   response: z.string().default(""),
   history: z.array(ConversationEntrySchema).default([]),
-  sessionId: z.string().optional(),
+  updatedAt: z.string().nullish().default(null),
 });
 
-const AssistantSessionSchema = z.object({
-  sessionId: z.string(),
+const AssistantConversationSchema = z.object({
   history: z.array(ConversationEntrySchema).default([]),
   updatedAt: z.string().nullish().default(null),
 });
 
 export type AskPayload = {
   prompt: string;
-  sessionId?: string;
 };
 
 export async function askAssistant(
@@ -53,16 +51,16 @@ export async function askAssistant(
   return {
     answer: parsed.data.response,
     history: parsed.data.history as ConversationEntry[],
-    sessionId: parsed.data.sessionId ?? null,
+    updatedAt: parsed.data.updatedAt
+      ? new Date(parsed.data.updatedAt)
+      : null,
   };
 }
 
-export async function fetchAssistantSession(
-  sessionId: string,
+export async function fetchAssistantConversation(
   signal?: AbortSignal
-): Promise<AssistantSession> {
-  const url = `/custom/assistant?sessionId=${encodeURIComponent(sessionId)}`;
-  const res = await fetch(url, {
+): Promise<AssistantConversation> {
+  const res = await fetch("/custom/assistant", {
     method: "GET",
     credentials: "include",
     signal,
@@ -77,14 +75,15 @@ export async function fetchAssistantSession(
     throw new Error(msg);
   }
 
-  const parsed = AssistantSessionSchema.safeParse(json);
+  const parsed = AssistantConversationSchema.safeParse(json);
   if (!parsed.success) {
     throw new Error("Invalid response from server :(");
   }
 
   return {
-    sessionId: parsed.data.sessionId,
     history: parsed.data.history as ConversationEntry[],
-    updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
+    updatedAt: parsed.data.updatedAt
+      ? new Date(parsed.data.updatedAt)
+      : null,
   };
 }

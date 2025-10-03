@@ -6,7 +6,6 @@ import AssistantModuleService from "../../../modules/assistant/service";
 
 type AssistantPayload = {
   prompt: string;
-  sessionId?: string | null;
 };
 
 // Define the expected session structure
@@ -54,7 +53,7 @@ export async function POST(
   res: MedusaResponse
 ) {
   try {
-    const { prompt, sessionId } = (req.body as AssistantPayload) ?? {};
+    const { prompt } = (req.body as AssistantPayload) ?? {};
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing or invalid prompt" });
@@ -70,14 +69,13 @@ export async function POST(
 
     const result = await assistantService.prompt({
       prompt,
-      sessionId,
       actorId,
     });
 
     return res.json({
       response: result.answer,
       history: result.history,
-      sessionId: result.sessionId,
+      updatedAt: result.updatedAt.toISOString(),
     });
   } catch (e: unknown) {
     console.error("\n--- Assistant Route Error ---\n", e);
@@ -92,16 +90,6 @@ export async function GET(
   res: MedusaResponse
 ) {
   try {
-    const queryParam = (req.query?.sessionId ?? req.query?.session_id) as
-      | string
-      | string[]
-      | undefined;
-    const sessionId = Array.isArray(queryParam) ? queryParam[0] : queryParam;
-
-    if (!sessionId) {
-      return res.status(400).json({ error: "Missing sessionId" });
-    }
-
     const actorId = getActorId(req);
     if (!actorId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -110,15 +98,11 @@ export async function GET(
     const assistantService =
       req.scope.resolve<AssistantModuleService>("assistant");
 
-    const session = await assistantService.getSession(sessionId, actorId);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
+    const conversation = await assistantService.getConversation(actorId);
 
     return res.json({
-      sessionId: session.sessionId,
-      history: session.history,
-      updatedAt: session.updatedAt?.toISOString() ?? null,
+      history: conversation?.history ?? [],
+      updatedAt: conversation?.updatedAt?.toISOString() ?? null,
     });
   } catch (e: unknown) {
     console.error("\n--- Assistant Route Error ---\n", e);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorageState } from "../../../hooks/useLocalStorageState";
 import { STORAGE_KEYS } from "../lib/storageKeys";
-import { askAssistant, fetchAssistantSession } from "../lib/assistantApi";
+import { askAssistant, fetchAssistantConversation } from "../lib/assistantApi";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 export function useAssistant() {
@@ -10,42 +10,25 @@ export function useAssistant() {
     STORAGE_KEYS.prompt,
     ""
   );
-  const [sessionId, setSessionId] = useLocalStorageState<string | null>(
-    STORAGE_KEYS.sessionId,
-    null
-  );
 
   const [history, setHistory] = useState<ConversationEntry[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortController = useRef<AbortController | null>(null);
-  const lastFetchedSession = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId) {
-      lastFetchedSession.current = null;
-      setHistory([]);
-      setAnswer(null);
-      return;
-    }
-
-    if (lastFetchedSession.current === sessionId) {
-      return;
-    }
-
     let isActive = true;
     const controller = new AbortController();
 
     setLoading(true);
-    fetchAssistantSession(sessionId, controller.signal)
-      .then((session) => {
+    fetchAssistantConversation(controller.signal)
+      .then((conversation) => {
         if (!isActive) {
           return;
         }
-        lastFetchedSession.current = session.sessionId;
-        setHistory(session.history);
-        const latestAssistant = [...session.history]
+        setHistory(conversation.history);
+        const latestAssistant = [...conversation.history]
           .reverse()
           .find((entry) => entry.role === "assistant");
         setAnswer(latestAssistant?.content ?? null);
@@ -55,17 +38,15 @@ export function useAssistant() {
         if (!isActive) {
           return;
         }
-        lastFetchedSession.current = null;
         const message =
-          (e as Error)?.message ?? "Failed to load assistant session";
-        if (message && message !== "Session not found") {
+          (e as Error)?.message ?? "Failed to load assistant conversation";
+        if (message !== "Unauthorized") {
           setError(message);
         } else {
           setError(null);
         }
         setHistory([]);
         setAnswer(null);
-        setSessionId(null);
       })
       .finally(() => {
         if (isActive) {
@@ -77,7 +58,7 @@ export function useAssistant() {
       isActive = false;
       controller.abort();
     };
-  }, [sessionId, setSessionId]);
+  }, []);
 
   const canSubmit = useMemo(
     () => prompt.trim().length > 0 && !loading,
@@ -112,7 +93,6 @@ export function useAssistant() {
     try {
       const payload = {
         prompt: trimmedPrompt,
-        ...(sessionId ? { sessionId } : {}),
       } as const;
 
       const res = await askAssistant(payload, signal);
@@ -120,12 +100,8 @@ export function useAssistant() {
         return;
       }
 
-      const resolvedSessionId = res.sessionId ?? sessionId ?? null;
-
       setHistory(res.history);
       setAnswer(res.answer);
-      setSessionId(resolvedSessionId);
-      lastFetchedSession.current = resolvedSessionId;
     } catch (e: unknown) {
       setHistory(previousHistory);
       if (e instanceof Error && e.name === "AbortError") {
@@ -137,7 +113,7 @@ export function useAssistant() {
       setLoading(false);
       abortController.current = null;
     }
-  }, [canSubmit, prompt, sessionId, history]);
+  }, [canSubmit, prompt, history]);
 
   const cancel = useCallback(() => {
     if (abortController.current) {
@@ -146,21 +122,17 @@ export function useAssistant() {
   }, []);
 
   const clear = useCallback(() => {
-    lastFetchedSession.current = null;
     setAnswer(null);
     setError(null);
     setPrompt("");
     setHistory([]);
-    setSessionId(null);
     cancel(); // Cancel any ongoing request when clearing
-  }, [setPrompt, setSessionId, cancel]);
+  }, [setPrompt, cancel]);
 
   return {
     // state
     prompt,
     setPrompt,
-    sessionId,
-    setSessionId,
     history,
 
     answer,
