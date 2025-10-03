@@ -23,5 +23,8 @@ module.exports = defineConfig({
         plannerMode: process.env.ASSISTANT_PLANNER_MODE || "live",
       },
     },
+    {
+      resolve: "./src/modules/abandoned-carts",
+    },
   ],
 });
