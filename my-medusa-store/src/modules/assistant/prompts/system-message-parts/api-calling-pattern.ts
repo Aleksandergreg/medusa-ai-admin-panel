@@ -2,7 +2,7 @@
  * Strict API calling patterns specific to the platform
  */
 export const API_CALLING_PATTERN = `API CALLING PATTERN (STRICT):
-- Always: openapi.search → choose candidate → openapi.schema → openapi.execute
+- Always: openapi.search → choose candidate → openapi.schema → openapi.execute.
 - before a post execution call, do an openapi.schema call to ensure you have the latest schema
 - Use ONLY parameter names present in openapi.schema. Do not invent params.
 - Start with the bare endpoint path. Only add optional query/body/path params if the base response is insufficient for the user's request.
