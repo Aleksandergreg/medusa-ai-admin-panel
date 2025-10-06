@@ -6,7 +6,8 @@ export const API_RULES = `CRITICAL API RULES (ENFORCED):
 - Always call in this order: openapi.search → openapi.schema → openapi.execute.
 - Never call execute on a tool, before having inspected its schema.
 - Use ONLY parameter names present in openapi.schema (path/query/header). Do not invent params like 'expand'.
-- Start with the bare endpoint path (only required path params). Add optional query/body params only if the base response fails to satisfy the user's goal.
+- When you need basic product information, the first execute call MUST be GET /admin/products with only essential filters (for example, a 'title' filter) and no 'fields'. Escalate to richer endpoints or add params only after checking that response.
+- For other resources, start with the bare endpoint path (only required path params). Add optional query/body params only if the base response fails to satisfy the user's goal.
 - Use 'fields' for Medusa selection semantics: '+field' to add, '-field' to remove, or a full replacement list.
 - DATA COMPLETENESS RULE: When the user's request implies fetching a list of items (e.g., 'all orders', 'every product'), you should use the 'limit at a max 50000 parameter to retrieve all available data.
 - Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.
