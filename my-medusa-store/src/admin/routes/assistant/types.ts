@@ -6,6 +6,13 @@ export interface AssistantResponse {
   answer: string;
   history: ConversationEntry[];
   updatedAt: Date | null;
+  validationRequest?: {
+    id: string;
+    operationId: string;
+    method: string;
+    path: string;
+    args: Record<string, unknown>;
+  };
 }
 
 export type AssistantConversation = {
