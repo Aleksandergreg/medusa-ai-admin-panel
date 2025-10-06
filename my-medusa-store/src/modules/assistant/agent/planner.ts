@@ -108,21 +108,14 @@ export async function planNextStepWithGemini(
       contents: [
         {
           role: "user",
-          parts: [{ text: systemMessage }],
-        },
-        {
-          role: "model",
-          parts: [
-            {
-              text: "I understand. I'm ready to help with your e-commerce platform. I'll analyze your request and decide whether to call a tool or provide a final answer. Please provide the current situation.",
-            },
-          ],
-        },
-        {
-          role: "user",
           parts: [{ text: userMessage }],
         },
       ],
+      config: {
+        systemInstruction: {
+          parts: [{ text: systemMessage }],
+        },
+      },
     });
 
   let result = await generate();
