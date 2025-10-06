@@ -42,7 +42,7 @@ export function createExecuteTool(
     return defineTool((z) => ({
         name: "openapi.execute",
         description:
-            "Execute an OpenAPI operation by operationId. Provide pathParams, query, body. Writes require confirm=true.",
+            "Execute an OpenAPI operation by operationId. Provide pathParams, query, body when relevant.",
         inputSchema: {
             operationId: z.string().min(1),
             pathParams: z.record(z.union([z.string(), z.number()])).optional(),
@@ -59,11 +59,6 @@ export function createExecuteTool(
             if (!operation) {
                 throw new Error(`Unknown operationId: ${id}`);
             }
-
-            guardWriteOperations(
-                operation,
-                input.confirm as boolean | undefined
-            );
 
             const schemaAware =
                 (input.schemaAware as boolean | undefined) !== false;
@@ -112,22 +107,6 @@ export function createExecuteTool(
             });
         }
     }));
-}
-
-function guardWriteOperations(
-    operation: Operation,
-    confirm: boolean | undefined
-): void {
-    if (operation.method === "get" || operation.method === "head") {
-        return;
-    }
-    if (!confirm) {
-        throw new Error(
-            `Operation ${
-                operation.operationId
-            } uses ${operation.method.toUpperCase()}. Set confirm=true to proceed.`
-        );
-    }
 }
 
 function buildPath(
