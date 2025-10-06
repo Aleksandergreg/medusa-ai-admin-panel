@@ -11,5 +11,5 @@ export const API_RULES = `CRITICAL API RULES (ENFORCED):
 - Prefer a single list endpoint over per-id loops; batch IDs in one follow-up call for enrichment if needed.
 - To batch a request for a parameter that accepts an array, provide a JSON array in 'tool_args'. For example: \`{"operationId":"AdminGetProducts","query":{"title":["Sweatshirt", "Sweatpants"]}}\`. The system handles URL formatting. Do not create loops.
 - On any 4xx, stop and re-check openapi.schema, then correct the request. Do not retry minor variants.
-- Prefer GET for retrieval; non-GET requires user intent and confirm=true.
+- Prefer GET for retrieval; use non-GET operations only with explicit user intent.
 - When a tool result includes {"assistant_summary":...}, treat those aggregates as the authoritative counts instead of rescanning raw JSON.`;
