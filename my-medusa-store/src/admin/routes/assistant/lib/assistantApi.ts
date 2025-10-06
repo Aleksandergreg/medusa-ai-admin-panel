@@ -26,7 +26,7 @@ export async function askAssistant(
   payload: AskPayload,
   signal?: AbortSignal
 ): Promise<AssistantResponse> {
-  const res = await fetch("/custom/assistant", {
+  const res = await fetch("/admin/assistant", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -51,16 +51,14 @@ export async function askAssistant(
   return {
     answer: parsed.data.response,
     history: parsed.data.history as ConversationEntry[],
-    updatedAt: parsed.data.updatedAt
-      ? new Date(parsed.data.updatedAt)
-      : null,
+    updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
   };
 }
 
 export async function fetchAssistantConversation(
   signal?: AbortSignal
 ): Promise<AssistantConversation> {
-  const res = await fetch("/custom/assistant", {
+  const res = await fetch("/admin/assistant", {
     method: "GET",
     credentials: "include",
     signal,
@@ -82,8 +80,6 @@ export async function fetchAssistantConversation(
 
   return {
     history: parsed.data.history as ConversationEntry[],
-    updatedAt: parsed.data.updatedAt
-      ? new Date(parsed.data.updatedAt)
-      : null,
+    updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
   };
 }
