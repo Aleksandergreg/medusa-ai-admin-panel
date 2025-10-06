@@ -9,4 +9,4 @@ export const API_CALLING_PATTERN = `API CALLING PATTERN (STRICT):
 - Prefer a single list endpoint over per-id loops; if enrichment is needed, batch IDs in one follow-up call.
 - When openapi.schema shows a parameter supports an array (type array or oneOf string/array), include every value in one request using repeated 'param[]=value' entries (for example 'customer_id[]=A&customer_id[]=B').
 - On any 4xx or schema mismatch, re-check openapi.schema and fix the request instead of retrying variants.
-- Prefer GET for retrieval. Non-GET requires explicit user intent and confirm=true.`
+- Prefer GET for retrieval. Non-GET requires explicit user intent.`
