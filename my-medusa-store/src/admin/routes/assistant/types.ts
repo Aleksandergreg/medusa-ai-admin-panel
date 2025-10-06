@@ -12,6 +12,7 @@ export interface AssistantResponse {
     method: string;
     path: string;
     args: Record<string, unknown>;
+    bodyFieldEnums?: Record<string, string[]>;
   };
 }
 

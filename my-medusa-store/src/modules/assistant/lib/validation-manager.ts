@@ -15,7 +15,8 @@ class ValidationManager {
     operationId: string,
     method: string,
     path: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    bodyFieldEnums?: Record<string, string[]>
   ): { request: ValidationRequest; promise: Promise<boolean> } {
     const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
@@ -26,6 +27,7 @@ class ValidationManager {
       path,
       args,
       timestamp: new Date(),
+      bodyFieldEnums,
     };
 
     const promise = new Promise<boolean>((resolve, reject) => {

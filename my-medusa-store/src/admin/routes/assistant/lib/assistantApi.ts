@@ -13,6 +13,7 @@ const ValidationRequestSchema = z.object({
   method: z.string(),
   path: z.string(),
   args: z.record(z.unknown()),
+  bodyFieldEnums: z.record(z.array(z.string())).optional(),
 });
 
 const AssistantResponseSchema = z.object({

@@ -136,38 +136,41 @@ export function useAssistant() {
     }
   }, []);
 
-  const approveValidation = useCallback(async (id: string, editedData?: Record<string, unknown>) => {
-    try {
-      setLoading(true);
-      const payload = { id, approved: true, editedData };
-      console.log("Sending approval payload:", payload);
-      
-      const res = await fetch("/admin/assistant/validation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
+  const approveValidation = useCallback(
+    async (id: string, editedData?: Record<string, unknown>) => {
+      try {
+        setLoading(true);
+        const payload = { id, approved: true, editedData };
+        console.log("Sending approval payload:", payload);
 
-      const json = await res.json();
-      console.log("Approval response:", json);
-      if (!res.ok) {
-        throw new Error(json.error ?? "Failed to approve validation");
+        const res = await fetch("/admin/assistant/validation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+
+        const json = await res.json();
+        console.log("Approval response:", json);
+        if (!res.ok) {
+          throw new Error(json.error ?? "Failed to approve validation");
+        }
+
+        // Clear validation request and update with result
+        setValidationRequest(null);
+
+        // Format success message in a user-friendly way
+        const successMessage = `## ✅ Action Completed Successfully\n\nYour request has been processed and the changes have been applied to your store.\n\nYou can now continue with your next task or ask me for help with something else.`;
+
+        setAnswer(successMessage);
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to approve operation");
+      } finally {
+        setLoading(false);
       }
-
-      // Clear validation request and update with result
-      setValidationRequest(null);
-
-      // Format success message in a user-friendly way
-      const successMessage = `## ✅ Action Completed Successfully\n\nYour request has been processed and the changes have been applied to your store.\n\nYou can now continue with your next task or ask me for help with something else.`;
-
-      setAnswer(successMessage);
-    } catch (e: unknown) {
-      setError((e as Error)?.message ?? "Failed to approve operation");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   const rejectValidation = useCallback(async (id: string) => {
     try {

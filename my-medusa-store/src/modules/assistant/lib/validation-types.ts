@@ -9,6 +9,7 @@ export type ValidationRequest = {
   path: string;
   args: Record<string, unknown>;
   timestamp: Date;
+  bodyFieldEnums?: Record<string, string[]>;
 };
 
 export type ValidationResponse = {

@@ -16,6 +16,7 @@ export type ExecuteOutcome = {
     method: string;
     path: string;
     args: Record<string, unknown>;
+    bodyFieldEnums?: Record<string, string[]>;
   };
 };
 
@@ -68,11 +69,37 @@ export async function executeTool(params: {
   // Check if this operation needs validation
   if (needsValidation(toolName, args)) {
     const details = extractOperationDetails(args);
+
+    // Fetch schema information including enums
+    let bodyFieldEnums: Record<string, string[]> | undefined;
+    try {
+      const schemaResult = await mcp.callTool("openapi.schema", {
+        operationId: details.operationId,
+      });
+
+      if (schemaResult?.content?.[0]?.text) {
+        const schemaData = JSON.parse(schemaResult.content[0].text);
+        bodyFieldEnums = schemaData.bodyFieldEnums || {};
+        if (bodyFieldEnums && Object.keys(bodyFieldEnums).length > 0) {
+          console.log(
+            `   ✓ Extracted enum fields for ${details.operationId}:`,
+            Object.keys(bodyFieldEnums)
+          );
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `   Could not fetch schema for ${details.operationId}:`,
+        error
+      );
+    }
+
     const { request } = validationManager.createValidationRequest(
       details.operationId,
       details.method,
       details.path,
-      args
+      args,
+      bodyFieldEnums
     );
 
     console.log(`   ⚠️  Operation requires validation: ${details.operationId}`);
@@ -86,6 +113,7 @@ export async function executeTool(params: {
         method: request.method,
         path: request.path,
         args: request.args,
+        bodyFieldEnums: request.bodyFieldEnums,
       },
     };
   }

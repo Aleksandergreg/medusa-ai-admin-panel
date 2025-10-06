@@ -1,4 +1,14 @@
-import { Button, Heading, Text, Badge, Container, Input, Textarea, Switch } from "@medusajs/ui";
+import {
+  Button,
+  Heading,
+  Text,
+  Badge,
+  Container,
+  Input,
+  Textarea,
+  Switch,
+  Select,
+} from "@medusajs/ui";
 import { useState, useEffect } from "react";
 
 type ValidationDialogProps = {
@@ -8,8 +18,12 @@ type ValidationDialogProps = {
     method: string;
     path: string;
     args: Record<string, unknown>;
+    bodyFieldEnums?: Record<string, string[]>;
   };
-  onApprove: (id: string, editedData?: Record<string, unknown>) => Promise<void>;
+  onApprove: (
+    id: string,
+    editedData?: Record<string, unknown>
+  ) => Promise<void>;
   onReject: (id: string) => void;
 };
 
@@ -50,7 +64,8 @@ function renderValue(
   value: unknown,
   isEditing: boolean,
   path: string[],
-  onChange?: (path: string[], newValue: unknown) => void
+  onChange?: (path: string[], newValue: unknown) => void,
+  bodyFieldEnums?: Record<string, string[]>
 ): React.ReactNode {
   if (value === null || value === undefined) {
     if (isEditing && onChange) {
@@ -83,6 +98,57 @@ function renderValue(
 
   if (typeof value === "string") {
     if (isEditing && onChange) {
+      // Check if this field has enum options
+      // Try both full path (e.g., "application_method.type") and last element (e.g., "type")
+      const fullPath = path.join(".");
+      const fieldName = path[path.length - 1];
+      const enumOptions =
+        bodyFieldEnums?.[fullPath] || bodyFieldEnums?.[fieldName];
+
+      if (enumOptions && enumOptions.length > 0) {
+        const stringValue = String(value);
+        const valueInOptions = enumOptions.includes(stringValue);
+
+        console.log(`🎯 Rendering dropdown for "${fullPath}"`, {
+          currentValue: value,
+          currentValueType: typeof value,
+          stringValue,
+          valueInOptions,
+          options: enumOptions,
+        });
+
+        // If current value is not in options, use the first option or empty string
+        const selectValue = valueInOptions ? stringValue : enumOptions[0] || "";
+
+        return (
+          <Select
+            value={selectValue}
+            onValueChange={(val) => {
+              console.log(
+                `📝 Dropdown changed from "${selectValue}" to "${val}" for ${fullPath}`
+              );
+              onChange(path, val);
+            }}
+          >
+            <Select.Trigger>
+              <Select.Value placeholder="Select an option..." />
+            </Select.Trigger>
+            <Select.Content>
+              {enumOptions.map((option) => (
+                <Select.Item key={option} value={option}>
+                  {formatFieldName(option)}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select>
+        );
+      } else if (bodyFieldEnums) {
+        // Debug: show when we're NOT finding an enum for a field
+        console.log(
+          `ℹ️ No enum found for "${fullPath}" (tried: "${fullPath}", "${fieldName}")`
+        );
+      }
+
       const isLongText = value.length > 50;
       if (isLongText) {
         return (
@@ -152,7 +218,8 @@ function renderDetailsSection(
   title: string,
   data: Record<string, unknown>,
   isEditing: boolean,
-  onChange?: (path: string[], value: unknown) => void
+  onChange?: (path: string[], value: unknown) => void,
+  bodyFieldEnums?: Record<string, string[]>
 ) {
   const entries = Object.entries(data).filter(([, value]) => {
     // Filter out operationId and other internal fields
@@ -177,7 +244,10 @@ function renderDetailsSection(
             !Array.isArray(value)
           ) {
             return (
-              <div key={key} className="space-y-2 pb-2 border-b last:border-b-0 last:pb-0">
+              <div
+                key={key}
+                className="space-y-2 pb-2 border-b last:border-b-0 last:pb-0"
+              >
                 <Text size="xsmall" className="text-ui-fg-subtle font-semibold">
                   {formatFieldName(key)}:
                 </Text>
@@ -195,7 +265,13 @@ function renderDetailsSection(
                           {formatFieldName(subKey)}:
                         </Text>
                         <div className="flex-1">
-                          {renderValue(subValue, isEditing, [key, subKey], onChange)}
+                          {renderValue(
+                            subValue,
+                            isEditing,
+                            [key, subKey],
+                            onChange,
+                            bodyFieldEnums
+                          )}
                         </div>
                       </div>
                     )
@@ -211,7 +287,7 @@ function renderDetailsSection(
                 {formatFieldName(key)}:
               </Text>
               <div className="flex-1">
-                {renderValue(value, isEditing, [key], onChange)}
+                {renderValue(value, isEditing, [key], onChange, bodyFieldEnums)}
               </div>
             </div>
           );
@@ -225,7 +301,11 @@ function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
-function setNestedValue(obj: Record<string, unknown>, path: string[], value: unknown): void {
+function setNestedValue(
+  obj: Record<string, unknown>,
+  path: string[],
+  value: unknown
+): void {
   let current = obj;
   for (let i = 0; i < path.length - 1; i++) {
     const key = path[i];
@@ -244,12 +324,12 @@ export function ValidationDialog({
 }: ValidationDialogProps) {
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  
+
   // Extract body or use args directly
   const originalData =
     (validationRequest.args.body as Record<string, unknown>) ||
     validationRequest.args;
-  
+
   const [editedData, setEditedData] = useState<Record<string, unknown>>(() =>
     deepClone(originalData)
   );
@@ -261,7 +341,19 @@ export function ValidationDialog({
       validationRequest.args;
     setEditedData(deepClone(data));
     setIsEditing(false);
-  }, [validationRequest.id, validationRequest.args]);
+
+    // Debug: Log enum fields
+    if (validationRequest.bodyFieldEnums) {
+      console.log(
+        "📋 Enum fields available:",
+        validationRequest.bodyFieldEnums
+      );
+    }
+  }, [
+    validationRequest.id,
+    validationRequest.args,
+    validationRequest.bodyFieldEnums,
+  ]);
 
   const handleApprove = async () => {
     setLoading(true);
@@ -353,7 +445,8 @@ export function ValidationDialog({
                 setNestedValue(newData, path, value);
                 return newData;
               });
-            }
+            },
+            validationRequest.bodyFieldEnums
           )}
         </div>
 
