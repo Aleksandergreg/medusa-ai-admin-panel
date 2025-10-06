@@ -2,7 +2,7 @@
  * Strict API calling patterns specific to the platform
  */
 export const API_CALLING_PATTERN = `API CALLING PATTERN (STRICT):
-- YOU MUST ALWAYS FOLLOW THIS. IT'S VERY IMPORTANT: openapi.search → choose candidate → openapi.schema → openapi.execute
+- Always: openapi.search → choose candidate → openapi.schema → openapi.execute
 - Use ONLY parameter names present in openapi.schema. Do not invent params.
 - Start with the bare endpoint path. Only add optional query/body/path params if the base response is insufficient for the user's request.
 - Do NOT use 'expand'. Use 'fields' with Medusa semantics: "+field" to add, "-field" to remove, or a full replacement list.
