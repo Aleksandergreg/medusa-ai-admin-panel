@@ -1,231 +1,234 @@
 import { defineTool } from "../../utils/define-tools";
 import { MedusaClient } from "../../clients/medusa/client";
 import {
-    OpenApiRegistry,
-    Operation,
-    Parameter
+  OpenApiRegistry,
+  Operation,
+  Parameter,
 } from "../registry/openapi-registry";
 
 type StrictQueryMode = "drop" | "error";
 
 type QueryBuildResult = {
-    query: Record<string, unknown>;
-    droppedKeys: string[];
+  query: Record<string, unknown>;
+  droppedKeys: string[];
 };
 
 const OPERATOR_KEYS = new Set([
-    "$and",
-    "$or",
-    "$eq",
-    "$ne",
-    "$in",
-    "$nin",
-    "$not",
-    "$gt",
-    "$gte",
-    "$lt",
-    "$lte",
-    "$like",
-    "$re",
-    "$ilike",
-    "$fulltext",
-    "$overlap",
-    "$contains",
-    "$contained",
-    "$exists"
+  "$and",
+  "$or",
+  "$eq",
+  "$ne",
+  "$in",
+  "$nin",
+  "$not",
+  "$gt",
+  "$gte",
+  "$lt",
+  "$lte",
+  "$like",
+  "$re",
+  "$ilike",
+  "$fulltext",
+  "$overlap",
+  "$contains",
+  "$contained",
+  "$exists",
 ]);
 
 export function createExecuteTool(
-    registry: OpenApiRegistry,
-    medusa: MedusaClient
+  registry: OpenApiRegistry,
+  medusa: MedusaClient
 ) {
-    return defineTool((z) => ({
-        name: "openapi.execute",
-        description:
-            "Execute an OpenAPI operation by operationId. Provide pathParams, query, body when relevant.",
-        inputSchema: {
-            operationId: z.string().min(1),
-            pathParams: z.record(z.union([z.string(), z.number()])).optional(),
-            query: z.record(z.any()).optional(),
-            headers: z.record(z.string()).optional(),
-            body: z.any().optional(),
-            confirm: z.boolean().optional(),
-            schemaAware: z.boolean().optional(),
-            strictQuery: z.enum(["drop", "error"]).optional()
-        },
-        handler: async (input) => {
-            const id = input.operationId as string;
-            const operation = registry.getByOperationId(id);
-            if (!operation) {
-                throw new Error(`Unknown operationId: ${id}`);
-            }
+  return defineTool((z) => ({
+    name: "openapi.execute",
+    description:
+      "Execute an OpenAPI operation by operationId. Provide pathParams, query, body.",
+    inputSchema: {
+      operationId: z.string().min(1),
+      pathParams: z.record(z.union([z.string(), z.number()])).optional(),
+      query: z.record(z.any()).optional(),
+      headers: z.record(z.string()).optional(),
+      body: z.any().optional(),
+      schemaAware: z.boolean().optional(),
+      strictQuery: z.enum(["drop", "error"]).optional(),
+    },
+    handler: async (input) => {
+      const id = input.operationId as string;
+      const operation = registry.getByOperationId(id);
+      if (!operation) {
+        throw new Error(`Unknown operationId: ${id}`);
+      }
 
-            const schemaAware =
-                (input.schemaAware as boolean | undefined) !== false;
-            const strictQuery = ((input.strictQuery as
-                | StrictQueryMode
-                | undefined) ?? "drop") as StrictQueryMode;
-            const schemas = registry.getSchemas(id);
 
-            const finalPath = buildPath(
-                operation,
-                (input.pathParams as
-                    | Record<string, string | number>
-                    | undefined) ?? {}
-            );
+      const schemaAware = (input.schemaAware as boolean | undefined) !== false;
+      const strictQuery = ((input.strictQuery as StrictQueryMode | undefined) ??
+        "drop") as StrictQueryMode;
+      const schemas = registry.getSchemas(id);
 
-            const { query, droppedKeys } = buildQuery(
-                operation,
-                schemas?.queryParams ?? [],
-                (input.query as Record<string, unknown> | undefined) ?? {},
-                schemaAware
-            );
+      const finalPath = buildPath(
+        operation,
+        (input.pathParams as Record<string, string | number> | undefined) ?? {}
+      );
 
-            if (strictQuery === "error" && droppedKeys.length) {
-                throw new Error(
-                    `Query contains unsupported keys for ${id}: ${droppedKeys.join(
-                        ", "
-                    )}`
-                );
-            }
+      const { query, droppedKeys } = buildQuery(
+        operation,
+        schemas?.queryParams ?? [],
+        (input.query as Record<string, unknown> | undefined) ?? {},
+        schemaAware
+      );
 
-            const extraHeaders =
-                (input.headers as Record<string, string> | undefined) ?? {};
+      if (strictQuery === "error" && droppedKeys.length) {
+        throw new Error(
+          `Query contains unsupported keys for ${id}: ${droppedKeys.join(", ")}`
+        );
+      }
 
-            if (operation.method === "get" || operation.method === "head") {
-                return medusa.fetch(finalPath, {
-                    method: operation.method,
-                    headers: extraHeaders,
-                    query
-                });
-            }
+      const extraHeaders =
+        (input.headers as Record<string, string> | undefined) ?? {};
 
-            return medusa.fetch(finalPath, {
-                method: operation.method,
-                headers: extraHeaders,
-                body: (input.body as unknown) ?? {}
-            });
-        }
-    }));
+      if (operation.method === "get" || operation.method === "head") {
+        return medusa.fetch(finalPath, {
+          method: operation.method,
+          headers: extraHeaders,
+          query,
+        });
+      }
+
+      const result = await medusa.fetch(finalPath, {
+        method: operation.method,
+        headers: extraHeaders,
+        body: (input.body as unknown) ?? {},
+      });
+
+      return `SUCCESS: The ${operation.method.toUpperCase()} operation for '${
+        operation.operationId
+      }' was completed. This is the final answer. The resulting resource is below:\n\n${JSON.stringify(
+        result,
+        null,
+        2
+      )}`;
+    },
+  }));
 }
 
+
 function buildPath(
-    operation: Operation,
-    pathParams: Record<string, string | number>
+  operation: Operation,
+  pathParams: Record<string, string | number>
 ): string {
-    let finalPath = operation.path;
-    for (const param of operation.parameters.filter((p) => p.in === "path")) {
-        const value = pathParams[param.name];
-        if (value === undefined || value === null) {
-            continue;
-        }
-        finalPath = finalPath.replace(
-            new RegExp(`\\{${param.name}\\}`, "g"),
-            encodeURIComponent(String(value))
-        );
+  let finalPath = operation.path;
+  for (const param of operation.parameters.filter((p) => p.in === "path")) {
+    const value = pathParams[param.name];
+    if (value === undefined || value === null) {
+      continue;
     }
-    return finalPath;
+    finalPath = finalPath.replace(
+      new RegExp(`\\{${param.name}\\}`, "g"),
+      encodeURIComponent(String(value))
+    );
+  }
+  return finalPath;
 }
 
 function buildQuery(
-    operation: Operation,
-    queryParams: Parameter[],
-    rawQuery: Record<string, unknown>,
-    schemaAware: boolean
+  operation: Operation,
+  queryParams: Parameter[],
+  rawQuery: Record<string, unknown>,
+  schemaAware: boolean
 ): QueryBuildResult {
-    if (!schemaAware) {
-        return { query: normalizeQuery(rawQuery), droppedKeys: [] };
+  if (!schemaAware) {
+    return { query: normalizeQuery(rawQuery), droppedKeys: [] };
+  }
+  const allowed = new Set(queryParams.map((param) => param.name));
+  const resolveAllowedKey = (key: string): string | null => {
+    if (allowed.has(key)) {
+      return key;
     }
-    const allowed = new Set(queryParams.map((param) => param.name));
-    const resolveAllowedKey = (key: string): string | null => {
-        if (allowed.has(key)) {
-            return key;
-        }
-        const bracketIndex = key.indexOf("[");
-        if (bracketIndex === -1) {
-            return null;
-        }
-        const baseKey = key.slice(0, bracketIndex);
-        return allowed.has(baseKey) ? baseKey : null;
-    };
-    const filtered: Record<string, unknown> = {};
-    const dropped: string[] = [];
-    for (const [key, value] of Object.entries(rawQuery)) {
-        if (resolveAllowedKey(key)) {
-            filtered[key] = value;
-        } else {
-            dropped.push(key);
-        }
+    const bracketIndex = key.indexOf("[");
+    if (bracketIndex === -1) {
+      return null;
     }
-    return {
-        query: normalizeQuery(filtered),
-        droppedKeys: dropped
-    };
+    const baseKey = key.slice(0, bracketIndex);
+    return allowed.has(baseKey) ? baseKey : null;
+  };
+  const filtered: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(rawQuery)) {
+    if (resolveAllowedKey(key)) {
+      filtered[key] = value;
+    } else {
+      dropped.push(key);
+    }
+  }
+  return {
+    query: normalizeQuery(filtered),
+    droppedKeys: dropped,
+  };
 }
 
 function normalizeQuery(
-    input: Record<string, unknown>
+  input: Record<string, unknown>
 ): Record<string, unknown> {
-    const queryObj: Record<string, unknown> = {};
+  const queryObj: Record<string, unknown> = {};
 
-    const setKey = (key: string, value: unknown) => {
-        const existing = queryObj[key];
-        if (existing === undefined) {
-            queryObj[key] = value;
-        } else if (Array.isArray(existing)) {
-            (existing as unknown[]).push(value);
-        } else {
-            queryObj[key] = [existing, value];
-        }
-    };
-
-    const append = (key: string, value: unknown): void => {
-        if (value === undefined || value === null) {
-            return;
-        }
-        if (value instanceof Date) {
-            setKey(key, value.toISOString());
-            return;
-        }
-        if (Array.isArray(value)) {
-            value.forEach((item, index) => {
-                if (
-                    item === null ||
-                    item === undefined ||
-                    typeof item === "string" ||
-                    typeof item === "number" ||
-                    typeof item === "boolean"
-                ) {
-                    setKey(key, String(item));
-                } else if (typeof item === "object") {
-                    append(`${key}[${index}]`, item as Record<string, unknown>);
-                }
-            });
-            return;
-        }
-        if (typeof value === "object") {
-            for (const [subKey, subValue] of Object.entries(
-                value as Record<string, unknown>
-            )) {
-                const normalizedKey = normalizeOpKey(subKey);
-                append(`${key}[${normalizedKey}]`, subValue);
-            }
-            return;
-        }
-        setKey(key, String(value));
-    };
-
-    for (const [key, value] of Object.entries(input)) {
-        append(key, value);
+  const setKey = (key: string, value: unknown) => {
+    const existing = queryObj[key];
+    if (existing === undefined) {
+      queryObj[key] = value;
+    } else if (Array.isArray(existing)) {
+      (existing as unknown[]).push(value);
+    } else {
+      queryObj[key] = [existing, value];
     }
+  };
 
-    return queryObj;
+  const append = (key: string, value: unknown): void => {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (value instanceof Date) {
+      setKey(key, value.toISOString());
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        if (
+          item === null ||
+          item === undefined ||
+          typeof item === "string" ||
+          typeof item === "number" ||
+          typeof item === "boolean"
+        ) {
+          setKey(key, String(item));
+        } else if (typeof item === "object") {
+          append(`${key}[${index}]`, item as Record<string, unknown>);
+        }
+      });
+      return;
+    }
+    if (typeof value === "object") {
+      for (const [subKey, subValue] of Object.entries(
+        value as Record<string, unknown>
+      )) {
+        const normalizedKey = normalizeOpKey(subKey);
+        append(`${key}[${normalizedKey}]`, subValue);
+      }
+      return;
+    }
+    setKey(key, String(value));
+  };
+
+  for (const [key, value] of Object.entries(input)) {
+    append(key, value);
+  }
+
+  return queryObj;
 }
 
 function normalizeOpKey(key: string): string {
-    if (key.startsWith("$")) {
-        return key;
-    }
-    const maybeOperator = `$${key}`;
-    return OPERATOR_KEYS.has(maybeOperator) ? maybeOperator : key;
+  if (key.startsWith("$")) {
+    return key;
+  }
+  const maybeOperator = `$${key}`;
+  return OPERATOR_KEYS.has(maybeOperator) ? maybeOperator : key;
 }
