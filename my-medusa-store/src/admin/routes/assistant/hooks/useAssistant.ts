@@ -136,17 +136,21 @@ export function useAssistant() {
     }
   }, []);
 
-  const approveValidation = useCallback(async (id: string) => {
+  const approveValidation = useCallback(async (id: string, editedData?: Record<string, unknown>) => {
     try {
       setLoading(true);
+      const payload = { id, approved: true, editedData };
+      console.log("Sending approval payload:", payload);
+      
       const res = await fetch("/admin/assistant/validation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ id, approved: true }),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
+      console.log("Approval response:", json);
       if (!res.ok) {
         throw new Error(json.error ?? "Failed to approve validation");
       }

@@ -8,6 +8,7 @@ import { getMcp } from "../../../../lib/mcp/manager";
 type ValidationResponsePayload = {
   id: string;
   approved: boolean;
+  editedData?: Record<string, unknown>;
 };
 
 export async function POST(
@@ -15,7 +16,7 @@ export async function POST(
   res: MedusaResponse
 ) {
   try {
-    const { id, approved } = (req.body as ValidationResponsePayload) ?? {};
+    const { id, approved, editedData } = (req.body as ValidationResponsePayload) ?? {};
 
     if (!id || typeof id !== "string") {
       return res
@@ -52,9 +53,24 @@ export async function POST(
       return res.status(404).json({ error: "Validation request not found" });
     }
 
-    // Execute the actual operation
+    // Execute the actual operation with edited data if provided
     const mcp = await getMcp();
-    const result = await mcp.callTool("openapi.execute", validation.args);
+    let argsToExecute = validation.args;
+    
+    if (editedData) {
+      console.log("Original args:", JSON.stringify(validation.args, null, 2));
+      console.log("Edited data:", JSON.stringify(editedData, null, 2));
+      
+      // Replace the body content with edited data
+      argsToExecute = {
+        ...validation.args,
+        body: editedData,
+      };
+      
+      console.log("Args to execute:", JSON.stringify(argsToExecute, null, 2));
+    }
+    
+    const result = await mcp.callTool("openapi.execute", argsToExecute);
 
     // Mark validation as approved
     validationManager.respondToValidation({ id, approved: true });
