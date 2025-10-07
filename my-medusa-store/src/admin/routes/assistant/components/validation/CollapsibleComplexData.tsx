@@ -1,4 +1,4 @@
-import { Badge, Text } from "@medusajs/ui";
+import { Badge, Text, Input, Switch, Textarea } from "@medusajs/ui";
 import { ChevronDownMini, ChevronUpMini } from "@medusajs/icons";
 import { useState } from "react";
 
@@ -46,12 +46,98 @@ function formatValueDisplay(value: unknown): React.ReactNode {
   return <span className="text-ui-fg-base">{String(value)}</span>;
 }
 
+// Helper to check if an object is "simple" (only contains primitive values)
+function isSimpleObject(obj: Record<string, unknown>): boolean {
+  return Object.values(obj).every((value) => {
+    return (
+      value === null ||
+      value === undefined ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    );
+  });
+}
+
+// Render an editable field for simple values
+function renderEditableField(
+  _key: string,
+  value: unknown,
+  path: string[],
+  onChange: (path: string[], value: unknown) => void
+): React.ReactNode {
+  if (value === null || value === undefined) {
+    return (
+      <Input
+        placeholder="Not set"
+        value=""
+        onChange={(e) => onChange(path, e.target.value)}
+        className="text-sm"
+        size="small"
+      />
+    );
+  }
+
+  if (typeof value === "boolean") {
+    return (
+      <Switch
+        checked={value}
+        onCheckedChange={(checked) => onChange(path, checked)}
+      />
+    );
+  }
+
+  if (typeof value === "string") {
+    const isLongText = value.length > 50;
+    if (isLongText) {
+      return (
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(path, e.target.value)}
+          className="text-sm"
+          rows={3}
+          placeholder="Enter text..."
+        />
+      );
+    }
+    return (
+      <Input
+        value={value}
+        onChange={(e) => onChange(path, e.target.value)}
+        className="text-sm"
+        size="small"
+        placeholder="Enter value..."
+      />
+    );
+  }
+
+  if (typeof value === "number") {
+    return (
+      <Input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(path, parseFloat(e.target.value) || 0)}
+        className="text-sm"
+        size="small"
+      />
+    );
+  }
+
+  return <span className="font-medium text-ui-fg-base">{String(value)}</span>;
+}
+
 export function CollapsibleComplexData({
   data,
   nestLevel = 0,
+  isEditing = false,
+  onChange,
+  path = [],
 }: {
   data: unknown;
   nestLevel?: number;
+  isEditing?: boolean;
+  onChange?: (path: string[], value: unknown) => void;
+  path?: string[];
 }) {
   const [isExpanded, setIsExpanded] = useState(nestLevel === 0);
 
@@ -102,6 +188,9 @@ export function CollapsibleComplexData({
                     <CollapsibleComplexData
                       data={item}
                       nestLevel={nestLevel + 1}
+                      isEditing={isEditing}
+                      onChange={onChange}
+                      path={[...path, String(idx)]}
                     />
                   ) : (
                     formatValueDisplay(item)
@@ -121,6 +210,51 @@ export function CollapsibleComplexData({
     return <span className="text-ui-fg-subtle italic">No details</span>;
   }
 
+  const dataAsObject = data as Record<string, unknown>;
+  const isSimple = isSimpleObject(dataAsObject);
+
+  // If it's a simple object and we're in editing mode, make it editable
+  if (isSimple && isEditing && onChange) {
+    return (
+      <div className="border border-ui-border-base rounded-lg bg-ui-bg-base overflow-hidden">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-ui-bg-subtle transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
+            {isExpanded ? (
+              <ChevronUpMini className="text-ui-fg-muted" />
+            ) : (
+              <ChevronDownMini className="text-ui-fg-muted" />
+            )}
+            <span className="text-ui-fg-base text-sm font-medium">
+              ✏️ Edit details ({entries.length}{" "}
+              {entries.length === 1 ? "property" : "properties"})
+            </span>
+          </div>
+          <Badge size="2xsmall" className="ml-2">
+            {entries.length}
+          </Badge>
+        </button>
+        {isExpanded && (
+          <div className="px-4 py-3 border-t border-ui-border-base bg-ui-bg-field space-y-3">
+            {entries.map(([key, value]) => (
+              <div key={key} className="flex flex-col gap-1.5">
+                <Text size="small" className="text-ui-fg-base font-medium">
+                  {key}
+                </Text>
+                <div className="ml-1">
+                  {renderEditableField(key, value, [...path, key], onChange)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Complex object or read-only mode - keep as collapsible read-only
   return (
     <div className="border border-ui-border-base rounded-lg bg-ui-bg-base overflow-hidden">
       <button
@@ -154,6 +288,9 @@ export function CollapsibleComplexData({
                   <CollapsibleComplexData
                     data={value}
                     nestLevel={nestLevel + 1}
+                    isEditing={isEditing}
+                    onChange={onChange}
+                    path={[...path, key]}
                   />
                 ) : (
                   formatValueDisplay(value)

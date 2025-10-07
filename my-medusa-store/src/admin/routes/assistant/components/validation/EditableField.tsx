@@ -164,7 +164,15 @@ export function EditableField({
   }
 
   if (typeof value === "object") {
-    return <CollapsibleComplexData data={value} nestLevel={0} />;
+    return (
+      <CollapsibleComplexData
+        data={value}
+        nestLevel={0}
+        isEditing={isEditing}
+        onChange={onChange}
+        path={path}
+      />
+    );
   }
 
   return <span className="font-medium text-ui-fg-base">{String(value)}</span>;
