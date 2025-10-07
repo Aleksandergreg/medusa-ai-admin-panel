@@ -30,6 +30,7 @@ export function ValidationDialog({
 }: ValidationDialogProps) {
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   // Extract body or use args directly
   const originalData =
@@ -47,6 +48,7 @@ export function ValidationDialog({
       validationRequest.args;
     setEditedData(deepClone(data));
     setIsEditing(false);
+    setHasChanges(false);
 
     // Debug: Log enum fields
     if (validationRequest.bodyFieldEnums) {
@@ -60,6 +62,12 @@ export function ValidationDialog({
     validationRequest.args,
     validationRequest.bodyFieldEnums,
   ]);
+
+  const handleRevert = () => {
+    setEditedData(deepClone(originalData));
+    setHasChanges(false);
+    setIsEditing(false);
+  };
 
   const handleApprove = async () => {
     setLoading(true);
@@ -84,7 +92,7 @@ export function ValidationDialog({
   const isDelete = validationRequest.method === "DELETE";
   const isPost = validationRequest.method === "POST";
 
-  const displayData = isEditing ? editedData : originalData;
+  const displayData = hasChanges ? editedData : originalData;
 
   return (
     <Container className="p-0 bg-ui-bg-highlight border-2 border-ui-border-interactive">
@@ -121,21 +129,34 @@ export function ValidationDialog({
           <div className="flex items-center justify-between bg-ui-bg-base rounded-lg border p-3">
             <div>
               <Text size="small" className="font-medium">
-                {isEditing ? "📝 Editing Mode" : "👁️ Review Mode"}
+                {isEditing
+                  ? "📝 Editing Mode"
+                  : hasChanges
+                  ? "🔍 Reviewing Changes"
+                  : "👁️ Review Mode"}
               </Text>
               <Text size="xsmall" className="text-ui-fg-subtle mt-1">
                 {isEditing
                   ? "You can modify the values below"
+                  : hasChanges
+                  ? "Review your changes before approving"
                   : "Enable editing to modify the AI's suggestions"}
               </Text>
             </div>
-            <Button
-              onClick={() => setIsEditing(!isEditing)}
-              variant={isEditing ? "primary" : "secondary"}
-              size="small"
-            >
-              {isEditing ? "✓ Done Editing" : "✏️ Edit Values"}
-            </Button>
+            <div className="flex items-center gap-2">
+              {hasChanges && !isEditing && (
+                <Button onClick={handleRevert} variant="danger" size="small">
+                  Discard
+                </Button>
+              )}
+              <Button
+                onClick={() => setIsEditing(!isEditing)}
+                variant={isEditing ? "primary" : "secondary"}
+                size="small"
+              >
+                {isEditing ? "✓ Done Editing" : "✏️ Edit Values"}
+              </Button>
+            </div>
           </div>
         )}
 
@@ -146,6 +167,7 @@ export function ValidationDialog({
             data={displayData as Record<string, unknown>}
             isEditing={isEditing && isPost}
             onChange={(path, value) => {
+              setHasChanges(true);
               setEditedData((prevData) => {
                 const newData = deepClone(prevData);
                 setNestedValue(newData, path, value);
@@ -169,7 +191,7 @@ export function ValidationDialog({
               ? "Processing..."
               : isDelete
               ? "⚠️ Confirm Delete"
-              : isEditing
+              : hasChanges
               ? "✓ Approve with Changes"
               : "✓ Approve & Execute"}
           </Button>
