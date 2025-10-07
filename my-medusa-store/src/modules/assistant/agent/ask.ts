@@ -1,16 +1,13 @@
 import { getMcp } from "../../../lib/mcp/manager";
 import { metricsStore } from "../../../lib/metrics/store";
 import { planNextStepWithGemini } from "./planner";
-import {
-  extractToolJsonPayload,
-  normalizeToolArgs,
-  ensureMarkdownMinimum,
-} from "../lib/utils";
+import { normalizeToolArgs, ensureMarkdownMinimum } from "../lib/utils";
 import { FALLBACK_MESSAGE, normalizePlan } from "../lib/plan-normalizer";
 import { HistoryEntry, InitialOperation, McpTool } from "../lib/types";
 import { AssistantModuleOptions } from "../config";
 import { preloadOpenApiSuggestions } from "./preload";
 import { executeTool } from "./tool-executor";
+import { HistoryTracker, isMutatingExecuteCall } from "./history-tracker";
 
 type AskInput = {
   prompt: string;
@@ -41,8 +38,7 @@ export async function askAgent(
     availableTools
   );
 
-  const history: HistoryEntry[] = [...(input.history || [])];
-  const successfulCallCache = new Map<string, HistoryEntry>();
+  const historyTracker = new HistoryTracker(input.history || []);
 
   const turnId = metricsStore.startAssistantTurn({ user: prompt });
 
@@ -62,7 +58,7 @@ export async function askAgent(
     const rawPlan = await planNextStepWithGemini(
       prompt,
       availableTools,
-      history,
+      historyTracker.list,
       options.config.modelName,
       initialOperations,
       options.config
@@ -76,7 +72,7 @@ export async function askAgent(
       return {
         answer: FALLBACK_MESSAGE,
         data: null,
-        history,
+        history: historyTracker.list,
       };
     }
 
@@ -96,13 +92,13 @@ export async function askAgent(
         }
       }
 
-      const latestPayload = findLatestPayload(history);
+      const latestPayload = historyTracker.latestPayload();
 
       const formattedAnswer = ensureMarkdownMinimum(chosenAnswer);
       return {
         answer: formattedAnswer,
         data: latestPayload ?? null,
-        history,
+        history: historyTracker.list,
       };
     }
 
@@ -115,32 +111,20 @@ export async function askAgent(
         console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
       }
 
-      const callKey = createToolCallKey(plan.tool_name, normalizedArgs);
-      const isMutatingExecuteCall =
+      const cacheable =
         plan.tool_name === "openapi.execute" &&
-        normalizedArgs !== null &&
-        typeof normalizedArgs === "object" &&
-        !Array.isArray(normalizedArgs) &&
-        "body" in (normalizedArgs as Record<string, unknown>);
-      const previousSuccess = isMutatingExecuteCall
-        ? successfulCallCache.get(callKey)
-        : undefined;
+        isMutatingExecuteCall(normalizedArgs);
+      const previousSuccess = historyTracker.getCachedSuccess(
+        plan.tool_name,
+        normalizedArgs,
+        cacheable
+      );
 
       if (previousSuccess) {
         console.log(
           "   Duplicate tool call detected; reusing prior successful result."
         );
-        history.push({
-          tool_name: "assistant.note",
-          tool_args: {
-            reason: "duplicate_tool_call",
-            tool_name: plan.tool_name,
-          },
-          tool_result: {
-            message:
-              "Skipped identical tool call because the same request already succeeded earlier in this conversation. Reuse the previous result instead of repeating the POST.",
-          },
-        });
+        historyTracker.recordDuplicate(plan.tool_name);
         continue;
       }
 
@@ -153,11 +137,7 @@ export async function askAgent(
       });
 
       if (outcome.error) {
-        history.push({
-          tool_name: plan.tool_name,
-          tool_args: normalizedArgs,
-          tool_result: outcome.error,
-        });
+        historyTracker.recordError(plan.tool_name, normalizedArgs, outcome.error);
         continue;
       }
 
@@ -183,23 +163,15 @@ export async function askAgent(
         }
       }
 
-      const historyEntry: HistoryEntry = {
-        tool_name: plan.tool_name,
-        tool_args: normalizedArgs,
-        tool_result: result,
-      };
-      history.push(historyEntry);
-
-      if (isMutatingExecuteCall) {
-        successfulCallCache.set(callKey, historyEntry);
-      }
+      historyTracker.recordResult(
+        plan.tool_name,
+        normalizedArgs,
+        result,
+        cacheable
+      );
 
       if (outcome.summary) {
-        history.push({
-          tool_name: "assistant.summary",
-          tool_args: { source_tool: plan.tool_name },
-          tool_result: { assistant_summary: outcome.summary },
-        });
+        historyTracker.recordSummary(plan.tool_name, outcome.summary);
       }
     } else {
       throw new Error("AI returned an invalid plan. Cannot proceed.");
@@ -210,46 +182,4 @@ export async function askAgent(
   throw new Error(
     "The agent could not complete the request within the maximum number of steps."
   );
-}
-
-function createToolCallKey(toolName: string, args: unknown): string {
-  return `${toolName}:${stableStringify(args)}`;
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort(
-      ([a], [b]) => a.localeCompare(b)
-    );
-    return `{${entries
-      .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`)
-      .join(",")}}`;
-  }
-  if (value === undefined) {
-    return "undefined";
-  }
-  return JSON.stringify(value);
-}
-
-function findLatestPayload(history: HistoryEntry[]) {
-  for (let i = history.length - 1; i >= 0; i -= 1) {
-    const entry = history[i];
-    if (!entry) {
-      continue;
-    }
-    if (
-      typeof entry.tool_name === "string" &&
-      entry.tool_name.startsWith("assistant.")
-    ) {
-      continue;
-    }
-    const payload = extractToolJsonPayload(entry.tool_result);
-    if (payload !== undefined) {
-      return payload;
-    }
-  }
-  return undefined;
 }
