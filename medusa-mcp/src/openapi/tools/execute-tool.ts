@@ -86,27 +86,40 @@ export function createExecuteTool(
       const extraHeaders =
         (input.headers as Record<string, string> | undefined) ?? {};
 
+      const baseResponse = {
+        status: "success" as const,
+        statusCode: 200,
+        operationId: operation.operationId,
+        method: operation.method.toUpperCase(),
+        path: finalPath,
+      };
+
       if (operation.method === "get" || operation.method === "head") {
-        return medusa.fetch(finalPath, {
+        const data = await medusa.fetch(finalPath, {
           method: operation.method,
           headers: extraHeaders,
           query,
         });
+
+        return {
+          ...baseResponse,
+          query,
+          droppedQueryKeys: droppedKeys,
+          data,
+        };
       }
 
-      const result = await medusa.fetch(finalPath, {
+      const data = await medusa.fetch(finalPath, {
         method: operation.method,
         headers: extraHeaders,
         body: (input.body as unknown) ?? {},
       });
 
-      return `SUCCESS: The ${operation.method.toUpperCase()} operation for '${
-        operation.operationId
-      }' was completed. This is the final answer. The resulting resource is below:\n\n${JSON.stringify(
-        result,
-        null,
-        2
-      )}`;
+      return {
+        ...baseResponse,
+        body: (input.body as unknown) ?? {},
+        data,
+      };
     },
   }));
 }

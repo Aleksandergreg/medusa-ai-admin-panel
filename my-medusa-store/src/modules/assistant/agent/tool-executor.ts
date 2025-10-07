@@ -34,7 +34,7 @@ export async function executeTool(params: {
         text: JSON.stringify({ assistant_summary: summary }),
       };
       if (Array.isArray(resultObj?.content)) {
-        resultObj.content.unshift(textEntry);
+        resultObj.content.push(textEntry);
       } else if (resultObj) {
         (resultObj as any).content = [textEntry];
       }
