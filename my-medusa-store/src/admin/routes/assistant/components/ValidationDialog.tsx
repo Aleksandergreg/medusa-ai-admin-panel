@@ -10,6 +10,7 @@ import {
   Select,
 } from "@medusajs/ui";
 import { useState, useEffect } from "react";
+import { ChevronDownMini, ChevronUpMini } from "@medusajs/icons";
 
 type ValidationDialogProps = {
   validationRequest: {
@@ -50,14 +51,169 @@ function formatOperationTitle(operationId: string): string {
   return `${action} ${spaced}`;
 }
 
-function formatFieldName(key: string): string {
-  return key
-    .replace(/_/g, " ")
-    .replace(/([A-Z])/g, " $1")
-    .trim()
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+function formatValueDisplay(value: unknown): React.ReactNode {
+  if (value === null || value === undefined) {
+    return <span className="text-ui-fg-subtle italic">Not set</span>;
+  }
+
+  if (typeof value === "boolean") {
+    return (
+      <Badge color={value ? "green" : "grey"} size="small">
+        {value ? "✓ Yes" : "✗ No"}
+      </Badge>
+    );
+  }
+
+  if (typeof value === "number") {
+    return (
+      <span className="font-medium text-ui-fg-base">
+        {value.toLocaleString()}
+      </span>
+    );
+  }
+
+  if (typeof value === "string") {
+    // Check if it's a date
+    if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
+      return (
+        <span className="font-medium text-ui-fg-base">
+          {new Date(value).toLocaleString()}
+        </span>
+      );
+    }
+    // Check if it's a URL
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      return (
+        <span className="font-mono text-xs text-ui-fg-subtle break-all">
+          {value}
+        </span>
+      );
+    }
+    return <span className="font-medium text-ui-fg-base">{value}</span>;
+  }
+
+  return <span className="text-ui-fg-base">{String(value)}</span>;
+}
+
+function CollapsibleComplexData({
+  data,
+  nestLevel = 0,
+}: {
+  data: unknown;
+  nestLevel?: number;
+}) {
+  const [isExpanded, setIsExpanded] = useState(nestLevel === 0);
+
+  if (typeof data !== "object" || data === null) {
+    return formatValueDisplay(data);
+  }
+
+  // Handle arrays
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      return <span className="text-ui-fg-subtle italic">No items</span>;
+    }
+
+    return (
+      <div className="border border-ui-border-base rounded-lg bg-ui-bg-base overflow-hidden">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-ui-bg-subtle transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
+            {isExpanded ? (
+              <ChevronUpMini className="text-ui-fg-muted" />
+            ) : (
+              <ChevronDownMini className="text-ui-fg-muted" />
+            )}
+            <span className="text-ui-fg-base text-sm font-medium">
+              📋 List of {data.length} {data.length === 1 ? "item" : "items"}
+            </span>
+          </div>
+          <Badge size="2xsmall" className="ml-2">
+            {data.length}
+          </Badge>
+        </button>
+        {isExpanded && (
+          <div className="px-4 py-3 border-t border-ui-border-base bg-ui-bg-subtle space-y-3">
+            {data.map((item, idx) => (
+              <div
+                key={idx}
+                className="bg-ui-bg-base rounded-md p-3 border border-ui-border-base"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge size="2xsmall" color="grey">
+                    Item #{idx + 1}
+                  </Badge>
+                </div>
+                <div className="ml-1">
+                  {typeof item === "object" && item !== null ? (
+                    <CollapsibleComplexData
+                      data={item}
+                      nestLevel={nestLevel + 1}
+                    />
+                  ) : (
+                    formatValueDisplay(item)
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Handle objects
+  const entries = Object.entries(data as Record<string, unknown>);
+  if (entries.length === 0) {
+    return <span className="text-ui-fg-subtle italic">No details</span>;
+  }
+
+  return (
+    <div className="border border-ui-border-base rounded-lg bg-ui-bg-base overflow-hidden">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-ui-bg-subtle transition-colors text-left"
+      >
+        <div className="flex items-center gap-2">
+          {isExpanded ? (
+            <ChevronUpMini className="text-ui-fg-muted" />
+          ) : (
+            <ChevronDownMini className="text-ui-fg-muted" />
+          )}
+          <span className="text-ui-fg-base text-sm font-medium">
+            📦 View details ({entries.length}{" "}
+            {entries.length === 1 ? "property" : "properties"})
+          </span>
+        </div>
+        <Badge size="2xsmall" className="ml-2">
+          {entries.length}
+        </Badge>
+      </button>
+      {isExpanded && (
+        <div className="px-4 py-3 border-t border-ui-border-base bg-ui-bg-subtle space-y-2.5">
+          {entries.map(([key, value]) => (
+            <div key={key} className="flex flex-col gap-1.5">
+              <Text size="small" className="text-ui-fg-muted font-semibold">
+                {key}
+              </Text>
+              <div className="ml-3 mt-0.5">
+                {typeof value === "object" && value !== null ? (
+                  <CollapsibleComplexData
+                    data={value}
+                    nestLevel={nestLevel + 1}
+                  />
+                ) : (
+                  formatValueDisplay(value)
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function renderValue(
@@ -130,13 +286,13 @@ function renderValue(
               onChange(path, val);
             }}
           >
-            <Select.Trigger>
-              <Select.Value placeholder="Select an option..." />
+            <Select.Trigger className="w-full">
+              <Select.Value placeholder="Choose an option..." />
             </Select.Trigger>
             <Select.Content>
               {enumOptions.map((option) => (
                 <Select.Item key={option} value={option}>
-                  {formatFieldName(option)}
+                  {option}
                 </Select.Item>
               ))}
             </Select.Content>
@@ -155,8 +311,9 @@ function renderValue(
           <Textarea
             value={value}
             onChange={(e) => onChange(path, e.target.value)}
-            className="text-sm font-mono"
+            className="text-sm"
             rows={3}
+            placeholder="Enter text..."
           />
         );
       }
@@ -166,13 +323,39 @@ function renderValue(
           onChange={(e) => onChange(path, e.target.value)}
           className="text-sm"
           size="small"
+          placeholder="Enter value..."
         />
       );
     }
+    // Display mode
     if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
-      return new Date(value).toLocaleString();
+      return (
+        <span className="font-medium text-ui-fg-base">
+          📅 {new Date(value).toLocaleDateString()} at{" "}
+          {new Date(value).toLocaleTimeString()}
+        </span>
+      );
     }
-    return <span className="font-medium">{value}</span>;
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      return (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-ui-fg-interactive hover:underline break-all"
+        >
+          🔗 {value}
+        </a>
+      );
+    }
+    if (value.length > 100) {
+      return (
+        <span className="font-medium text-ui-fg-base block text-sm leading-relaxed">
+          {value}
+        </span>
+      );
+    }
+    return <span className="font-medium text-ui-fg-base">{value}</span>;
   }
 
   if (typeof value === "number") {
@@ -192,26 +375,28 @@ function renderValue(
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      return <span className="text-ui-fg-subtle italic">None</span>;
+      return <span className="text-ui-fg-subtle italic">No items</span>;
     }
     if (typeof value[0] === "string" || typeof value[0] === "number") {
       return (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {value.map((item, idx) => (
-            <Badge key={idx} size="small">
+            <Badge key={idx} size="small" color="blue">
               {String(item)}
             </Badge>
           ))}
         </div>
       );
     }
+    // Handle array of complex objects
+    return <CollapsibleComplexData data={value} nestLevel={0} />;
   }
 
   if (typeof value === "object") {
-    return <span className="text-ui-fg-subtle italic">Complex data</span>;
+    return <CollapsibleComplexData data={value} nestLevel={0} />;
   }
 
-  return <span>{String(value)}</span>;
+  return <span className="font-medium text-ui-fg-base">{String(value)}</span>;
 }
 
 function renderDetailsSection(
@@ -231,7 +416,7 @@ function renderDetailsSection(
   if (isEditing && bodyFieldEnums) {
     Object.keys(bodyFieldEnums).forEach((enumPath) => {
       // Only add top-level fields (no dots, no brackets)
-      if (!enumPath.includes('.') && !enumPath.includes('[')) {
+      if (!enumPath.includes(".") && !enumPath.includes("[")) {
         // Check if field is missing from data
         if (!(enumPath in data)) {
           missingEnumFields.push([enumPath, null]);
@@ -245,11 +430,16 @@ function renderDetailsSection(
   if (allEntries.length === 0) return null;
 
   return (
-    <div className="space-y-2">
-      <Text size="small" className="font-semibold text-ui-fg-base">
-        {title}
-      </Text>
-      <div className="bg-ui-bg-base rounded-lg border p-3 space-y-3">
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Text size="base" className="font-semibold text-ui-fg-base">
+          📋 {title}
+        </Text>
+        <Badge size="2xsmall" color="grey">
+          {allEntries.length}
+        </Badge>
+      </div>
+      <div className="bg-ui-bg-base rounded-lg border border-ui-border-base p-4 space-y-4">
         {entries.map(([key, value]) => {
           if (key === "operationId" || key === "body") return null;
 
@@ -262,25 +452,25 @@ function renderDetailsSection(
             return (
               <div
                 key={key}
-                className="space-y-2 pb-2 border-b last:border-b-0 last:pb-0"
+                className="space-y-3 pb-4 border-b border-ui-border-base last:border-b-0 last:pb-0"
               >
-                <Text size="xsmall" className="text-ui-fg-subtle font-semibold">
-                  {formatFieldName(key)}:
+                <Text size="small" className="text-ui-fg-base font-semibold">
+                  {key}
                 </Text>
-                <div className="ml-4 space-y-2">
+                <div className="ml-4 space-y-3 pl-3 border-l-2 border-ui-border-strong">
                   {Object.entries(value as Record<string, unknown>).map(
                     ([subKey, subValue]) => (
                       <div
                         key={subKey}
-                        className="flex justify-between items-center gap-4"
+                        className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2"
                       >
                         <Text
-                          size="xsmall"
-                          className="text-ui-fg-muted min-w-[140px]"
+                          size="small"
+                          className="text-ui-fg-subtle font-medium min-w-[160px]"
                         >
-                          {formatFieldName(subKey)}:
+                          {subKey}
                         </Text>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           {renderValue(
                             subValue,
                             isEditing,
@@ -298,11 +488,17 @@ function renderDetailsSection(
           }
 
           return (
-            <div key={key} className="flex justify-between items-center gap-4">
-              <Text size="xsmall" className="text-ui-fg-muted min-w-[140px]">
-                {formatFieldName(key)}:
+            <div
+              key={key}
+              className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2"
+            >
+              <Text
+                size="small"
+                className="text-ui-fg-subtle font-medium min-w-[160px]"
+              >
+                {key}
               </Text>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 {renderValue(value, isEditing, [key], onChange, bodyFieldEnums)}
               </div>
             </div>
