@@ -1,4 +1,11 @@
-import { Badge, Input, Select, Switch, Textarea } from "@medusajs/ui";
+import {
+  Badge,
+  Input,
+  Select,
+  Switch,
+  Textarea,
+  DatePicker,
+} from "@medusajs/ui";
 import { CollapsibleComplexData } from "./CollapsibleComplexData";
 
 type EditableFieldProps = {
@@ -47,6 +54,16 @@ export function EditableField({
 
   if (typeof value === "string") {
     if (isEditing && onChange) {
+      // Date picker for date strings
+      if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
+        return (
+          <DatePicker
+            value={new Date(value)}
+            onChange={(date) => onChange(path, date?.toISOString() || "")}
+          />
+        );
+      }
+
       // Check if this field has enum options
       const fullPath = path.join(".");
       const fieldName = path[path.length - 1];
@@ -135,8 +152,11 @@ export function EditableField({
       return (
         <Input
           type="number"
+          min={1}
           value={value}
-          onChange={(e) => onChange(path, parseFloat(e.target.value) || 0)}
+          onChange={(e) =>
+            onChange(path, Math.max(1, parseFloat(e.target.value) || 1))
+          }
           className="text-sm"
           size="small"
         />

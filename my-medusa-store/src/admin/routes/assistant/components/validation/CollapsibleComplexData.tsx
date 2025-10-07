@@ -146,8 +146,11 @@ function renderEditableField(
     return (
       <Input
         type="number"
+        min={1}
         value={value}
-        onChange={(e) => onChange(path, parseFloat(e.target.value) || 0)}
+        onChange={(e) =>
+          onChange(path, Math.max(1, parseFloat(e.target.value) || 1))
+        }
         className="text-sm"
         size="small"
       />
