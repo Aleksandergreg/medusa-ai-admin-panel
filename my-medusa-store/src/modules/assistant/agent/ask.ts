@@ -42,6 +42,7 @@ export async function askAgent(
   );
 
   const history: HistoryEntry[] = [...(input.history || [])];
+  const successfulCallCache = new Map<string, HistoryEntry>();
 
   const turnId = metricsStore.startAssistantTurn({ user: prompt });
 
@@ -95,9 +96,7 @@ export async function askAgent(
         }
       }
 
-      const latestPayload = extractToolJsonPayload(
-        history[history.length - 1]?.tool_result
-      );
+      const latestPayload = findLatestPayload(history);
 
       const formattedAnswer = ensureMarkdownMinimum(chosenAnswer);
       return {
@@ -111,12 +110,41 @@ export async function askAgent(
       console.log(`  AI wants to call tool: ${plan.tool_name}`);
       console.log(`   With args: ${JSON.stringify(plan.tool_args)}`);
 
-      metricsStore.noteToolUsed(turnId, plan.tool_name);
-
       const normalizedArgs = normalizeToolArgs(plan.tool_args);
       if (JSON.stringify(normalizedArgs) !== JSON.stringify(plan.tool_args)) {
         console.log(`   Normalized args: ${JSON.stringify(normalizedArgs)}`);
       }
+
+      const callKey = createToolCallKey(plan.tool_name, normalizedArgs);
+      const isMutatingExecuteCall =
+        plan.tool_name === "openapi.execute" &&
+        normalizedArgs !== null &&
+        typeof normalizedArgs === "object" &&
+        !Array.isArray(normalizedArgs) &&
+        "body" in (normalizedArgs as Record<string, unknown>);
+      const previousSuccess = isMutatingExecuteCall
+        ? successfulCallCache.get(callKey)
+        : undefined;
+
+      if (previousSuccess) {
+        console.log(
+          "   Duplicate tool call detected; reusing prior successful result."
+        );
+        history.push({
+          tool_name: "assistant.note",
+          tool_args: {
+            reason: "duplicate_tool_call",
+            tool_name: plan.tool_name,
+          },
+          tool_result: {
+            message:
+              "Skipped identical tool call because the same request already succeeded earlier in this conversation. Reuse the previous result instead of repeating the POST.",
+          },
+        });
+        continue;
+      }
+
+      metricsStore.noteToolUsed(turnId, plan.tool_name);
 
       const outcome = await executeTool({
         mcp,
@@ -155,11 +183,16 @@ export async function askAgent(
         }
       }
 
-      history.push({
+      const historyEntry: HistoryEntry = {
         tool_name: plan.tool_name,
         tool_args: normalizedArgs,
         tool_result: result,
-      });
+      };
+      history.push(historyEntry);
+
+      if (isMutatingExecuteCall) {
+        successfulCallCache.set(callKey, historyEntry);
+      }
 
       if (outcome.summary) {
         history.push({
@@ -177,4 +210,46 @@ export async function askAgent(
   throw new Error(
     "The agent could not complete the request within the maximum number of steps."
   );
+}
+
+function createToolCallKey(toolName: string, args: unknown): string {
+  return `${toolName}:${stableStringify(args)}`;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(
+      ([a], [b]) => a.localeCompare(b)
+    );
+    return `{${entries
+      .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`)
+      .join(",")}}`;
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  return JSON.stringify(value);
+}
+
+function findLatestPayload(history: HistoryEntry[]) {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const entry = history[i];
+    if (!entry) {
+      continue;
+    }
+    if (
+      typeof entry.tool_name === "string" &&
+      entry.tool_name.startsWith("assistant.")
+    ) {
+      continue;
+    }
+    const payload = extractToolJsonPayload(entry.tool_result);
+    if (payload !== undefined) {
+      return payload;
+    }
+  }
+  return undefined;
 }
