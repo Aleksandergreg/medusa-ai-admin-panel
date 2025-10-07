@@ -1,4 +1,4 @@
-import { Badge, Text, Input, Switch, Textarea } from "@medusajs/ui";
+import { Badge, Text, Input, Switch, Textarea, Select } from "@medusajs/ui";
 import { ChevronDownMini, ChevronUpMini } from "@medusajs/icons";
 import { useState } from "react";
 
@@ -64,7 +64,8 @@ function renderEditableField(
   _key: string,
   value: unknown,
   path: string[],
-  onChange: (path: string[], value: unknown) => void
+  onChange: (path: string[], value: unknown) => void,
+  bodyFieldEnums?: Record<string, string[]>
 ): React.ReactNode {
   if (value === null || value === undefined) {
     return (
@@ -88,6 +89,36 @@ function renderEditableField(
   }
 
   if (typeof value === "string") {
+    // Check if this field has enum options
+    const fullPath = path.join(".");
+    const fieldName = path[path.length - 1];
+    const enumOptions =
+      bodyFieldEnums?.[fullPath] || bodyFieldEnums?.[fieldName];
+
+    if (enumOptions && enumOptions.length > 0) {
+      const stringValue = String(value);
+      const valueInOptions = enumOptions.includes(stringValue);
+      const selectValue = valueInOptions ? stringValue : enumOptions[0] || "";
+
+      return (
+        <Select
+          value={selectValue}
+          onValueChange={(val) => onChange(path, val)}
+        >
+          <Select.Trigger className="w-full">
+            <Select.Value placeholder="Choose an option..." />
+          </Select.Trigger>
+          <Select.Content>
+            {enumOptions.map((option) => (
+              <Select.Item key={option} value={option}>
+                {option}
+              </Select.Item>
+            ))}
+          </Select.Content>
+        </Select>
+      );
+    }
+
     const isLongText = value.length > 50;
     if (isLongText) {
       return (
@@ -132,12 +163,14 @@ export function CollapsibleComplexData({
   isEditing = false,
   onChange,
   path = [],
+  bodyFieldEnums,
 }: {
   data: unknown;
   nestLevel?: number;
   isEditing?: boolean;
   onChange?: (path: string[], value: unknown) => void;
   path?: string[];
+  bodyFieldEnums?: Record<string, string[]>;
 }) {
   const [isExpanded, setIsExpanded] = useState(nestLevel === 0);
 
@@ -244,7 +277,13 @@ export function CollapsibleComplexData({
                   {key}
                 </Text>
                 <div className="ml-1">
-                  {renderEditableField(key, value, [...path, key], onChange)}
+                  {renderEditableField(
+                    key,
+                    value,
+                    [...path, key],
+                    onChange,
+                    bodyFieldEnums
+                  )}
                 </div>
               </div>
             ))}

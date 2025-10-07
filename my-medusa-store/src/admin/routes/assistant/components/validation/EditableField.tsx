@@ -171,6 +171,7 @@ export function EditableField({
         isEditing={isEditing}
         onChange={onChange}
         path={path}
+        bodyFieldEnums={bodyFieldEnums}
       />
     );
   }
