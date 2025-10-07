@@ -226,7 +226,23 @@ function renderDetailsSection(
     return value !== undefined && value !== null;
   });
 
-  if (entries.length === 0) return null;
+  // Add missing top-level enum fields when editing
+  const missingEnumFields: [string, null][] = [];
+  if (isEditing && bodyFieldEnums) {
+    Object.keys(bodyFieldEnums).forEach((enumPath) => {
+      // Only add top-level fields (no dots, no brackets)
+      if (!enumPath.includes('.') && !enumPath.includes('[')) {
+        // Check if field is missing from data
+        if (!(enumPath in data)) {
+          missingEnumFields.push([enumPath, null]);
+        }
+      }
+    });
+  }
+
+  const allEntries = [...entries, ...missingEnumFields];
+
+  if (allEntries.length === 0) return null;
 
   return (
     <div className="space-y-2">
