@@ -1,5 +1,6 @@
 import { HistoryEntry } from "../lib/types";
 import { extractToolJsonPayload } from "../lib/utils";
+import { ToolDedupeCache } from "./tool-dedupe-cache";
 
 const DUPLICATE_NOTE_REASON = "duplicate_tool_call";
 const DUPLICATE_NOTE_MESSAGE =
@@ -7,7 +8,7 @@ const DUPLICATE_NOTE_MESSAGE =
 
 export class HistoryTracker {
   private readonly entries: HistoryEntry[];
-  private readonly successCache = new Map<string, HistoryEntry>();
+  private readonly dedupeCache = new ToolDedupeCache();
 
   constructor(initialHistory: HistoryEntry[] = []) {
     this.entries = [...initialHistory];
@@ -43,8 +44,7 @@ export class HistoryTracker {
     if (!cacheable) {
       return undefined;
     }
-    const key = createToolCallKey(toolName, args);
-    return this.successCache.get(key);
+    return this.dedupeCache.get(toolName, args, cacheable);
   }
 
   recordDuplicate(toolName: string): void {
@@ -85,10 +85,7 @@ export class HistoryTracker {
     };
     this.entries.push(entry);
 
-    if (cacheable) {
-      const key = createToolCallKey(toolName, args);
-      this.successCache.set(key, entry);
-    }
+    this.dedupeCache.set(toolName, args, entry, cacheable);
 
     return entry;
   }
@@ -107,26 +104,4 @@ export function isMutatingExecuteCall(args: unknown): boolean {
     return false;
   }
   return "body" in (args as Record<string, unknown>);
-}
-
-function createToolCallKey(toolName: string, args: unknown): string {
-  return `${toolName}:${stableStringify(args)}`;
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort(
-      ([a], [b]) => a.localeCompare(b)
-    );
-    return `{${entries
-      .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`)
-      .join(",")}}`;
-  }
-  if (value === undefined) {
-    return "undefined";
-  }
-  return JSON.stringify(value);
 }

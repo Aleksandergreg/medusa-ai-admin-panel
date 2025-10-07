@@ -1,13 +1,13 @@
 import { getMcp } from "../../../lib/mcp/manager";
 import { metricsStore } from "../../../lib/metrics/store";
-import { planNextStepWithGemini } from "./planner";
 import { normalizeToolArgs, ensureMarkdownMinimum } from "../lib/utils";
-import { FALLBACK_MESSAGE, normalizePlan } from "../lib/plan-normalizer";
+import { FALLBACK_MESSAGE } from "../lib/plan-normalizer";
 import { HistoryEntry, InitialOperation, McpTool } from "../lib/types";
 import { AssistantModuleOptions } from "../config";
 import { preloadOpenApiSuggestions } from "./preload";
 import { executeTool } from "./tool-executor";
 import { HistoryTracker, isMutatingExecuteCall } from "./history-tracker";
+import { planNextAction } from "./planner-driver";
 
 type AskInput = {
   prompt: string;
@@ -55,16 +55,14 @@ export async function askAgent(
     }
     console.log(`\n--- AGENT LOOP: STEP ${step + 1} ---`);
 
-    const rawPlan = await planNextStepWithGemini(
+    const { plan, rawPlan } = await planNextAction({
       prompt,
-      availableTools,
-      historyTracker.list,
-      options.config.modelName,
+      tools: availableTools,
+      history: historyTracker.list,
+      modelName: options.config.modelName,
       initialOperations,
-      options.config
-    );
-
-    const plan = normalizePlan(rawPlan);
+      config: options.config,
+    });
 
     if (!plan) {
       console.warn("Planner returned an unrecognized plan", rawPlan);
