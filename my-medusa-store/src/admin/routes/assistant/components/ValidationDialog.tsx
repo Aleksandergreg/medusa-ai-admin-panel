@@ -1,11 +1,11 @@
 import { Button, Heading, Text, Badge, Container } from "@medusajs/ui";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   deepClone,
   formatOperationTitle,
   setNestedValue,
 } from "./validation/helpers";
-import { DetailsSection } from "./validation/DetailsSection";
+import { DetailsSectionNew } from "./validation";
 
 type ValidationDialogProps = {
   validationRequest: {
@@ -34,12 +34,26 @@ export function ValidationDialog({
   const [hasChanges, setHasChanges] = useState(false);
 
   // Extract body or use args directly
-  const originalData =
-    (validationRequest.args.body as Record<string, unknown>) ||
-    validationRequest.args;
+  const originalData = useMemo(
+    () =>
+      (validationRequest.args.body as Record<string, unknown>) ||
+      validationRequest.args,
+    [validationRequest.args]
+  );
 
   const [editedData, setEditedData] = useState<Record<string, unknown>>(() =>
     deepClone(originalData)
+  );
+
+  // Memoize operation metadata
+  const operationMetadata = useMemo(
+    () => ({
+      title: formatOperationTitle(validationRequest.operationId),
+      isDelete: validationRequest.method === "DELETE",
+      isPost: validationRequest.method === "POST",
+      method: validationRequest.method,
+    }),
+    [validationRequest.operationId, validationRequest.method]
   );
 
   // Reset edited data when validation request changes
@@ -51,30 +65,35 @@ export function ValidationDialog({
     setIsEditing(false);
     setHasChanges(false);
 
-    // Debug: Log enum fields
+    // Debug: Log enum and readonly fields
     if (validationRequest.bodyFieldEnums) {
       console.log(
         "📋 Enum fields available:",
         validationRequest.bodyFieldEnums
       );
     }
+    if (validationRequest.bodyFieldReadOnly) {
+      console.log("🔒 ReadOnly fields:", validationRequest.bodyFieldReadOnly);
+    }
   }, [
     validationRequest.id,
     validationRequest.args,
     validationRequest.bodyFieldEnums,
+    validationRequest.bodyFieldReadOnly,
   ]);
 
-  const handleRevert = () => {
+  // Memoized handlers
+  const handleRevert = useCallback(() => {
     setEditedData(deepClone(originalData));
     setHasChanges(false);
     setIsEditing(false);
-  };
+  }, [originalData]);
 
-  const handleApprove = async () => {
+  const handleApprove = useCallback(async () => {
     setLoading(true);
     try {
       // Always send edited data for POST operations if we have any edits
-      if (isPost) {
+      if (operationMetadata.isPost) {
         console.log("Approving with edited data:", editedData);
         await onApprove(validationRequest.id, editedData);
       } else {
@@ -83,15 +102,24 @@ export function ValidationDialog({
     } finally {
       setLoading(false);
     }
-  };
+  }, [operationMetadata.isPost, editedData, onApprove, validationRequest.id]);
 
-  const handleReject = () => {
+  const handleReject = useCallback(() => {
     onReject(validationRequest.id);
-  };
+  }, [onReject, validationRequest.id]);
 
-  const operationTitle = formatOperationTitle(validationRequest.operationId);
-  const isDelete = validationRequest.method === "DELETE";
-  const isPost = validationRequest.method === "POST";
+  const handleFieldChange = useCallback((path: string[], value: unknown) => {
+    setHasChanges(true);
+    setEditedData((prevData) => {
+      const newData = deepClone(prevData);
+      setNestedValue(newData, path, value);
+      return newData;
+    });
+  }, []);
+
+  const handleToggleEdit = useCallback(() => {
+    setIsEditing((prev) => !prev);
+  }, []);
 
   const displayData = hasChanges ? editedData : originalData;
 
@@ -101,23 +129,28 @@ export function ValidationDialog({
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="text-3xl">{isDelete ? "🗑️" : "✨"}</div>
+            <div className="text-3xl">
+              {operationMetadata.isDelete ? "🗑️" : "✨"}
+            </div>
             <div>
               <Heading level="h2" className="text-ui-fg-base">
-                {operationTitle}
+                {operationMetadata.title}
               </Heading>
               <Text size="small" className="text-ui-fg-subtle mt-1">
                 Please review and approve this action
               </Text>
             </div>
           </div>
-          <Badge color={isDelete ? "red" : "blue"} size="small">
-            {validationRequest.method}
+          <Badge
+            color={operationMetadata.isDelete ? "red" : "blue"}
+            size="small"
+          >
+            {operationMetadata.method}
           </Badge>
         </div>
 
         {/* Warning for delete operations */}
-        {isDelete && (
+        {operationMetadata.isDelete && (
           <div className="bg-ui-bg-subtle-error border border-ui-border-error rounded-lg p-3">
             <Text size="small" className="text-ui-fg-error font-medium">
               ⚠️ Warning: This action cannot be undone
@@ -126,7 +159,7 @@ export function ValidationDialog({
         )}
 
         {/* Edit Mode Toggle for POST operations */}
-        {isPost && !loading && (
+        {operationMetadata.isPost && !loading && (
           <div className="flex items-center justify-between bg-ui-bg-base rounded-lg border p-3">
             <div>
               <Text size="small" className="font-medium">
@@ -151,7 +184,7 @@ export function ValidationDialog({
                 </Button>
               )}
               <Button
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={handleToggleEdit}
                 variant={isEditing ? "primary" : "secondary"}
                 size="small"
               >
@@ -161,20 +194,13 @@ export function ValidationDialog({
           </div>
         )}
 
-        {/* Details */}
+        {/* Details - Using new refactored component */}
         <div className="space-y-4">
-          <DetailsSection
+          <DetailsSectionNew
             title="Details"
             data={displayData as Record<string, unknown>}
-            isEditing={isEditing && isPost}
-            onChange={(path, value) => {
-              setHasChanges(true);
-              setEditedData((prevData) => {
-                const newData = deepClone(prevData);
-                setNestedValue(newData, path, value);
-                return newData;
-              });
-            }}
+            isEditing={isEditing && operationMetadata.isPost}
+            onChange={handleFieldChange}
             bodyFieldEnums={validationRequest.bodyFieldEnums}
             bodyFieldReadOnly={validationRequest.bodyFieldReadOnly}
           />
@@ -191,7 +217,7 @@ export function ValidationDialog({
           >
             {loading
               ? "Processing..."
-              : isDelete
+              : operationMetadata.isDelete
               ? "⚠️ Confirm Delete"
               : hasChanges
               ? "✓ Approve with Changes"
