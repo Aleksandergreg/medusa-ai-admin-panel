@@ -1,0 +1,121 @@
+{
+  "segments": [
+    {
+      "id": "new",
+      "label": "New",
+      "priority": 10,
+      "description": "Customers without a completed order yet.",
+      "all": [
+        { "field": "recency_days", "operator": "is_null" },
+        { "field": "frequency_365d", "operator": "eq", "value": 0 },
+        { "field": "monetary_365d_cents", "operator": "eq", "value": 0 }
+      ]
+    },
+    {
+      "id": "champions",
+      "label": "Champions",
+      "priority": 20,
+      "description": "Recent, frequent, and high-spending customers.",
+      "all": [
+        { "field": "r_score", "operator": ">=", "value": 4 },
+        { "field": "f_score", "operator": ">=", "value": 4 },
+        { "field": "m_score", "operator": ">=", "value": 4 }
+      ]
+    },
+    {
+      "id": "loyal",
+      "label": "Loyal",
+      "priority": 30,
+      "description": "Returning customers with strong order cadence.",
+      "all": [
+        { "field": "f_score", "operator": ">=", "value": 4 },
+        { "field": "m_score", "operator": ">=", "value": 3 },
+        { "field": "r_score", "operator": ">=", "value": 3 }
+      ]
+    },
+    {
+      "id": "potential_loyalists",
+      "label": "Potential Loyalists",
+      "priority": 40,
+      "description": "Recent buyers building up frequency or spend.",
+      "all": [
+        { "field": "r_score", "operator": ">=", "value": 4 }
+      ],
+      "any": [
+        { "field": "f_score", "operator": ">=", "value": 3 },
+        { "field": "m_score", "operator": ">=", "value": 3 }
+      ]
+    },
+    {
+      "id": "promising",
+      "label": "Promising",
+      "priority": 50,
+      "description": "Fairly recent customers with mid-tier activity.",
+      "all": [
+        { "field": "r_score", "operator": ">=", "value": 3 },
+        { "field": "f_score", "operator": "between", "value": [2, 3] },
+        { "field": "m_score", "operator": "between", "value": [2, 3] }
+      ]
+    },
+    {
+      "id": "needs_attention",
+      "label": "Needs Attention",
+      "priority": 60,
+      "description": "Customers trending downward across metrics.",
+      "all": [
+        { "field": "r_score", "operator": "between", "value": [2, 3] },
+        { "field": "f_score", "operator": "between", "value": [2, 3] },
+        { "field": "m_score", "operator": "between", "value": [2, 3] }
+      ]
+    },
+    {
+      "id": "at_risk",
+      "label": "At Risk",
+      "priority": 70,
+      "description": "Formerly strong customers slipping away.",
+      "all": [
+        { "field": "r_score", "operator": "eq", "value": 2 }
+      ],
+      "any": [
+        { "field": "f_score", "operator": ">=", "value": 3 },
+        { "field": "m_score", "operator": ">=", "value": 3 }
+      ]
+    },
+    {
+      "id": "cant_lose_them",
+      "label": "Can\u2019t Lose Them",
+      "priority": 75,
+      "description": "High-value customers who have gone dormant.",
+      "all": [
+        { "field": "r_score", "operator": "eq", "value": 1 }
+      ],
+      "any": [
+        { "field": "f_score", "operator": ">=", "value": 4 },
+        { "field": "m_score", "operator": ">=", "value": 4 }
+      ]
+    },
+    {
+      "id": "hibernating",
+      "label": "Hibernating",
+      "priority": 80,
+      "description": "Low activity customers across the board.",
+      "all": [
+        { "field": "r_score", "operator": "between", "value": [1, 2] },
+        { "field": "f_score", "operator": "between", "value": [1, 2] },
+        { "field": "m_score", "operator": "between", "value": [1, 2] }
+      ]
+    },
+    {
+      "id": "lost",
+      "label": "Lost",
+      "priority": 90,
+      "description": "Lapsed customers with minimal activity.",
+      "all": [
+        { "field": "r_score", "operator": "eq", "value": 1 },
+        { "field": "f_score", "operator": "eq", "value": 1 },
+        { "field": "m_score", "operator": "eq", "value": 1 }
+      ],
+      "fallback": true
+    }
+  ]
+}

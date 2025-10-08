@@ -24,6 +24,13 @@ module.exports = defineConfig({
       },
     },
     {
+      resolve: "./src/modules/rfm",
+      options: {
+        reportingCurrency:
+          process.env.RFM_REPORTING_CURRENCY || "usd",
+      },
+    },
+    {
       resolve: "./src/modules/abandoned-carts",
     },
   ],
