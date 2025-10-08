@@ -1,0 +1,18 @@
+0 verbose cli /usr/local/bin/node /usr/local/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@11.5.2
+2 info using node@v22.13.1
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/aleksandergregersen/Desktop/Praktik_Q3_2025/my-medusa-store/.npmrc
+5 silly config load:file:/usr/local/etc/npmrc
+6 verbose title npm exec medusa exec ./src/jobs/recompute-rfm.ts
+7 verbose argv "exec" "--" "medusa" "exec" "./src/jobs/recompute-rfm.ts"
+8 verbose logfile logs-max:10 dir:/Users/aleksandergregersen/Desktop/Praktik_Q3_2025/my-medusa-store/.npm/_logs/2025-10-08T08_15_59_420Z-
+9 verbose logfile /Users/aleksandergregersen/Desktop/Praktik_Q3_2025/my-medusa-store/.npm/_logs/2025-10-08T08_15_59_420Z-debug-0.log
+10 silly logfile done cleaning log files
+11 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with ENOTFOUND
+12 verbose cwd /Users/aleksandergregersen/Desktop/Praktik_Q3_2025/my-medusa-store
+13 verbose os Darwin 24.6.0
+14 verbose node v22.13.1
+15 verbose npm  v11.5.2
+16 verbose exit 1
+17 verbose code 1

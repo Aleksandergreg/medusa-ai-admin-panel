@@ -36,6 +36,13 @@ const DEFAULT_WINDOW_DAYS = 365;
 const DEFAULT_CHUNK_SIZE = 500;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
+type OrderColumnConfig = {
+  hasSummary: boolean;
+  hasPaidTotal: boolean;
+  hasRefundedTotal: boolean;
+  hasTotal: boolean;
+};
+
 export type RawMetricFetchOptions = {
   customerIds?: string[];
   windowDays?: number;
@@ -55,6 +62,7 @@ export type RecomputeSummary = {
 
 class RfmModuleService extends MedusaService({}) {
   private readonly options: RfmModuleOptions;
+  private orderColumnConfigPromise: Promise<OrderColumnConfig> | null = null;
 
   constructor(
     container: Record<string, unknown>,
@@ -74,6 +82,32 @@ class RfmModuleService extends MedusaService({}) {
 
   private get db(): Knex {
     return this.__container__[ContainerRegistrationKeys.PG_CONNECTION] as Knex;
+  }
+
+  private async getOrderColumnConfig(): Promise<OrderColumnConfig> {
+    if (this.orderColumnConfigPromise) {
+      return this.orderColumnConfigPromise;
+    }
+
+    this.orderColumnConfigPromise = (async () => {
+      const schema = this.db.schema;
+      const [hasSummary, hasPaidTotal, hasRefundedTotal, hasTotal] =
+        await Promise.all([
+          schema.hasColumn("order", "summary"),
+          schema.hasColumn("order", "paid_total"),
+          schema.hasColumn("order", "refunded_total"),
+          schema.hasColumn("order", "total")
+        ]);
+
+      return {
+        hasSummary,
+        hasPaidTotal,
+        hasRefundedTotal,
+        hasTotal
+      };
+    })();
+
+    return this.orderColumnConfigPromise;
   }
 
   get reportingCurrency(): string {
@@ -231,8 +265,8 @@ class RfmModuleService extends MedusaService({}) {
           o.customer_id,
           o.created_at,
           o.currency_code,
-          coalesce((o.summary ->> 'paid_total')::bigint, 0) as paid_total_cents,
-          coalesce((o.summary ->> 'refunded_total')::bigint, 0) as refunded_total_cents
+          ${await this.buildPaidTotalExpression()} as paid_total_cents,
+          ${await this.buildRefundedTotalExpression()} as refunded_total_cents
         from "order" o
         where o.status = 'completed'
           and o.customer_id is not null
@@ -416,6 +450,31 @@ class RfmModuleService extends MedusaService({}) {
       windowStart: resolvedWindowStart ?? new Date().toISOString(),
       windowDays: resolvedWindowDays
     };
+  }
+
+  private async buildPaidTotalExpression(): Promise<string> {
+    const config = await this.getOrderColumnConfig();
+    if (config.hasSummary) {
+      return "coalesce((o.summary ->> 'paid_total')::bigint, 0)";
+    }
+    if (config.hasPaidTotal) {
+      return "coalesce(o.paid_total::bigint, 0)";
+    }
+    if (config.hasTotal) {
+      return "coalesce(o.total::bigint, 0)";
+    }
+    return "0::bigint";
+  }
+
+  private async buildRefundedTotalExpression(): Promise<string> {
+    const config = await this.getOrderColumnConfig();
+    if (config.hasSummary) {
+      return "coalesce((o.summary ->> 'refunded_total')::bigint, 0)";
+    }
+    if (config.hasRefundedTotal) {
+      return "coalesce(o.refunded_total::bigint, 0)";
+    }
+    return "0::bigint";
   }
 }
 
