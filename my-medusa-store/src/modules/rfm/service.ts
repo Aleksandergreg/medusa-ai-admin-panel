@@ -8,7 +8,10 @@ import {
   RfmModuleOptions,
   SegmentDefinition
 } from "./config";
-import { computeRfmScores, ComputeResult } from "./lib/metrics-calculator";
+import {
+  computeRfmScores,
+  ComputeResult
+} from "./lib/metrics-calculator";
 import {
   RawMetricRecord,
   ScoredMetricRecord
@@ -28,6 +31,27 @@ export type ScoreRow = {
 };
 
 type ServiceConstructorOptions = Partial<RfmModuleOptions>;
+
+const DEFAULT_WINDOW_DAYS = 365;
+const DEFAULT_CHUNK_SIZE = 500;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+export type RawMetricFetchOptions = {
+  customerIds?: string[];
+  windowDays?: number;
+  windowStart?: Date;
+};
+
+export type RecomputeOptions = RawMetricFetchOptions & {
+  overrides?: Partial<RfmModuleOptions>;
+};
+
+export type RecomputeSummary = {
+  processed: number;
+  upserted: number;
+  windowStart: string;
+  windowDays: number;
+};
 
 class RfmModuleService extends MedusaService({}) {
   private readonly options: RfmModuleOptions;
@@ -111,6 +135,276 @@ class RfmModuleService extends MedusaService({}) {
    */
   getDatabase(): Knex {
     return this.db;
+  }
+
+  private resolveWindowStart(
+    options?: Pick<RecomputeOptions, "windowDays" | "windowStart">
+  ): { windowStart: Date; windowDays: number } {
+    if (options?.windowStart) {
+      const windowDays =
+        options.windowDays ??
+        Math.max(
+          1,
+          Math.round(
+            (Date.now() - options.windowStart.getTime()) / DAY_IN_MS
+          )
+        );
+      return {
+        windowStart: options.windowStart,
+        windowDays
+      };
+    }
+
+    const windowDays = options?.windowDays ?? DEFAULT_WINDOW_DAYS;
+    const windowStart = new Date(Date.now() - windowDays * DAY_IN_MS);
+    return { windowStart, windowDays };
+  }
+
+  private toRawMetricRecord(row: Record<string, unknown>): RawMetricRecord {
+    const parseNumber = (value: unknown): number => {
+      if (value === null || value === undefined) {
+        return 0;
+      }
+      if (typeof value === "number") {
+        return Number.isFinite(value) ? value : 0;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    return {
+      customerId: String(row.customer_id),
+      recencyDays:
+        row.recency_days === null || row.recency_days === undefined
+          ? null
+          : parseNumber(row.recency_days),
+      frequency365d: parseNumber(row.frequency_365d),
+      monetary365dCents: parseNumber(row.monetary_365d_cents)
+    };
+  }
+
+  private async fetchRawMetrics(
+    options: RawMetricFetchOptions = {}
+  ): Promise<{ windowStart: Date; windowDays: number; records: RawMetricRecord[] }> {
+    const { windowStart, windowDays } = this.resolveWindowStart(options);
+    const customerIds = Array.isArray(options.customerIds)
+      ? options.customerIds.filter((id) => typeof id === "string" && id.trim())
+      : undefined;
+
+    const bindings: Record<string, unknown> = {
+      window_start: windowStart.toISOString()
+    };
+
+    const customerFilter =
+      customerIds && customerIds.length
+        ? "where id = any(:customer_ids)"
+        : "";
+
+    const orderFilter =
+      customerIds && customerIds.length
+        ? "and o.customer_id = any(:customer_ids)"
+        : "";
+
+    if (customerIds && customerIds.length) {
+      bindings.customer_ids = customerIds;
+    }
+
+    const sql = `
+      with target_customers as (
+        select id
+        from customer
+        ${customerFilter}
+      ),
+      completed_orders as (
+        select
+          o.customer_id,
+          o.completed_at,
+          o.currency_code,
+          coalesce((o.summary ->> 'paid_total')::bigint, 0) as paid_total_cents,
+          coalesce((o.summary ->> 'refunded_total')::bigint, 0) as refunded_total_cents
+        from "order" o
+        where o.status = 'completed'
+          and o.customer_id is not null
+          ${orderFilter}
+      ),
+      last_order as (
+        select
+          customer_id,
+          max(completed_at) as last_completed_at
+        from completed_orders
+        group by customer_id
+      ),
+      window_orders as (
+        select
+          customer_id,
+          completed_at,
+          paid_total_cents,
+          refunded_total_cents,
+          (paid_total_cents - refunded_total_cents) as net_total_cents
+        from completed_orders
+        where completed_at >= :window_start
+      ),
+      frequency as (
+        select
+          customer_id,
+          count(*) as order_count
+        from window_orders
+        group by customer_id
+      ),
+      monetary as (
+        select
+          customer_id,
+          coalesce(sum(net_total_cents), 0) as net_total_cents
+        from window_orders
+        group by customer_id
+      )
+      select
+        c.id as customer_id,
+        case
+          when l.last_completed_at is null then null
+          else extract(day from (now() - l.last_completed_at))::int
+        end as recency_days,
+        coalesce(f.order_count, 0) as frequency_365d,
+        coalesce(m.net_total_cents, 0) as monetary_365d_cents
+      from target_customers c
+      left join last_order l on l.customer_id = c.id
+      left join frequency f on f.customer_id = c.id
+      left join monetary m on m.customer_id = c.id
+      order by c.id asc
+    `;
+
+    const raw = await this.db.raw(sql, bindings);
+    const rows: Record<string, unknown>[] = raw.rows ?? [];
+    const records = rows.map((row) => this.toRawMetricRecord(row));
+
+    return { windowStart, windowDays, records };
+  }
+
+  private async upsertScoreRows(
+    rows: ScoreRow[],
+    trx?: Knex.Transaction
+  ): Promise<number> {
+    if (!rows.length) {
+      return 0;
+    }
+
+    const connection = trx ?? this.db;
+    await connection("rfm_scores")
+      .insert(
+        rows.map((row) => ({
+          ...row,
+          monetary_365d_cents: row.monetary_365d_cents,
+          calculated_at: row.calculated_at
+        }))
+      )
+      .onConflict("customer_id")
+      .merge([
+        "recency_days",
+        "frequency_365d",
+        "monetary_365d_cents",
+        "r_score",
+        "f_score",
+        "m_score",
+        "rfm_segment",
+        "rfm_index",
+        "calculated_at"
+      ]);
+
+    return rows.length;
+  }
+
+  private chunkIds(ids: string[], chunkSize: number): string[][] {
+    const result: string[][] = [];
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      result.push(ids.slice(i, i + chunkSize));
+    }
+    return result;
+  }
+
+  async recomputeCustomers(
+    customerIds: string[],
+    options: RecomputeOptions = {}
+  ): Promise<RecomputeSummary> {
+    const normalizedIds = customerIds.filter(
+      (id) => typeof id === "string" && id.trim()
+    );
+    if (!normalizedIds.length) {
+      const { windowStart, windowDays } = this.resolveWindowStart(options);
+      return {
+        processed: 0,
+        upserted: 0,
+        windowStart: windowStart.toISOString(),
+        windowDays
+      };
+    }
+
+    const { windowStart, windowDays, records } = await this.fetchRawMetrics({
+      ...options,
+      customerIds: normalizedIds
+    });
+
+    if (!records.length) {
+      return {
+        processed: 0,
+        upserted: 0,
+        windowStart: windowStart.toISOString(),
+        windowDays
+      };
+    }
+
+    const rows = this.prepareScoreRows(records, options.overrides);
+    const upserted = await this.upsertScoreRows(rows);
+
+    return {
+      processed: records.length,
+      upserted,
+      windowStart: windowStart.toISOString(),
+      windowDays
+    };
+  }
+
+  async recomputeAll(
+    options: RecomputeOptions & { chunkSize?: number } = {}
+  ): Promise<RecomputeSummary> {
+    const chunkSize = Math.max(
+      10,
+      options.chunkSize ?? DEFAULT_CHUNK_SIZE
+    );
+
+    const customerRows = await this.db("customer").select("id");
+    const customerIds = customerRows.map((row) =>
+      typeof row.id === "string" ? row.id : String(row.id)
+    );
+
+    if (!customerIds.length) {
+      const { windowStart, windowDays } = this.resolveWindowStart(options);
+      return {
+        processed: 0,
+        upserted: 0,
+        windowStart: windowStart.toISOString(),
+        windowDays
+      };
+    }
+
+    let totalProcessed = 0;
+    let totalUpserted = 0;
+    let resolvedWindowStart: string | null = null;
+    let resolvedWindowDays = options.windowDays ?? DEFAULT_WINDOW_DAYS;
+
+    for (const batch of this.chunkIds(customerIds, chunkSize)) {
+      const summary = await this.recomputeCustomers(batch, options);
+      totalProcessed += summary.processed;
+      totalUpserted += summary.upserted;
+      resolvedWindowStart = summary.windowStart;
+      resolvedWindowDays = summary.windowDays;
+    }
+
+    return {
+      processed: totalProcessed,
+      upserted: totalUpserted,
+      windowStart: resolvedWindowStart ?? new Date().toISOString(),
+      windowDays: resolvedWindowDays
+    };
   }
 }
 
