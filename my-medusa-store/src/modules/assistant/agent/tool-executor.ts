@@ -60,8 +60,7 @@ function extractOperationDetails(args: Record<string, unknown>): {
 }
 
 export async function executeTool(params: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mcp: any;
+  mcp: MCPResult;
   toolName: string;
   args: Record<string, unknown>;
 }): Promise<ExecuteOutcome> {
