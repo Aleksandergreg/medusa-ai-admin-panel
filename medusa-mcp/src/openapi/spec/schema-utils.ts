@@ -81,9 +81,20 @@ function walkSchema(
     }
     if (Array.isArray(s.enum) && s.enum.length) {
       if (meta.enums[schemaPath]) {
-        meta.enums[schemaPath] = [
-          ...new Set([...meta.enums[schemaPath], ...s.enum]),
-        ];
+        // Type safety: only merge if element types match
+        const existingEnum = meta.enums[schemaPath];
+        const newEnum = s.enum;
+        const existingType = typeof existingEnum[0];
+        const newType = typeof newEnum[0];
+        if (existingType === newType) {
+          meta.enums[schemaPath] = [
+            ...new Set([...existingEnum, ...newEnum]),
+          ];
+        } else {
+          // Types do not match; prefer the new enum or handle as needed
+          meta.enums[schemaPath] = newEnum;
+          // Optionally, log a warning here if desired
+        }
       } else {
         meta.enums[schemaPath] = s.enum;
       }
