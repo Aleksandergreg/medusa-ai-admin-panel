@@ -1,6 +1,6 @@
 import { Badge, Text } from "@medusajs/ui";
-import { ValidationProvider } from "../validation/context/ValidationContext";
-import { EditableFieldNew } from "../validation/components/EditableFieldNew";
+import { ValidationProvider } from "./context/ValidationContext";
+import { EditableFieldNew } from "../validation/components/EditableField";
 
 type DetailsSectionNewProps = {
   title: string;

@@ -1,7 +1,7 @@
 // New refactored components
-export { EditableFieldNew } from "./components/EditableFieldNew";
-export { CollapsibleComplexDataNew } from "./CollapsibleComplexDataNew";
-export { DetailsSectionNew } from "./DetailsSectionNew";
+export { EditableFieldNew } from "./components/EditableField";
+export { CollapsibleComplexDataNew } from "./CollapsibleComplexData";
+export { DetailsSectionNew } from "./DetailsSection";
 
 // Field editors
 export { TextFieldEditor } from "./components/fields/TextFieldEditor";

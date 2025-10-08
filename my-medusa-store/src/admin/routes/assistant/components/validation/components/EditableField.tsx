@@ -5,7 +5,7 @@ import { FieldValue, FieldPath } from "../types/field.types";
 import { TextFieldEditor } from "./fields/TextFieldEditor";
 import { NumberFieldEditor } from "./fields/NumberFieldEditor";
 import { SelectFieldEditor } from "./fields/SelectFieldEditor";
-import { CollapsibleComplexDataNew } from "../CollapsibleComplexDataNew";
+import { CollapsibleComplexDataNew } from "../CollapsibleComplexData";
 import { formatValueDisplay, isLongText } from "../utils/fieldFormatters";
 import { isObject } from "../utils/typeCheckers";
 

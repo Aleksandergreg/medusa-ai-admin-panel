@@ -2,7 +2,7 @@ import { Badge, Text } from "@medusajs/ui";
 import { ChevronDownMini, ChevronUpMini } from "@medusajs/icons";
 import { useState, useMemo } from "react";
 import { useValidationContext } from "./context/ValidationContext";
-import { EditableFieldNew } from "./components/EditableFieldNew";
+import { EditableFieldNew } from "./components/EditableField";
 import { formatValueDisplay } from "./utils/fieldFormatters";
 import { isSimpleObject } from "./utils/typeCheckers";
 import { FieldPath } from "./types/field.types";
