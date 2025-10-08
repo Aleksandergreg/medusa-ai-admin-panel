@@ -90,14 +90,51 @@ class RfmModuleService extends MedusaService({}) {
     }
 
     this.orderColumnConfigPromise = (async () => {
-      const schema = this.db.schema;
-      const [hasSummary, hasPaidTotal, hasRefundedTotal, hasTotal] =
-        await Promise.all([
-          schema.hasColumn("order", "summary"),
-          schema.hasColumn("order", "paid_total"),
-          schema.hasColumn("order", "refunded_total"),
-          schema.hasColumn("order", "total")
-        ]);
+      const searchPath =
+        (this.db.client.config.searchPath as string | undefined)
+          ?.split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean) ?? [];
+
+      const candidateSchemas = searchPath.length ? searchPath : ["public"];
+
+      let columns: Set<string> | null = null;
+      for (const schemaName of candidateSchemas) {
+        const rows = await this.db
+          .select("column_name")
+          .from("information_schema.columns")
+          .where({
+            table_name: "order",
+            table_schema: schemaName
+          });
+        if (rows.length) {
+          columns = new Set(
+            rows.map((row: { column_name: string }) =>
+              String(row.column_name).toLowerCase()
+            )
+          );
+          break;
+        }
+      }
+
+      if (!columns) {
+        const fallbackRows = await this.db
+          .select("column_name")
+          .from("information_schema.columns")
+          .where({ table_name: "order" });
+        columns = new Set(
+          fallbackRows.map((row: { column_name: string }) =>
+            String(row.column_name).toLowerCase()
+          )
+        );
+      }
+
+      const columnSet = columns ?? new Set<string>();
+
+      const hasSummary = columnSet.has("summary");
+      const hasPaidTotal = columnSet.has("paid_total");
+      const hasRefundedTotal = columnSet.has("refunded_total");
+      const hasTotal = columnSet.has("total");
 
       return {
         hasSummary,
@@ -254,6 +291,9 @@ class RfmModuleService extends MedusaService({}) {
       bindings.customer_ids = customerIds;
     }
 
+    const paidExpr = await this.buildPaidTotalExpression();
+    const refundedExpr = await this.buildRefundedTotalExpression();
+
     const sql = `
       with target_customers as (
         select id
@@ -265,8 +305,8 @@ class RfmModuleService extends MedusaService({}) {
           o.customer_id,
           o.created_at,
           o.currency_code,
-          ${await this.buildPaidTotalExpression()} as paid_total_cents,
-          ${await this.buildRefundedTotalExpression()} as refunded_total_cents
+          ${paidExpr} as paid_total_cents,
+          ${refundedExpr} as refunded_total_cents
         from "order" o
         where o.status = 'completed'
           and o.customer_id is not null
@@ -454,11 +494,11 @@ class RfmModuleService extends MedusaService({}) {
 
   private async buildPaidTotalExpression(): Promise<string> {
     const config = await this.getOrderColumnConfig();
-    if (config.hasSummary) {
-      return "coalesce((o.summary ->> 'paid_total')::bigint, 0)";
-    }
     if (config.hasPaidTotal) {
       return "coalesce(o.paid_total::bigint, 0)";
+    }
+    if (config.hasSummary) {
+      return "coalesce((o.summary ->> 'paid_total')::bigint, 0)";
     }
     if (config.hasTotal) {
       return "coalesce(o.total::bigint, 0)";
@@ -468,11 +508,11 @@ class RfmModuleService extends MedusaService({}) {
 
   private async buildRefundedTotalExpression(): Promise<string> {
     const config = await this.getOrderColumnConfig();
-    if (config.hasSummary) {
-      return "coalesce((o.summary ->> 'refunded_total')::bigint, 0)";
-    }
     if (config.hasRefundedTotal) {
       return "coalesce(o.refunded_total::bigint, 0)";
+    }
+    if (config.hasSummary) {
+      return "coalesce((o.summary ->> 'refunded_total')::bigint, 0)";
     }
     return "0::bigint";
   }
