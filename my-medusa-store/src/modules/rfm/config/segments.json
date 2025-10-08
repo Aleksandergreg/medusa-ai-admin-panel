@@ -17,9 +17,9 @@
       "priority": 20,
       "description": "Recent, frequent, and high-spending customers.",
       "all": [
-        { "field": "r_score", "operator": ">=", "value": 4 },
-        { "field": "f_score", "operator": ">=", "value": 4 },
-        { "field": "m_score", "operator": ">=", "value": 4 }
+        { "field": "r_score", "operator": "gte", "value": 4 },
+        { "field": "f_score", "operator": "gte", "value": 4 },
+        { "field": "m_score", "operator": "gte", "value": 4 }
       ]
     },
     {
@@ -28,9 +28,9 @@
       "priority": 30,
       "description": "Returning customers with strong order cadence.",
       "all": [
-        { "field": "f_score", "operator": ">=", "value": 4 },
-        { "field": "m_score", "operator": ">=", "value": 3 },
-        { "field": "r_score", "operator": ">=", "value": 3 }
+        { "field": "f_score", "operator": "gte", "value": 4 },
+        { "field": "m_score", "operator": "gte", "value": 3 },
+        { "field": "r_score", "operator": "gte", "value": 3 }
       ]
     },
     {
@@ -39,11 +39,11 @@
       "priority": 40,
       "description": "Recent buyers building up frequency or spend.",
       "all": [
-        { "field": "r_score", "operator": ">=", "value": 4 }
+        { "field": "r_score", "operator": "gte", "value": 4 }
       ],
       "any": [
-        { "field": "f_score", "operator": ">=", "value": 3 },
-        { "field": "m_score", "operator": ">=", "value": 3 }
+        { "field": "f_score", "operator": "gte", "value": 3 },
+        { "field": "m_score", "operator": "gte", "value": 3 }
       ]
     },
     {
@@ -52,7 +52,7 @@
       "priority": 50,
       "description": "Fairly recent customers with mid-tier activity.",
       "all": [
-        { "field": "r_score", "operator": ">=", "value": 3 },
+        { "field": "r_score", "operator": "gte", "value": 3 },
         { "field": "f_score", "operator": "between", "value": [2, 3] },
         { "field": "m_score", "operator": "between", "value": [2, 3] }
       ]
@@ -77,8 +77,8 @@
         { "field": "r_score", "operator": "eq", "value": 2 }
       ],
       "any": [
-        { "field": "f_score", "operator": ">=", "value": 3 },
-        { "field": "m_score", "operator": ">=", "value": 3 }
+        { "field": "f_score", "operator": "gte", "value": 3 },
+        { "field": "m_score", "operator": "gte", "value": 3 }
       ]
     },
     {
@@ -90,8 +90,8 @@
         { "field": "r_score", "operator": "eq", "value": 1 }
       ],
       "any": [
-        { "field": "f_score", "operator": ">=", "value": 4 },
-        { "field": "m_score", "operator": ">=", "value": 4 }
+        { "field": "f_score", "operator": "gte", "value": 4 },
+        { "field": "m_score", "operator": "gte", "value": 4 }
       ]
     },
     {
