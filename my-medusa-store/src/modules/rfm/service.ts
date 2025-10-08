@@ -55,6 +55,7 @@ export type RecomputeSummary = {
 
 class RfmModuleService extends MedusaService({}) {
   private readonly options: RfmModuleOptions;
+  private readonly columnCache = new Map<string, Set<string>>();
 
   constructor(
     container: Record<string, unknown>,
@@ -74,6 +75,131 @@ class RfmModuleService extends MedusaService({}) {
 
   private get db(): Knex {
     return this.__container__[ContainerRegistrationKeys.PG_CONNECTION] as Knex;
+  }
+
+  private async getTableColumns(tableName: string): Promise<Set<string>> {
+    const normalized = tableName.toLowerCase();
+    const cached = this.columnCache.get(normalized);
+    if (cached) {
+      return cached;
+    }
+
+    const rows = await this.db
+      .select("column_name")
+      .from("information_schema.columns")
+      .where({
+        table_name: normalized
+      });
+
+    const columns = new Set(
+      rows.map((row: { column_name: string }) =>
+        String(row.column_name).toLowerCase()
+      )
+    );
+
+    this.columnCache.set(normalized, columns);
+    return columns;
+  }
+
+  private async resolveOrderSummaryMeta(): Promise<
+    | {
+        joinClause: string;
+        paidExpr: (fallback: string) => string;
+        refundedExpr: string;
+      }
+    | null
+  > {
+    const columns = await this.getTableColumns("order_summary");
+    if (!columns.size) {
+      return null;
+    }
+
+    const paidCandidate = [
+      "current_order_total",
+      "paid_total",
+      "transaction_total",
+      "raw_paid_total"
+    ].find((column) => columns.has(column));
+
+    const refundedCandidate = [
+      "refunded_total",
+      "raw_refunded_total"
+    ].find((column) => columns.has(column));
+
+    const joinClause =
+      paidCandidate || refundedCandidate
+        ? 'left join "order_summary" os on os.order_id = o.id'
+        : "";
+
+    const paidExpr = (fallback: string) =>
+      paidCandidate
+        ? `coalesce(os."${paidCandidate}", ${fallback})`
+        : fallback;
+
+    const refundedExpr = refundedCandidate
+      ? `coalesce(os."${refundedCandidate}", 0)::bigint`
+      : "0::bigint";
+
+    return {
+      joinClause,
+      paidExpr,
+      refundedExpr
+    };
+  }
+
+  private async resolveOrderLineItemMeta(): Promise<
+    | {
+        cte: string;
+        joinClause: string;
+        fallbackExpr: string;
+      }
+    | null
+  > {
+    const candidateTables = [
+      "order_line_item",
+      "order_item",
+      "order_items"
+    ];
+
+    for (const table of candidateTables) {
+      const columns = await this.getTableColumns(table);
+      if (!columns.size) {
+        continue;
+      }
+
+      const orderColumn = ["order_id", "order", "orderid"].find((column) =>
+        columns.has(column)
+      );
+      const unitPriceColumn = [
+        "unit_price",
+        "unitprice",
+        "amount"
+      ].find((column) => columns.has(column));
+      const quantityColumn = ["quantity", "qty"].find((column) =>
+        columns.has(column)
+      );
+
+      if (!orderColumn || !unitPriceColumn || !quantityColumn) {
+        continue;
+      }
+
+      const quotedTable = `"${table}"`;
+      const cte = `item_totals as (
+        select
+          oli."${orderColumn}" as order_id,
+          sum(coalesce(oli."${unitPriceColumn}", 0) * coalesce(oli."${quantityColumn}", 0)) as item_total_cents
+        from ${quotedTable} oli
+        group by oli."${orderColumn}"
+      )`;
+
+      return {
+        cte,
+        joinClause: "left join item_totals it on it.order_id = o.id",
+        fallbackExpr: "coalesce(it.item_total_cents, 0)"
+      };
+    }
+
+    return null;
   }
 
   get reportingCurrency(): string {
@@ -220,39 +346,45 @@ class RfmModuleService extends MedusaService({}) {
       bindings.customer_ids = customerIds;
     }
 
-    const sql = `
-      with target_customers as (
+    const summaryMeta = await this.resolveOrderSummaryMeta();
+    const lineItemMeta = await this.resolveOrderLineItemMeta();
+
+    const ctes = [
+      `target_customers as (
         select id
         from customer
         ${customerFilter}
-      ),
-      item_totals as (
-        select
-          oi.order_id,
-          sum(coalesce(oi.unit_price, 0) * coalesce(oi.quantity, 0)) as item_total_cents
-        from order_item oi
-        group by oi.order_id
-      ),
-      completed_orders as (
+      )`,
+      lineItemMeta?.cte ?? null,
+      `completed_orders as (
         select
           o.customer_id,
           o.created_at,
           o.currency_code,
-          coalesce(it.item_total_cents, 0)::bigint as paid_total_cents,
-          0::bigint as refunded_total_cents
+          ${(() => {
+            const base = lineItemMeta?.fallbackExpr
+              ? `${lineItemMeta.fallbackExpr}`
+              : "0";
+            const withSummary = summaryMeta?.paidExpr
+              ? summaryMeta.paidExpr(base)
+              : base;
+            return `${withSummary}::bigint`;
+          })()} as paid_total_cents,
+          ${summaryMeta?.refundedExpr ?? "0::bigint"} as refunded_total_cents
         from "order" o
-        left join item_totals it on it.order_id = o.id
+        ${lineItemMeta?.joinClause ?? ""}
+        ${summaryMeta?.joinClause ?? ""}
         where o.customer_id is not null
           ${orderFilter}
-      ),
-      last_order as (
+      )`,
+      `last_order as (
         select
           customer_id,
           max(created_at) as last_completed_at
         from completed_orders
         group by customer_id
-      ),
-      window_orders as (
+      )`,
+      `window_orders as (
         select
           customer_id,
           created_at,
@@ -261,21 +393,25 @@ class RfmModuleService extends MedusaService({}) {
           (paid_total_cents - refunded_total_cents) as net_total_cents
         from completed_orders
         where created_at >= :window_start
-      ),
-      frequency as (
+      )`,
+      `frequency as (
         select
           customer_id,
           count(*) as order_count
         from window_orders
         group by customer_id
-      ),
-      monetary as (
+      )`,
+      `monetary as (
         select
           customer_id,
           coalesce(sum(net_total_cents), 0) as net_total_cents
         from window_orders
         group by customer_id
-      )
+      )`
+    ].filter(Boolean) as string[];
+
+    const sql = `
+      with ${ctes.join(",\n")} 
       select
         c.id as customer_id,
         case
