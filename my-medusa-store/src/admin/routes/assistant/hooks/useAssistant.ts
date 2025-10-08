@@ -4,6 +4,14 @@ import { STORAGE_KEYS } from "../lib/storageKeys";
 import { askAssistant, fetchAssistantConversation } from "../lib/assistantApi";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
+type ValidationRequest = {
+  id: string;
+  operationId: string;
+  method: string;
+  path: string;
+  args: Record<string, unknown>;
+};
+
 export function useAssistant() {
   // persisted user prefs + prompt
   const [prompt, setPrompt] = useLocalStorageState<string>(
@@ -15,6 +23,8 @@ export function useAssistant() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationRequest, setValidationRequest] =
+    useState<ValidationRequest | null>(null);
   const abortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -102,6 +112,11 @@ export function useAssistant() {
 
       setHistory(res.history);
       setAnswer(res.answer);
+
+      // Check if response includes validation request
+      if (res.validationRequest) {
+        setValidationRequest(res.validationRequest);
+      }
     } catch (e: unknown) {
       setHistory(previousHistory);
       if (e instanceof Error && e.name === "AbortError") {
@@ -121,11 +136,75 @@ export function useAssistant() {
     }
   }, []);
 
+  const approveValidation = useCallback(
+    async (id: string, editedData?: Record<string, unknown>) => {
+      try {
+        setLoading(true);
+        const payload = { id, approved: true, editedData };
+        console.log("Sending approval payload:", payload);
+
+        const res = await fetch("/admin/assistant/validation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+
+        const json = await res.json();
+        console.log("Approval response:", json);
+        if (!res.ok) {
+          throw new Error(json.error ?? "Failed to approve validation");
+        }
+
+        // Clear validation request and update with result
+        setValidationRequest(null);
+
+        // Format success message in a user-friendly way
+        const successMessage = `## ✅ Action Completed Successfully\n\nYour request has been processed and the changes have been applied to your store.\n\nYou can now continue with your next task or ask me for help with something else.`;
+
+        setAnswer(successMessage);
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to approve operation");
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  const rejectValidation = useCallback(async (id: string) => {
+    try {
+      setLoading(true);
+      const res = await fetch("/admin/assistant/validation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id, approved: false }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? "Failed to reject validation");
+      }
+
+      setValidationRequest(null);
+
+      const cancelMessage = `## ❌ Action Cancelled\n\nNo changes were made to your store. The operation has been cancelled as requested.\n\nFeel free to ask me to do something else!`;
+
+      setAnswer(cancelMessage);
+    } catch (e: unknown) {
+      setError((e as Error)?.message ?? "Failed to reject operation");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const clear = useCallback(() => {
     setAnswer(null);
     setError(null);
     setPrompt("");
     setHistory([]);
+    setValidationRequest(null);
     cancel(); // Cancel any ongoing request when clearing
   }, [setPrompt, cancel]);
 
@@ -139,11 +218,14 @@ export function useAssistant() {
     setAnswer,
     loading,
     error,
+    validationRequest,
 
     // derived/handlers
     canSubmit,
     ask,
     clear,
     cancel,
+    approveValidation,
+    rejectValidation,
   } as const;
 }

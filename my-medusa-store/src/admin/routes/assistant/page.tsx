@@ -3,6 +3,7 @@ import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { ResponseView } from "./components/ResponseView";
 import { AssistantLoading } from "./components/Loading";
+import { ValidationDialog } from "./components/ValidationDialog";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text } from "@medusajs/ui";
 import { AiAssistent } from "@medusajs/icons";
@@ -18,6 +19,9 @@ const AssistantPage = () => {
     ask,
     clear,
     cancel,
+    validationRequest,
+    approveValidation,
+    rejectValidation,
   } = useAssistant();
 
   return (
@@ -65,10 +69,18 @@ const AssistantPage = () => {
         </div>
 
         {error && <div className="text-ui-fg-error">Error: {error}</div>}
-        {loading && (
+        {loading && !validationRequest && (
           <div className="rounded-md border p-3 bg-ui-bg-base">
             <AssistantLoading />
           </div>
+        )}
+
+        {validationRequest && (
+          <ValidationDialog
+            validationRequest={validationRequest}
+            onApprove={approveValidation}
+            onReject={rejectValidation}
+          />
         )}
 
         <ResponseView answer={answer} />

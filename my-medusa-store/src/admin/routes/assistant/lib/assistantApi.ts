@@ -7,10 +7,21 @@ const ConversationEntrySchema = z.object({
   content: z.string(),
 });
 
+const ValidationRequestSchema = z.object({
+  id: z.string(),
+  operationId: z.string(),
+  method: z.string(),
+  path: z.string(),
+  args: z.record(z.unknown()),
+  bodyFieldEnums: z.record(z.array(z.string())).optional(),
+  bodyFieldReadOnly: z.array(z.string()).optional(),
+});
+
 const AssistantResponseSchema = z.object({
   response: z.string().default(""),
   history: z.array(ConversationEntrySchema).default([]),
   updatedAt: z.string().nullish().default(null),
+  validationRequest: ValidationRequestSchema.optional(),
 });
 
 const AssistantConversationSchema = z.object({
@@ -52,6 +63,7 @@ export async function askAssistant(
     answer: parsed.data.response,
     history: parsed.data.history as ConversationEntry[],
     updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
+    validationRequest: parsed.data.validationRequest,
   };
 }
 

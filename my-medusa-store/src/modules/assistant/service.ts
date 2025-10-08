@@ -16,6 +16,13 @@ type PromptResult = {
   answer: string;
   history: ConversationEntry[];
   updatedAt: Date;
+  validationRequest?: {
+    id: string;
+    operationId: string;
+    method: string;
+    path: string;
+    args: Record<string, unknown>;
+  };
 };
 
 type ConversationRow = {
@@ -82,16 +89,30 @@ class AssistantModuleService extends MedusaService({}) {
     const updatedAt = new Date();
     await this.persistConversation(actorId, finalHistory, updatedAt);
 
+    // Check if there's validation data in agent result
+    const validationData =
+      typeof agentResult.data === "object" &&
+      agentResult.data !== null &&
+      "id" in agentResult.data &&
+      "operationId" in agentResult.data
+        ? (agentResult.data as {
+            id: string;
+            operationId: string;
+            method: string;
+            path: string;
+            args: Record<string, unknown>;
+          })
+        : undefined;
+
     return {
       answer,
       history: finalHistory,
       updatedAt,
+      validationRequest: validationData,
     };
   }
 
-  async getConversation(
-    actorId: string
-  ): Promise<{
+  async getConversation(actorId: string): Promise<{
     history: ConversationEntry[];
     updatedAt: Date | null;
   } | null> {

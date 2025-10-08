@@ -76,6 +76,7 @@ export async function POST(
       response: result.answer,
       history: result.history,
       updatedAt: result.updatedAt.toISOString(),
+      validationRequest: result.validationRequest,
     });
   } catch (e: unknown) {
     console.error("\n--- Assistant Route Error ---\n", e);
