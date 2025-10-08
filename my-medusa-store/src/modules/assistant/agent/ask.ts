@@ -148,7 +148,7 @@ export async function askAgent(
         return {
           answer: validationMessage,
           data: outcome.validationRequest,
-          history,
+          history: historyTracker.list,
         };
       }
 
