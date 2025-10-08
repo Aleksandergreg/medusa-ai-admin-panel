@@ -1,13 +1,39 @@
 import type { MedusaContainer } from "@medusajs/framework/types";
+import type { ExecArgs } from "@medusajs/framework/types";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import RfmModuleService, {
-  RecomputeSummary
-} from "../modules/rfm/service";
+import RfmModuleService, { RecomputeSummary } from "../modules/rfm/service";
 import { RFM_MODULE } from "../modules/rfm";
 
+type MaybeExecArgs =
+  | MedusaContainer
+  | (ExecArgs & { container: MedusaContainer })
+  | { container: MedusaContainer };
+
+function resolveContainer(input: MaybeExecArgs): MedusaContainer {
+  if (
+    input &&
+    typeof input === "object" &&
+    "resolve" in input &&
+    typeof (input as any).resolve === "function"
+  ) {
+    return input as MedusaContainer;
+  }
+  if (
+    input &&
+    typeof input === "object" &&
+    "container" in input &&
+    input.container &&
+    typeof (input.container as any).resolve === "function"
+  ) {
+    return input.container as MedusaContainer;
+  }
+  throw new Error("Unable to resolve Medusa container");
+}
+
 export default async function recomputeRfmScores(
-  container: MedusaContainer
+  input: MaybeExecArgs
 ) {
+  const container = resolveContainer(input);
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const service = container.resolve<RfmModuleService>(RFM_MODULE);
 
