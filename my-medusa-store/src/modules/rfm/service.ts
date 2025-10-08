@@ -229,7 +229,7 @@ class RfmModuleService extends MedusaService({}) {
       completed_orders as (
         select
           o.customer_id,
-          o.completed_at,
+          o.created_at,
           o.currency_code,
           coalesce((o.summary ->> 'paid_total')::bigint, 0) as paid_total_cents,
           coalesce((o.summary ->> 'refunded_total')::bigint, 0) as refunded_total_cents
@@ -241,19 +241,19 @@ class RfmModuleService extends MedusaService({}) {
       last_order as (
         select
           customer_id,
-          max(completed_at) as last_completed_at
+          max(created_at) as last_completed_at
         from completed_orders
         group by customer_id
       ),
       window_orders as (
         select
           customer_id,
-          completed_at,
+          created_at,
           paid_total_cents,
           refunded_total_cents,
           (paid_total_cents - refunded_total_cents) as net_total_cents
         from completed_orders
-        where completed_at >= :window_start
+        where created_at >= :window_start
       ),
       frequency as (
         select
