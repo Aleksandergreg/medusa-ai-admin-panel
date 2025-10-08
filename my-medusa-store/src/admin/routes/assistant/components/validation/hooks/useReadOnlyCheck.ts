@@ -16,9 +16,23 @@ export function useReadOnlyCheck(path: FieldPath): boolean {
     const fullPath = path.join(".");
     const fieldName = path[path.length - 1];
 
-    return (
+    // Check exact matches
+    if (
       bodyFieldReadOnly.includes(fullPath) ||
       bodyFieldReadOnly.includes(fieldName)
-    );
+    ) {
+      return true;
+    }
+
+    return bodyFieldReadOnly.some((readOnlyPath) => {
+      if (!readOnlyPath.includes("[]")) {
+        return false;
+      }
+      const pattern = readOnlyPath
+        .replace(/\./g, "\\.")
+        .replace(/\[\]/g, "\\.\\d+");
+      const regex = new RegExp(`^${pattern}$`);
+      return regex.test(fullPath);
+    });
   }, [bodyFieldReadOnly, path]);
 }
