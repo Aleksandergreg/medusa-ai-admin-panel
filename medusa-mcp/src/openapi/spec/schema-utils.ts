@@ -4,12 +4,14 @@ type BodyMeta = {
   examples: Record<string, unknown>;
   enums: Record<string, unknown[]>;
   required: Set<string>;
+  readOnlyFields: Set<string>;
 };
 
 const EMPTY_META = (): BodyMeta => ({
   examples: {},
   enums: {},
   required: new Set<string>(),
+  readOnlyFields: new Set<string>(),
 });
 
 export function resolveSchema(spec: OpenAPISpec, node: unknown): unknown {
@@ -70,6 +72,7 @@ function walkSchema(
       example?: unknown;
       examples?: unknown[];
       enum?: unknown[];
+      readOnly?: boolean;
     };
     if (s.example !== undefined) {
       meta.examples[schemaPath] = s.example;
@@ -84,6 +87,9 @@ function walkSchema(
       } else {
         meta.enums[schemaPath] = s.enum;
       }
+    }
+    if (s.readOnly === true) {
+      meta.readOnlyFields.add(schemaPath);
     }
   };
 
@@ -123,6 +129,7 @@ export function collectBodyMetadata(
   examples: Record<string, unknown>;
   enums: Record<string, unknown[]>;
   required: string[];
+  readOnlyFields: string[];
 } {
   const meta = EMPTY_META();
   walkSchema(spec, schema, "", undefined, meta);
@@ -130,5 +137,6 @@ export function collectBodyMetadata(
     examples: meta.examples,
     enums: meta.enums,
     required: Array.from(meta.required),
+    readOnlyFields: Array.from(meta.readOnlyFields),
   };
 }

@@ -7,6 +7,7 @@ type DetailsSectionProps = {
   isEditing: boolean;
   onChange?: (path: string[], value: unknown) => void;
   bodyFieldEnums?: Record<string, string[]>;
+  bodyFieldReadOnly?: string[];
 };
 
 export function DetailsSection({
@@ -15,6 +16,7 @@ export function DetailsSection({
   isEditing,
   onChange,
   bodyFieldEnums,
+  bodyFieldReadOnly,
 }: DetailsSectionProps) {
   const entries = Object.entries(data).filter(([, value]) => {
     return value !== undefined && value !== null;
@@ -82,6 +84,7 @@ export function DetailsSection({
                             path={[key, subKey]}
                             onChange={onChange}
                             bodyFieldEnums={bodyFieldEnums}
+                            bodyFieldReadOnly={bodyFieldReadOnly}
                           />
                         </div>
                       </div>
@@ -110,6 +113,7 @@ export function DetailsSection({
                   path={[key]}
                   onChange={onChange}
                   bodyFieldEnums={bodyFieldEnums}
+                  bodyFieldReadOnly={bodyFieldReadOnly}
                 />
               </div>
             </div>

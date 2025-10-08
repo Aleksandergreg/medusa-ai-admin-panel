@@ -65,7 +65,8 @@ function renderEditableField(
   value: unknown,
   path: string[],
   onChange: (path: string[], value: unknown) => void,
-  bodyFieldEnums?: Record<string, string[]>
+  bodyFieldEnums?: Record<string, string[]>,
+  bodyFieldReadOnly?: string[]
 ): React.ReactNode {
   if (value === null || value === undefined) {
     return (
@@ -92,6 +93,9 @@ function renderEditableField(
     // Check if this field has enum options
     const fullPath = path.join(".");
     const fieldName = path[path.length - 1];
+    const isReadOnly =
+      bodyFieldReadOnly?.includes(fullPath) ||
+      bodyFieldReadOnly?.includes(fieldName);
     const enumOptions =
       bodyFieldEnums?.[fullPath] || bodyFieldEnums?.[fieldName];
 
@@ -99,6 +103,21 @@ function renderEditableField(
       const stringValue = String(value);
       const valueInOptions = enumOptions.includes(stringValue);
       const selectValue = valueInOptions ? stringValue : enumOptions[0] || "";
+
+      if (isReadOnly) {
+        return (
+          <div className="flex items-center gap-2">
+            <Select value={selectValue} disabled>
+              <Select.Trigger className="w-full opacity-60">
+                <Select.Value />
+              </Select.Trigger>
+            </Select>
+            <Badge size="2xsmall" color="grey">
+              🔒 Read-only
+            </Badge>
+          </div>
+        );
+      }
 
       return (
         <Select
@@ -167,6 +186,7 @@ export function CollapsibleComplexData({
   onChange,
   path = [],
   bodyFieldEnums,
+  bodyFieldReadOnly,
 }: {
   data: unknown;
   nestLevel?: number;
@@ -174,6 +194,7 @@ export function CollapsibleComplexData({
   onChange?: (path: string[], value: unknown) => void;
   path?: string[];
   bodyFieldEnums?: Record<string, string[]>;
+  bodyFieldReadOnly?: string[];
 }) {
   const [isExpanded, setIsExpanded] = useState(nestLevel === 0);
 
@@ -285,7 +306,8 @@ export function CollapsibleComplexData({
                     value,
                     [...path, key],
                     onChange,
-                    bodyFieldEnums
+                    bodyFieldEnums,
+                    bodyFieldReadOnly
                   )}
                 </div>
               </div>

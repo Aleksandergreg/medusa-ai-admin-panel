@@ -17,6 +17,7 @@ export type ExecuteOutcome = {
     path: string;
     args: Record<string, unknown>;
     bodyFieldEnums?: Record<string, string[]>;
+    bodyFieldReadOnly?: string[];
   };
 };
 
@@ -70,8 +71,9 @@ export async function executeTool(params: {
   if (needsValidation(toolName, args)) {
     const details = extractOperationDetails(args);
 
-    // Fetch schema information including enums
+    // Fetch schema information including enums and readOnly fields
     let bodyFieldEnums: Record<string, string[]> | undefined;
+    let bodyFieldReadOnly: string[] | undefined;
     try {
       const schemaResult = await mcp.callTool("openapi.schema", {
         operationId: details.operationId,
@@ -80,10 +82,17 @@ export async function executeTool(params: {
       if (schemaResult?.content?.[0]?.text) {
         const schemaData = JSON.parse(schemaResult.content[0].text);
         bodyFieldEnums = schemaData.bodyFieldEnums || {};
+        bodyFieldReadOnly = schemaData.bodyFieldReadOnly || [];
         if (bodyFieldEnums && Object.keys(bodyFieldEnums).length > 0) {
           console.log(
             `   ✓ Extracted enum fields for ${details.operationId}:`,
             Object.keys(bodyFieldEnums)
+          );
+        }
+        if (bodyFieldReadOnly && bodyFieldReadOnly.length > 0) {
+          console.log(
+            `   ✓ Extracted readOnly fields for ${details.operationId}:`,
+            bodyFieldReadOnly
           );
         }
       }
@@ -99,7 +108,8 @@ export async function executeTool(params: {
       details.method,
       details.path,
       args,
-      bodyFieldEnums
+      bodyFieldEnums,
+      bodyFieldReadOnly
     );
 
     console.log(`   ⚠️  Operation requires validation: ${details.operationId}`);
@@ -114,6 +124,7 @@ export async function executeTool(params: {
         path: request.path,
         args: request.args,
         bodyFieldEnums: request.bodyFieldEnums,
+        bodyFieldReadOnly: request.bodyFieldReadOnly,
       },
     };
   }

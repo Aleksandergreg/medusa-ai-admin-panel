@@ -10,6 +10,7 @@ export type ValidationRequest = {
   args: Record<string, unknown>;
   timestamp: Date;
   bodyFieldEnums?: Record<string, string[]>;
+  bodyFieldReadOnly?: string[];
 };
 
 export type ValidationResponse = {

@@ -15,6 +15,7 @@ type ValidationDialogProps = {
     path: string;
     args: Record<string, unknown>;
     bodyFieldEnums?: Record<string, string[]>;
+    bodyFieldReadOnly?: string[];
   };
   onApprove: (
     id: string,
@@ -175,6 +176,7 @@ export function ValidationDialog({
               });
             }}
             bodyFieldEnums={validationRequest.bodyFieldEnums}
+            bodyFieldReadOnly={validationRequest.bodyFieldReadOnly}
           />
         </div>
 

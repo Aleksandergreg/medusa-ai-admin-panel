@@ -14,6 +14,7 @@ type EditableFieldProps = {
   path: string[];
   onChange?: (path: string[], newValue: unknown) => void;
   bodyFieldEnums?: Record<string, string[]>;
+  bodyFieldReadOnly?: string[];
 };
 
 export function EditableField({
@@ -22,6 +23,7 @@ export function EditableField({
   path,
   onChange,
   bodyFieldEnums,
+  bodyFieldReadOnly,
 }: EditableFieldProps): React.ReactNode {
   if (value === null || value === undefined) {
     if (isEditing && onChange) {
@@ -54,6 +56,29 @@ export function EditableField({
 
   if (typeof value === "string") {
     if (isEditing && onChange) {
+      // Check if this field is read-only
+      const fullPath = path.join(".");
+      const fieldName = path[path.length - 1];
+      const isReadOnly =
+        bodyFieldReadOnly?.includes(fullPath) ||
+        bodyFieldReadOnly?.includes(fieldName);
+
+      if (isReadOnly) {
+        return (
+          <div className="flex items-center gap-2">
+            <Input
+              value={value}
+              disabled
+              className="text-sm opacity-60"
+              size="small"
+            />
+            <Badge size="2xsmall" color="grey">
+              🔒 Read-only
+            </Badge>
+          </div>
+        );
+      }
+
       // Date picker for date strings
       if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
         return (
@@ -65,8 +90,6 @@ export function EditableField({
       }
 
       // Check if this field has enum options
-      const fullPath = path.join(".");
-      const fieldName = path[path.length - 1];
       const enumOptions =
         bodyFieldEnums?.[fullPath] || bodyFieldEnums?.[fieldName];
 

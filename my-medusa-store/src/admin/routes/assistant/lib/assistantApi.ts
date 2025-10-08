@@ -14,6 +14,7 @@ const ValidationRequestSchema = z.object({
   path: z.string(),
   args: z.record(z.unknown()),
   bodyFieldEnums: z.record(z.array(z.string())).optional(),
+  bodyFieldReadOnly: z.array(z.string()).optional(),
 });
 
 const AssistantResponseSchema = z.object({
