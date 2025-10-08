@@ -36,13 +36,6 @@ const DEFAULT_WINDOW_DAYS = 365;
 const DEFAULT_CHUNK_SIZE = 500;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
-type OrderColumnConfig = {
-  hasSummary: boolean;
-  hasPaidTotal: boolean;
-  hasRefundedTotal: boolean;
-  hasTotal: boolean;
-};
-
 export type RawMetricFetchOptions = {
   customerIds?: string[];
   windowDays?: number;
@@ -62,7 +55,6 @@ export type RecomputeSummary = {
 
 class RfmModuleService extends MedusaService({}) {
   private readonly options: RfmModuleOptions;
-  private orderColumnConfigPromise: Promise<OrderColumnConfig> | null = null;
 
   constructor(
     container: Record<string, unknown>,
@@ -82,69 +74,6 @@ class RfmModuleService extends MedusaService({}) {
 
   private get db(): Knex {
     return this.__container__[ContainerRegistrationKeys.PG_CONNECTION] as Knex;
-  }
-
-  private async getOrderColumnConfig(): Promise<OrderColumnConfig> {
-    if (this.orderColumnConfigPromise) {
-      return this.orderColumnConfigPromise;
-    }
-
-    this.orderColumnConfigPromise = (async () => {
-      const searchPath =
-        (this.db.client.config.searchPath as string | undefined)
-          ?.split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean) ?? [];
-
-      const candidateSchemas = searchPath.length ? searchPath : ["public"];
-
-      let columns: Set<string> | null = null;
-      for (const schemaName of candidateSchemas) {
-        const rows = await this.db
-          .select("column_name")
-          .from("information_schema.columns")
-          .where({
-            table_name: "order",
-            table_schema: schemaName
-          });
-        if (rows.length) {
-          columns = new Set(
-            rows.map((row: { column_name: string }) =>
-              String(row.column_name).toLowerCase()
-            )
-          );
-          break;
-        }
-      }
-
-      if (!columns) {
-        const fallbackRows = await this.db
-          .select("column_name")
-          .from("information_schema.columns")
-          .where({ table_name: "order" });
-        columns = new Set(
-          fallbackRows.map((row: { column_name: string }) =>
-            String(row.column_name).toLowerCase()
-          )
-        );
-      }
-
-      const columnSet = columns ?? new Set<string>();
-
-      const hasSummary = columnSet.has("summary");
-      const hasPaidTotal = columnSet.has("paid_total");
-      const hasRefundedTotal = columnSet.has("refunded_total");
-      const hasTotal = columnSet.has("total");
-
-      return {
-        hasSummary,
-        hasPaidTotal,
-        hasRefundedTotal,
-        hasTotal
-      };
-    })();
-
-    return this.orderColumnConfigPromise;
   }
 
   get reportingCurrency(): string {
@@ -291,25 +220,29 @@ class RfmModuleService extends MedusaService({}) {
       bindings.customer_ids = customerIds;
     }
 
-    const paidExpr = await this.buildPaidTotalExpression();
-    const refundedExpr = await this.buildRefundedTotalExpression();
-
     const sql = `
       with target_customers as (
         select id
         from customer
         ${customerFilter}
       ),
+      item_totals as (
+        select
+          oi.order_id,
+          sum(coalesce(oi.unit_price, 0) * coalesce(oi.quantity, 0)) as item_total_cents
+        from order_item oi
+        group by oi.order_id
+      ),
       completed_orders as (
         select
           o.customer_id,
           o.created_at,
           o.currency_code,
-          ${paidExpr} as paid_total_cents,
-          ${refundedExpr} as refunded_total_cents
+          coalesce(it.item_total_cents, 0)::bigint as paid_total_cents,
+          0::bigint as refunded_total_cents
         from "order" o
-        where o.status = 'completed'
-          and o.customer_id is not null
+        left join item_totals it on it.order_id = o.id
+        where o.customer_id is not null
           ${orderFilter}
       ),
       last_order as (
@@ -490,31 +423,6 @@ class RfmModuleService extends MedusaService({}) {
       windowStart: resolvedWindowStart ?? new Date().toISOString(),
       windowDays: resolvedWindowDays
     };
-  }
-
-  private async buildPaidTotalExpression(): Promise<string> {
-    const config = await this.getOrderColumnConfig();
-    if (config.hasPaidTotal) {
-      return "coalesce(o.paid_total::bigint, 0)";
-    }
-    if (config.hasSummary) {
-      return "coalesce((o.summary ->> 'paid_total')::bigint, 0)";
-    }
-    if (config.hasTotal) {
-      return "coalesce(o.total::bigint, 0)";
-    }
-    return "0::bigint";
-  }
-
-  private async buildRefundedTotalExpression(): Promise<string> {
-    const config = await this.getOrderColumnConfig();
-    if (config.hasRefundedTotal) {
-      return "coalesce(o.refunded_total::bigint, 0)";
-    }
-    if (config.hasSummary) {
-      return "coalesce((o.summary ->> 'refunded_total')::bigint, 0)";
-    }
-    return "0::bigint";
   }
 }
 
