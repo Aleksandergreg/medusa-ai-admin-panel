@@ -77,6 +77,17 @@ class RfmModuleService extends MedusaService({}) {
     return this.__container__[ContainerRegistrationKeys.PG_CONNECTION] as Knex;
   }
 
+  private async loadQuery(): Promise<any> {
+    try {
+      return this.__container__.resolve?.(
+        ContainerRegistrationKeys.QUERY
+      );
+    } catch {
+      // Query is not available in the container (e.g., CLI context).
+      return null;
+    }
+  }
+
   private async getTableColumns(tableName: string): Promise<Set<string>> {
     const normalized = tableName.toLowerCase();
     const cached = this.columnCache.get(normalized);
@@ -101,65 +112,34 @@ class RfmModuleService extends MedusaService({}) {
     return columns;
   }
 
-  private async resolveOrderSummaryMeta(): Promise<
-    | {
-        joinClause: string;
-        paidExpr: (fallback: string) => string;
-        refundedExpr: string;
+  private findColumn(
+    columns: Set<string>,
+    candidates: string[],
+    fallback?: (name: string) => boolean
+  ): string | null {
+    for (const candidate of candidates) {
+      if (columns.has(candidate)) {
+        return candidate;
       }
-    | null
-  > {
-    const columns = await this.getTableColumns("order_summary");
-    if (!columns.size) {
-      return null;
     }
-
-    const paidCandidate = [
-      "current_order_total",
-      "paid_total",
-      "transaction_total",
-      "raw_paid_total"
-    ].find((column) => columns.has(column));
-
-    const refundedCandidate = [
-      "refunded_total",
-      "raw_refunded_total"
-    ].find((column) => columns.has(column));
-
-    const joinClause =
-      paidCandidate || refundedCandidate
-        ? 'left join "order_summary" os on os.order_id = o.id'
-        : "";
-
-    const paidExpr = (fallback: string) =>
-      paidCandidate
-        ? `coalesce(os."${paidCandidate}", ${fallback})`
-        : fallback;
-
-    const refundedExpr = refundedCandidate
-      ? `coalesce(os."${refundedCandidate}", 0)::bigint`
-      : "0::bigint";
-
-    return {
-      joinClause,
-      paidExpr,
-      refundedExpr
-    };
+    if (fallback) {
+      for (const column of columns) {
+        if (fallback(column)) {
+          return column;
+        }
+      }
+    }
+    return null;
   }
 
-  private async resolveOrderLineItemMeta(): Promise<
-    | {
-        cte: string;
-        joinClause: string;
-        fallbackExpr: string;
-      }
-    | null
-  > {
+  private async buildLineItemSource(): Promise<{ unionSql: string | null }> {
     const candidateTables = [
       "order_line_item",
       "order_item",
       "order_items"
     ];
+
+    const selects: string[] = [];
 
     for (const table of candidateTables) {
       const columns = await this.getTableColumns(table);
@@ -167,39 +147,195 @@ class RfmModuleService extends MedusaService({}) {
         continue;
       }
 
-      const orderColumn = ["order_id", "order", "orderid"].find((column) =>
-        columns.has(column)
+      const orderColumn = this.findColumn(columns, ["order_id"], (name) =>
+        name.endsWith("_order_id") || name === "order"
       );
-      const unitPriceColumn = [
-        "unit_price",
-        "unitprice",
-        "amount"
-      ].find((column) => columns.has(column));
-      const quantityColumn = ["quantity", "qty"].find((column) =>
-        columns.has(column)
+      const unitPriceColumn = this.findColumn(
+        columns,
+        ["unit_price", "unitprice", "amount", "unit_amount"],
+        (name) => name.includes("unit") && name.includes("price")
+      );
+      const quantityColumn = this.findColumn(
+        columns,
+        ["quantity", "qty"],
+        (name) => name.includes("quantity")
       );
 
       if (!orderColumn || !unitPriceColumn || !quantityColumn) {
         continue;
       }
 
-      const quotedTable = `"${table}"`;
-      const cte = `item_totals as (
-        select
-          oli."${orderColumn}" as order_id,
-          sum(coalesce(oli."${unitPriceColumn}", 0) * coalesce(oli."${quantityColumn}", 0)) as item_total_cents
-        from ${quotedTable} oli
-        group by oli."${orderColumn}"
-      )`;
-
-      return {
-        cte,
-        joinClause: "left join item_totals it on it.order_id = o.id",
-        fallbackExpr: "coalesce(it.item_total_cents, 0)"
-      };
+      const selectSql = `select
+          "${table}"."${orderColumn}" as order_id,
+          "${table}"."${unitPriceColumn}" as unit_price,
+          "${table}"."${quantityColumn}" as quantity
+        from "${table}"`;
+      selects.push(selectSql);
     }
 
+    if (!selects.length) {
+      return { unionSql: null };
+    }
+
+    const unionSql = selects.join("\n        union all\n        ");
+    return { unionSql };
+  }
+
+  private toNumber(value: unknown): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        return null;
+      }
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
     return null;
+  }
+
+  private extractOrderMonetary(order: any): number {
+    const summary = order?.summary ?? {};
+    const monetaryCandidates = [
+      summary.current_order_total,
+      summary.current_total,
+      summary.transaction_total,
+      summary.paid_total,
+      summary.raw_paid_total,
+      summary.total
+    ];
+
+    for (const candidate of monetaryCandidates) {
+      const parsed = this.toNumber(candidate);
+      if (parsed !== null) {
+        return Math.round(parsed);
+      }
+    }
+
+    const items = Array.isArray(order?.items) ? order.items : [];
+    const itemSum = items.reduce((acc: number, item: any) => {
+      const unit = this.toNumber(item?.unit_price) ?? 0;
+      const quantity = Number(item?.quantity ?? 0);
+      return acc + unit * quantity;
+    }, 0);
+
+    return Math.round(itemSum);
+  }
+
+  private extractOrderRefund(order: any): number {
+    const summary = order?.summary ?? {};
+    const refundCandidates = [
+      summary.refunded_total,
+      summary.raw_refunded_total,
+      summary.return_total
+    ];
+
+    for (const candidate of refundCandidates) {
+      const parsed = this.toNumber(candidate);
+      if (parsed !== null) {
+        return Math.round(parsed);
+      }
+    }
+
+    return 0;
+  }
+
+  private async fetchOrdersViaQuery(
+    customerId: string,
+    windowStart: Date
+  ): Promise<any[] | null> {
+    const query = await this.loadQuery();
+    if (!query) {
+      return null;
+    }
+
+    const take = 200;
+    let skip = 0;
+    const orders: any[] = [];
+
+    while (true) {
+      const response = await query.graph({
+        entity: "order",
+        fields: [
+          "id",
+          "customer_id",
+          "created_at",
+          "summary.current_order_total",
+          "summary.current_total",
+          "summary.transaction_total",
+          "summary.paid_total",
+          "summary.raw_paid_total",
+          "summary.refunded_total",
+          "summary.raw_refunded_total",
+          "items.unit_price",
+          "items.quantity"
+        ],
+        filters: {
+          customer_id: customerId
+        },
+        pagination: {
+          skip,
+          take
+        }
+      });
+
+      const batch = Array.isArray(response?.data) ? response.data : [];
+      if (!batch.length) {
+        break;
+      }
+
+      for (const order of batch) {
+        const createdAt = order?.created_at ? new Date(order.created_at) : null;
+        if (createdAt && createdAt >= windowStart) {
+          orders.push(order);
+        }
+      }
+
+      if (batch.length < take) {
+        break;
+      }
+
+      skip += take;
+    }
+
+    return orders;
+  }
+
+  private async fetchOrdersViaSql(
+    customerId: string,
+    windowStart: Date
+  ): Promise<any[]> {
+    const { unionSql } = await this.buildLineItemSource();
+
+    if (!unionSql) {
+      return [];
+    }
+
+    const sql = `
+      select
+        o.id,
+        o.created_at,
+        coalesce(sum(li.unit_price * li.quantity * 100), 0) as item_total_cents
+      from "order" o
+      join (
+        ${unionSql}
+      ) as li on li.order_id = o.id
+      where o.customer_id = :customerId
+        and o.created_at >= :windowStart
+      group by o.id
+    `;
+
+    const results = await this.db.raw(sql, {
+      customerId,
+      windowStart: windowStart.toISOString()
+    });
+
+    return results.rows ?? [];
   }
 
   get reportingCurrency(): string {
@@ -297,139 +433,63 @@ class RfmModuleService extends MedusaService({}) {
     return { windowStart, windowDays };
   }
 
-  private toRawMetricRecord(row: Record<string, unknown>): RawMetricRecord {
-    const parseNumber = (value: unknown): number => {
-      if (value === null || value === undefined) {
-        return 0;
-      }
-      if (typeof value === "number") {
-        return Number.isFinite(value) ? value : 0;
-      }
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    return {
-      customerId: String(row.customer_id),
-      recencyDays:
-        row.recency_days === null || row.recency_days === undefined
-          ? null
-          : parseNumber(row.recency_days),
-      frequency365d: parseNumber(row.frequency_365d),
-      monetary365dCents: parseNumber(row.monetary_365d_cents)
-    };
-  }
-
   private async fetchRawMetrics(
     options: RawMetricFetchOptions = {}
   ): Promise<{ windowStart: Date; windowDays: number; records: RawMetricRecord[] }> {
     const { windowStart, windowDays } = this.resolveWindowStart(options);
     const customerIds = Array.isArray(options.customerIds)
       ? options.customerIds.filter((id) => typeof id === "string" && id.trim())
-      : undefined;
+      : [];
 
-    const bindings: Record<string, unknown> = {
-      window_start: windowStart.toISOString()
-    };
-
-    const customerFilter =
-      customerIds && customerIds.length
-        ? "where id = any(:customer_ids)"
-        : "";
-
-    const orderFilter =
-      customerIds && customerIds.length
-        ? "and o.customer_id = any(:customer_ids)"
-        : "";
-
-    if (customerIds && customerIds.length) {
-      bindings.customer_ids = customerIds;
+    if (!customerIds.length) {
+      return { windowStart, windowDays, records: [] };
     }
 
-    const summaryMeta = await this.resolveOrderSummaryMeta();
-    const lineItemMeta = await this.resolveOrderLineItemMeta();
+    const records: RawMetricRecord[] = [];
 
-    const ctes = [
-      `target_customers as (
-        select id
-        from customer
-        ${customerFilter}
-      )`,
-      lineItemMeta?.cte ?? null,
-      `completed_orders as (
-        select
-          o.customer_id,
-          o.created_at,
-          o.currency_code,
-          ${(() => {
-            const base = lineItemMeta?.fallbackExpr
-              ? `${lineItemMeta.fallbackExpr}`
-              : "0";
-            const withSummary = summaryMeta?.paidExpr
-              ? summaryMeta.paidExpr(base)
-              : base;
-            return `${withSummary}::bigint`;
-          })()} as paid_total_cents,
-          ${summaryMeta?.refundedExpr ?? "0::bigint"} as refunded_total_cents
-        from "order" o
-        ${lineItemMeta?.joinClause ?? ""}
-        ${summaryMeta?.joinClause ?? ""}
-        where o.customer_id is not null
-          ${orderFilter}
-      )`,
-      `last_order as (
-        select
-          customer_id,
-          max(created_at) as last_completed_at
-        from completed_orders
-        group by customer_id
-      )`,
-      `window_orders as (
-        select
-          customer_id,
-          created_at,
-          paid_total_cents,
-          refunded_total_cents,
-          (paid_total_cents - refunded_total_cents) as net_total_cents
-        from completed_orders
-        where created_at >= :window_start
-      )`,
-      `frequency as (
-        select
-          customer_id,
-          count(*) as order_count
-        from window_orders
-        group by customer_id
-      )`,
-      `monetary as (
-        select
-          customer_id,
-          coalesce(sum(net_total_cents), 0) as net_total_cents
-        from window_orders
-        group by customer_id
-      )`
-    ].filter(Boolean) as string[];
+    for (const customerId of customerIds) {
+      const viaQuery = await this.fetchOrdersViaQuery(customerId, windowStart);
+      const viaSql =
+        viaQuery === null
+          ? await this.fetchOrdersViaSql(customerId, windowStart)
+          : [];
+      const orders = viaQuery ?? viaSql;
 
-    const sql = `
-      with ${ctes.join(",\n")} 
-      select
-        c.id as customer_id,
-        case
-          when l.last_completed_at is null then null
-          else extract(day from (now() - l.last_completed_at))::int
-        end as recency_days,
-        coalesce(f.order_count, 0) as frequency_365d,
-        coalesce(m.net_total_cents, 0) as monetary_365d_cents
-      from target_customers c
-      left join last_order l on l.customer_id = c.id
-      left join frequency f on f.customer_id = c.id
-      left join monetary m on m.customer_id = c.id
-      order by c.id asc
-    `;
+      let latestOrderMs: number | null = null;
+      let frequency = 0;
+      let monetary = 0;
 
-    const raw = await this.db.raw(sql, bindings);
-    const rows: Record<string, unknown>[] = raw.rows ?? [];
-    const records = rows.map((row) => this.toRawMetricRecord(row));
+      for (const order of orders) {
+        const createdAt = order?.created_at ? new Date(order.created_at) : null;
+        if (createdAt) {
+          const ms = createdAt.getTime();
+          if (!Number.isNaN(ms)) {
+            latestOrderMs = latestOrderMs === null ? ms : Math.max(latestOrderMs, ms);
+          }
+        }
+
+        const orderTotal = viaQuery
+          ? this.extractOrderMonetary(order)
+          : this.toNumber(order?.item_total_cents) ?? 0;
+        const refundTotal = viaQuery
+          ? this.extractOrderRefund(order)
+          : 0;
+        monetary += Math.max(0, orderTotal - refundTotal);
+        frequency += 1;
+      }
+
+      const recencyDays =
+        latestOrderMs === null
+          ? null
+          : Math.max(0, Math.floor((Date.now() - latestOrderMs) / DAY_IN_MS));
+
+      records.push({
+        customerId,
+        recencyDays,
+        frequency365d: frequency,
+        monetary365dCents: monetary
+      });
+    }
 
     return { windowStart, windowDays, records };
   }
