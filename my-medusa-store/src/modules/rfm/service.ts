@@ -93,7 +93,18 @@ class RfmModuleService extends MedusaService({}) {
   }
 
   get configuration(): RfmModuleOptions {
-    return { ...this.options };
+    const clone = (segments?: SegmentDefinition[]) =>
+      segments?.map((segment) => ({
+        ...segment,
+        all: segment.all?.map((condition) => ({ ...condition })),
+        any: segment.any?.map((condition) => ({ ...condition })),
+        none: segment.none?.map((condition) => ({ ...condition }))
+      }));
+
+    return {
+      ...this.options,
+      segments: clone(this.options.segments)
+    };
   }
 
   computeScores(
