@@ -163,101 +163,49 @@ const normalizeErrorMessage = (
   return trimmed.length ? trimmed : fallback;
 };
 
-const generateSuccessMessage = (
-  validation: {
-    method: string;
-    path: string;
-    operationId: string;
-    args: Record<string, unknown>;
-  },
-  payload: OpenApiExecutionPayload | null
-): string => {
-  const method = validation.method.toUpperCase();
-  const data = payload?.data;
+const generateSuccessMessage = async (
+  payload: OpenApiExecutionPayload | null,
+  assistantService: AssistantModuleService,
+  actorId: string
+): Promise<string | null> => {
+  try {
+    // Get the user's last message to understand the original intent
+    const conversation = await assistantService.getConversation(actorId);
+    const lastUserMessage = conversation?.history
+      .slice()
+      .reverse()
+      .find((entry) => entry.role === "user");
 
-  // Determine action type
-  let action = "modified";
-  if (method === "POST") {
-    action = "created";
-  } else if (method === "DELETE") {
-    action = "deleted";
-  } else if (method === "PUT" || method === "PATCH") {
-    action = "updated";
-  }
+    const resultData = payload?.data
+      ? JSON.stringify(payload.data, null, 2)
+      : "No data returned";
 
-  // Extract resource type from path or operationId
-  let resourceType = "item";
-  const pathMatch = validation.path.match(/\/admin\/([^/]+)/);
-  if (pathMatch) {
-    resourceType = pathMatch[1].replace(/-/g, " ");
-  }
+    // Create a prompt asking the AI to summarize the result naturally
+    // The AI will determine what action was performed based on the context
+    const prompt = `The user's request was successfully handled.
+Original request: "${lastUserMessage?.content || "An operation"}"
+Result data:
+\`\`\`json
+${resultData}
+\`\`\`
+Please provide a brief, natural, human-friendly summary (2-4 sentences) of what was successfully done, highlighting only the most important details. Be conversational and concise. Start with a success emoji (e.g., ✅ or 🎉).`;
 
-  // Build the message
-  let message = `## ✅ Successfully ${action} ${resourceType}\n\n`;
+    // Use the assistant service to generate a natural response.
+    // A temporary actorId is used to ensure this summarization step doesn't get saved to the user's main chat history.
+    const result = await assistantService.prompt({
+      prompt,
+      actorId: `${actorId}_summary`,
+    });
 
-  // Add details about what was created/deleted/updated
-  if (data && typeof data === "object") {
-    message += "**Details:**\n\n";
-
-    // Format the data in a readable way
-    const formatValue = (value: unknown): string => {
-      if (value === null || value === undefined) return "N/A";
-      if (typeof value === "boolean") return value ? "Yes" : "No";
-      if (typeof value === "object" && !Array.isArray(value)) {
-        return JSON.stringify(value, null, 2);
-      }
-      if (Array.isArray(value)) {
-        return value.map((v) => formatValue(v)).join(", ");
-      }
-      return String(value);
-    };
-
-    // Key fields to display prominently
-    const importantFields = [
-      "id",
-      "code",
-      "title",
-      "name",
-      "type",
-      "value",
-      "handle",
-      "status",
-      "discount",
-      "amount",
-    ];
-    const displayedFields = new Set<string>();
-
-    // Show important fields first
-    for (const field of importantFields) {
-      if (field in data) {
-        const value = (data as Record<string, unknown>)[field];
-        message += `- **${
-          field.charAt(0).toUpperCase() + field.slice(1)
-        }**: ${formatValue(value)}\n`;
-        displayedFields.add(field);
-      }
+    if (result.answer && !result.answer.includes("Sorry")) {
+      return result.answer;
     }
-
-    // Show other fields
-    const otherFields = Object.keys(data).filter(
-      (key) => !displayedFields.has(key) && !key.startsWith("_")
-    );
-    if (otherFields.length > 0) {
-      message += "\n**Additional Fields:**\n\n";
-      for (const field of otherFields.slice(0, 10)) {
-        // Limit to 10 additional fields
-        const value = (data as Record<string, unknown>)[field];
-        message += `- **${
-          field.charAt(0).toUpperCase() + field.slice(1)
-        }**: ${formatValue(value)}\n`;
-      }
-    }
+  } catch (err) {
+    console.error("Failed to generate AI summary:", err);
   }
 
-  message +=
-    "\n\nThe operation has been completed successfully. You can continue with your next task.";
-
-  return message;
+  // Return null if the AI summary fails
+  return null;
 };
 
 export async function POST(
@@ -305,8 +253,6 @@ export async function POST(
             actorId,
             rejectionMessage
           );
-
-          console.log("Successfully saved rejection message to database");
         } catch (err) {
           console.error(
             "Failed to save rejection message to conversation:",
@@ -334,16 +280,11 @@ export async function POST(
     let argsToExecute = validation.args;
 
     if (editedData) {
-      console.log("Original args:", JSON.stringify(validation.args, null, 2));
-      console.log("Edited data:", JSON.stringify(editedData, null, 2));
-
       // Replace the body content with edited data
       argsToExecute = {
         ...validation.args,
         body: editedData,
       };
-
-      console.log("Args to execute:", JSON.stringify(argsToExecute, null, 2));
     }
 
     const result = await mcp.callTool("openapi.execute", argsToExecute);
@@ -393,20 +334,28 @@ export async function POST(
     // Mark validation as approved
     validationManager.respondToValidation({ id, approved: true });
 
-    // Generate a descriptive success message
-    const successMessage = generateSuccessMessage(validation, payload);
-
     // Save the success message to the conversation history
     const actorId = getActorId(req);
+    let responseMessage = "✅ Successfully completed the operation.";
+
     if (actorId) {
       try {
         const assistantService: AssistantModuleService =
           req.scope.resolve("assistant");
 
-        // Update the last message (which has the user's question) with the success answer
-        await assistantService.updateLastMessageAnswer(actorId, successMessage);
+        // Generate a descriptive, human-readable success message using the AI
+        const aiSummary = await generateSuccessMessage(
+          payload,
+          assistantService,
+          actorId
+        );
 
-        console.log("Successfully saved success message to database");
+        // Only save to DB and update response if AI summary is successful
+        if (aiSummary) {
+          // Update the last message (which has the user's question) with the success answer
+          await assistantService.updateLastMessageAnswer(actorId, aiSummary);
+          responseMessage = aiSummary; // Use AI summary for the response
+        }
       } catch (err) {
         console.error("Failed to save success message to conversation:", err);
         // Don't fail the request if we can't save to history
@@ -416,7 +365,7 @@ export async function POST(
     return res.json({
       status: "approved",
       result,
-      message: successMessage,
+      message: responseMessage,
     });
   } catch (e: unknown) {
     console.error("\n--- Validation Route Error ---\n", e);
