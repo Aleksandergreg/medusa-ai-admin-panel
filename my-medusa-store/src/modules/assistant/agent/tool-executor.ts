@@ -215,7 +215,7 @@ async function buildResourcePreview(params: {
     return summarizeEntity(entity);
   } catch (error) {
     console.warn(
-      `   Could not fetch preview for ${operationId} (${previewOperationId}):`,
+      `  Could not fetch preview for ${operationId} (${previewOperationId}):`,
       error
     );
     return undefined;
