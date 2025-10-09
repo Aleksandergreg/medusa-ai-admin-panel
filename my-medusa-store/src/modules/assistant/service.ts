@@ -14,6 +14,7 @@ import {
   PromptResult,
   ValidationRequest,
 } from "./lib/types";
+import { generateId } from "./utils/idGenerator";
 
 const CONVERSATION_TABLE = "conversation_session";
 const MESSAGE_TABLE = "conversation_message";
@@ -155,9 +156,7 @@ class AssistantModuleService extends MedusaService({}) {
       .first();
 
     if (!session) {
-      const sessionId = `sess_${Date.now()}_${Math.random()
-        .toString(36)
-        .substring(2, 15)}`;
+      const sessionId = generateId("sess");
       await this.db(CONVERSATION_TABLE).insert({
         id: sessionId,
         actor_id: actorId,
@@ -184,9 +183,7 @@ class AssistantModuleService extends MedusaService({}) {
       const lastAnswer = history[history.length - 1];
 
       if (lastQuestion.role === "user" && lastAnswer.role === "assistant") {
-        const messageId = `msg_${Date.now()}_${Math.random()
-          .toString(36)
-          .substring(2, 15)}`;
+        const messageId = generateId("msg");
         await this.db(MESSAGE_TABLE).insert({
           id: messageId,
           session_id: session.id,

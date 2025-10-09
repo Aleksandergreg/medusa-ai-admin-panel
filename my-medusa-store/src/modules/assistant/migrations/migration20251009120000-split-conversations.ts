@@ -1,4 +1,5 @@
 import { Migration } from "@mikro-orm/migrations";
+import { generateId } from "../utils/idGenerator";
 
 export class Migration20251009120000 extends Migration {
   async up(): Promise<void> {
@@ -28,9 +29,7 @@ export class Migration20251009120000 extends Migration {
 
     for (const session of sessions) {
       // Generate a new session ID
-      const sessionId = `sess_${Date.now()}_${Math.random()
-        .toString(36)
-        .substring(2, 15)}`;
+      const sessionId = generateId("sess");
 
       // Update the session with its new ID
       await knex("conversation_session")
@@ -57,15 +56,12 @@ export class Migration20251009120000 extends Migration {
 
         // Extract question-answer pairs
         let currentQuestion: string | null = null;
-        let messageCounter = 0;
 
         for (const entry of historyArray) {
           if (entry.role === "user") {
             // If we have a pending question without an answer, save it
             if (currentQuestion) {
-              const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random()
-                .toString(36)
-                .substring(2, 9)}`;
+              const messageId = generateId("msg");
               await knex("conversation_message").insert({
                 id: messageId,
                 session_id: sessionId,
@@ -76,9 +72,7 @@ export class Migration20251009120000 extends Migration {
             currentQuestion = entry.content;
           } else if (entry.role === "assistant" && currentQuestion) {
             // Save the question-answer pair
-            const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random()
-              .toString(36)
-              .substring(2, 9)}`;
+            const messageId = generateId("msg");
             await knex("conversation_message").insert({
               id: messageId,
               session_id: sessionId,
@@ -91,9 +85,7 @@ export class Migration20251009120000 extends Migration {
 
         // If there's a remaining question without an answer
         if (currentQuestion) {
-          const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random()
-            .toString(36)
-            .substring(2, 9)}`;
+          const messageId = generateId("msg");
           await knex("conversation_message").insert({
             id: messageId,
             session_id: sessionId,
