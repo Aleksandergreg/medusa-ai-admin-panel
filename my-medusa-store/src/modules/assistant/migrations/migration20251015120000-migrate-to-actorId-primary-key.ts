@@ -3,34 +3,30 @@ import { Migration } from "@mikro-orm/migrations";
 export class Migration20251015120000 extends Migration {
   override async up(): Promise<void> {
     // Deduplicate conversation_session rows by actor_id, keeping only the most recent session per actor.
-    // The following query uses a CTE to rank sessions by updated_at and session_id, then deletes all but the top-ranked session for each actor.
+    // The following query uses a CTE to rank sessions by updated_at, then deletes all but the top-ranked session for each actor using the internal ctid.
     this.addSql(`
       with ranked_sessions as (
         select
-          session_id,
-          row_number() over (partition by actor_id order by updated_at desc, session_id desc) as row_num
+          ctid,
+          row_number() over (partition by actor_id order by updated_at desc) as row_num
         from "conversation_session"
       )
       delete from "conversation_session"
-      where session_id in (
-        select session_id from ranked_sessions where row_num > 1
+      where ctid in (
+        select ctid from ranked_sessions where row_num > 1
       );
     `);
 
-    this.addSql(
-      'drop index if exists "conversation_session_actor_id_idx";'
-    );
+    this.addSql('drop index if exists "conversation_session_actor_id_idx";');
 
-    this.addSql(
-      'drop index if exists "conversation_session_actor_id_unique";'
-    );
+    this.addSql('drop index if exists "conversation_session_actor_id_unique";');
 
     this.addSql(
       'alter table "conversation_session" drop constraint if exists "conversation_session_pkey";'
     );
 
     this.addSql(
-      'alter table "conversation_session" drop column if exists "session_id";'
+      'alter table "conversation_session" drop column if exists "id";'
     );
 
     this.addSql(
