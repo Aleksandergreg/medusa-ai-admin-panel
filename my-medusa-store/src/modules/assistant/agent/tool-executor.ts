@@ -49,14 +49,14 @@ function extractOperationDetails(args: Record<string, unknown>): {
 
   // Extract method from operationId (e.g., AdminPostPromotions -> POST)
   const methodMatch = operationId.match(/Admin(Post|Delete|Put|Patch)/i);
-  const method = methodMatch ? methodMatch[1].toUpperCase() : "POST";
+  const inferredMethod = methodMatch ? methodMatch[1].toUpperCase() : "POST";
 
   // Simple path extraction (this could be improved with actual operation lookup)
   const path = `/admin/${operationId
     .replace(/^Admin(Post|Delete|Put|Patch)/i, "")
     .toLowerCase()}`;
 
-  return { operationId, method, path };
+  return { operationId, method: inferredMethod, path };
 }
 
 export async function executeTool(params: {
@@ -69,6 +69,8 @@ export async function executeTool(params: {
   // Check if this operation needs validation
   if (needsValidation(toolName, args)) {
     const details = extractOperationDetails(args);
+    let operationMethod = details.method;
+    let operationPath = details.path;
 
     // Fetch schema information including enums and readOnly fields
     let bodyFieldEnums: Record<string, string[]> | undefined;
@@ -82,6 +84,12 @@ export async function executeTool(params: {
         const schemaData = JSON.parse(schemaResult.content[0].text);
         bodyFieldEnums = schemaData.bodyFieldEnums || {};
         bodyFieldReadOnly = schemaData.bodyFieldReadOnly || [];
+        if (typeof schemaData.method === "string" && schemaData.method.length) {
+          operationMethod = schemaData.method.toUpperCase();
+        }
+        if (typeof schemaData.path === "string" && schemaData.path.length) {
+          operationPath = schemaData.path;
+        }
       }
     } catch (error) {
       console.warn(
@@ -92,8 +100,8 @@ export async function executeTool(params: {
 
     const { request } = validationManager.createValidationRequest(
       details.operationId,
-      details.method,
-      details.path,
+      operationMethod,
+      operationPath,
       args,
       bodyFieldEnums,
       bodyFieldReadOnly
