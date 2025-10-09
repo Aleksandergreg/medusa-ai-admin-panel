@@ -22,3 +22,46 @@ export type InitialOperation = {
   summary?: string;
   tags?: string[];
 };
+
+// Service Layer Types
+
+export type PromptInput = {
+  prompt: string;
+  actorId: string;
+};
+
+
+export type ValidationRequest = {
+  id: string;
+  operationId: string;
+  method: string;
+  path: string;
+  args: Record<string, unknown>;
+};
+
+
+export type PromptResult = {
+  answer: string;
+  history: ConversationEntry[];
+  updatedAt: Date;
+  validationRequest?: ValidationRequest;
+};
+
+// Database Row Types
+
+
+export type ConversationRow = {
+  id: string;
+  actor_id: string;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+
+export type MessageRow = {
+  id: string;
+  session_id: string;
+  question: string;
+  answer: string | null;
+  created_at: Date | string;
+};

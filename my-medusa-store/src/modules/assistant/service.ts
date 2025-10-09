@@ -5,33 +5,32 @@ import {
 import type { Knex } from "knex";
 import { askAgent } from "./agent/ask";
 import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
-import { ConversationEntry, HistoryEntry } from "./lib/types";
-
-type PromptInput = {
-  prompt: string;
-  actorId: string;
-};
-
-type PromptResult = {
-  answer: string;
-  history: ConversationEntry[];
-  updatedAt: Date;
-  validationRequest?: {
-    id: string;
-    operationId: string;
-    method: string;
-    path: string;
-    args: Record<string, unknown>;
-  };
-};
-
-type ConversationRow = {
-  actor_id: string;
-  history: unknown;
-  updated_at: Date | string | null;
-};
+import {
+  ConversationEntry,
+  ConversationRow,
+  HistoryEntry,
+  MessageRow,
+  PromptInput,
+  PromptResult,
+  ValidationRequest,
+} from "./lib/types";
+import { generateId } from "./utils/idGenerator";
 
 const CONVERSATION_TABLE = "conversation_session";
+const MESSAGE_TABLE = "conversation_message";
+
+// Type guard for validation request
+function isValidationRequest(data: unknown): data is ValidationRequest {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "id" in data &&
+    "operationId" in data &&
+    "method" in data &&
+    "path" in data &&
+    "args" in data
+  );
+}
 
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
@@ -90,19 +89,9 @@ class AssistantModuleService extends MedusaService({}) {
     await this.persistConversation(actorId, finalHistory, updatedAt);
 
     // Check if there's validation data in agent result
-    const validationData =
-      typeof agentResult.data === "object" &&
-      agentResult.data !== null &&
-      "id" in agentResult.data &&
-      "operationId" in agentResult.data
-        ? (agentResult.data as {
-            id: string;
-            operationId: string;
-            method: string;
-            path: string;
-            args: Record<string, unknown>;
-          })
-        : undefined;
+    const validationData = isValidationRequest(agentResult.data)
+      ? agentResult.data
+      : undefined;
 
     return {
       answer,
@@ -121,57 +110,31 @@ class AssistantModuleService extends MedusaService({}) {
       return null;
     }
 
-    const row = await this.db<ConversationRow>(CONVERSATION_TABLE)
+    const session = await this.db<ConversationRow>(CONVERSATION_TABLE)
       .where({ actor_id: resolvedActorId })
       .orderBy("updated_at", "desc")
       .first();
 
-    if (!row) {
+    if (!session) {
       return null;
     }
 
+    const messages = await this.db<MessageRow>(MESSAGE_TABLE)
+      .where({ session_id: session.id })
+      .orderBy("created_at", "asc");
+
+    const history: ConversationEntry[] = [];
+    for (const message of messages) {
+      history.push({ role: "user", content: message.question });
+      if (message.answer) {
+        history.push({ role: "assistant", content: message.answer });
+      }
+    }
+
     return {
-      history: this.deserializeHistory(row.history),
-      updatedAt: row.updated_at ? new Date(row.updated_at) : null,
+      history,
+      updatedAt: session.updated_at ? new Date(session.updated_at) : null,
     };
-  }
-
-  private deserializeHistory(raw: unknown): ConversationEntry[] {
-    if (!raw) {
-      return [];
-    }
-
-    let parsed = raw;
-    if (typeof raw === "string") {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return [];
-      }
-    }
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    const normalized: ConversationEntry[] = [];
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-
-      const role = (item as { role?: unknown }).role;
-      const content = (item as { content?: unknown }).content;
-
-      if (
-        (role === "user" || role === "assistant") &&
-        typeof content === "string"
-      ) {
-        normalized.push({ role, content });
-      }
-    }
-
-    return normalized;
   }
 
   private toAgentHistory(entries: ConversationEntry[]): HistoryEntry[] {
@@ -187,19 +150,49 @@ class AssistantModuleService extends MedusaService({}) {
     history: ConversationEntry[],
     updatedAt: Date
   ): Promise<void> {
-    const serializedHistory = JSON.stringify(history);
+    // Get or create session
+    let session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+      .where({ actor_id: actorId })
+      .first();
 
-    await this.db(CONVERSATION_TABLE)
-      .insert({
+    if (!session) {
+      const sessionId = generateId("sess");
+      await this.db(CONVERSATION_TABLE).insert({
+        id: sessionId,
         actor_id: actorId,
-        history: serializedHistory,
-        updated_at: updatedAt,
-      })
-      .onConflict("actor_id")
-      .merge({
-        history: serializedHistory,
+        created_at: updatedAt,
         updated_at: updatedAt,
       });
+      session = {
+        id: sessionId,
+        actor_id: actorId,
+        created_at: updatedAt,
+        updated_at: updatedAt,
+      };
+    } else {
+      // Update session timestamp
+      await this.db(CONVERSATION_TABLE)
+        .where({ id: session.id })
+        .update({ updated_at: updatedAt });
+    }
+
+    // Extract the last question-answer pair from history
+    // (We only persist the new exchange, not the entire history)
+    if (history.length >= 2) {
+      const lastQuestion = history[history.length - 2];
+      const lastAnswer = history[history.length - 1];
+
+      if (lastQuestion.role === "user" && lastAnswer.role === "assistant") {
+        const messageId = generateId("msg");
+        await this.db(MESSAGE_TABLE).insert({
+          id: messageId,
+          session_id: session.id,
+          question: lastQuestion.content,
+          answer: lastAnswer.content,
+          created_at: updatedAt,
+        });
+      }
+    }
   }
 }
 
