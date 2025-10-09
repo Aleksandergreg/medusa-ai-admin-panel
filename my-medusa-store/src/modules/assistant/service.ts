@@ -26,12 +26,22 @@ type PromptResult = {
 };
 
 type ConversationRow = {
+  id: string;
   actor_id: string;
-  history: unknown;
-  updated_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+type MessageRow = {
+  id: string;
+  session_id: string;
+  question: string;
+  answer: string | null;
+  created_at: Date | string;
 };
 
 const CONVERSATION_TABLE = "conversation_session";
+const MESSAGE_TABLE = "conversation_message";
 
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
@@ -121,57 +131,31 @@ class AssistantModuleService extends MedusaService({}) {
       return null;
     }
 
-    const row = await this.db<ConversationRow>(CONVERSATION_TABLE)
+    const session = await this.db<ConversationRow>(CONVERSATION_TABLE)
       .where({ actor_id: resolvedActorId })
       .orderBy("updated_at", "desc")
       .first();
 
-    if (!row) {
+    if (!session) {
       return null;
     }
 
+    const messages = await this.db<MessageRow>(MESSAGE_TABLE)
+      .where({ session_id: session.id })
+      .orderBy("created_at", "asc");
+
+    const history: ConversationEntry[] = [];
+    for (const message of messages) {
+      history.push({ role: "user", content: message.question });
+      if (message.answer) {
+        history.push({ role: "assistant", content: message.answer });
+      }
+    }
+
     return {
-      history: this.deserializeHistory(row.history),
-      updatedAt: row.updated_at ? new Date(row.updated_at) : null,
+      history,
+      updatedAt: session.updated_at ? new Date(session.updated_at) : null,
     };
-  }
-
-  private deserializeHistory(raw: unknown): ConversationEntry[] {
-    if (!raw) {
-      return [];
-    }
-
-    let parsed = raw;
-    if (typeof raw === "string") {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return [];
-      }
-    }
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    const normalized: ConversationEntry[] = [];
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-
-      const role = (item as { role?: unknown }).role;
-      const content = (item as { content?: unknown }).content;
-
-      if (
-        (role === "user" || role === "assistant") &&
-        typeof content === "string"
-      ) {
-        normalized.push({ role, content });
-      }
-    }
-
-    return normalized;
   }
 
   private toAgentHistory(entries: ConversationEntry[]): HistoryEntry[] {
@@ -187,19 +171,53 @@ class AssistantModuleService extends MedusaService({}) {
     history: ConversationEntry[],
     updatedAt: Date
   ): Promise<void> {
-    const serializedHistory = JSON.stringify(history);
+    // Get or create session
+    let session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+      .where({ actor_id: actorId })
+      .first();
 
-    await this.db(CONVERSATION_TABLE)
-      .insert({
+    if (!session) {
+      const sessionId = `sess_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2, 15)}`;
+      await this.db(CONVERSATION_TABLE).insert({
+        id: sessionId,
         actor_id: actorId,
-        history: serializedHistory,
-        updated_at: updatedAt,
-      })
-      .onConflict("actor_id")
-      .merge({
-        history: serializedHistory,
+        created_at: updatedAt,
         updated_at: updatedAt,
       });
+      session = {
+        id: sessionId,
+        actor_id: actorId,
+        created_at: updatedAt,
+        updated_at: updatedAt,
+      };
+    } else {
+      // Update session timestamp
+      await this.db(CONVERSATION_TABLE)
+        .where({ id: session.id })
+        .update({ updated_at: updatedAt });
+    }
+
+    // Extract the last question-answer pair from history
+    // (We only persist the new exchange, not the entire history)
+    if (history.length >= 2) {
+      const lastQuestion = history[history.length - 2];
+      const lastAnswer = history[history.length - 1];
+
+      if (lastQuestion.role === "user" && lastAnswer.role === "assistant") {
+        const messageId = `msg_${Date.now()}_${Math.random()
+          .toString(36)
+          .substring(2, 15)}`;
+        await this.db(MESSAGE_TABLE).insert({
+          id: messageId,
+          session_id: session.id,
+          question: lastQuestion.content,
+          answer: lastAnswer.content,
+          created_at: updatedAt,
+        });
+      }
+    }
   }
 }
 
