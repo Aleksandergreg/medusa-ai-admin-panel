@@ -143,7 +143,7 @@ export async function askAgent(
         const action = isDelete ? "delete" : "create";
 
         // Return early with a special message indicating validation is needed
-        const validationMessage = `##  Your Approval is Required\n\nI've prepared everything to ${action} this item, but I need your confirmation before proceeding.\n\nPlease review the details below and click **"Approve & Execute"** if you'd like me to continue, or **"Cancel"** if you've changed your mind.`;
+        const validationMessage = `## 🔐 Your Approval is Required\n\nI've prepared everything to ${action} this item, but I need your confirmation before proceeding.\n\nPlease review the details below and click **"Approve & Execute"** if you'd like me to continue, or **"Cancel"** if you've changed your mind.`;
 
         return {
           answer: validationMessage,

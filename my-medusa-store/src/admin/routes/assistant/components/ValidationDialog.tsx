@@ -57,6 +57,11 @@ export function ValidationDialog({
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
+  const resourcePreview = useMemo(
+    () => validationRequest.resourcePreview ?? {},
+    [validationRequest.resourcePreview]
+  );
+
   const requestBody = useMemo(() => {
     const bodyCandidate = validationRequest.args["body"];
     if (isPlainRecord(bodyCandidate)) {
@@ -111,6 +116,17 @@ export function ValidationDialog({
     }
     return applyPathParams(operationMetadata.path, pathParams);
   }, [operationMetadata.path, pathParams]);
+
+  const resourceLabel = useMemo(() => {
+    const preferredKeys = ["name", "title", "code", "handle"];
+    for (const key of preferredKeys) {
+      const value = resourcePreview[key];
+      if (typeof value === "string" && value.trim().length) {
+        return value;
+      }
+    }
+    return undefined;
+  }, [resourcePreview]);
 
   // Reset edited data when validation request changes
   useEffect(() => {
@@ -186,6 +202,11 @@ export function ValidationDialog({
                 <Text size="small" className="text-ui-fg-subtle">
                   Please review and approve this action
                 </Text>
+                {resourceLabel && (
+                  <Text size="xsmall" className="text-ui-fg-muted font-medium">
+                    Resource: {resourceLabel}
+                  </Text>
+                )}
                 {(resolvedPath || operationMetadata.path) && (
                   <Text size="xsmall" className="text-ui-fg-muted font-mono">
                     {operationMetadata.method}{" "}
@@ -253,6 +274,14 @@ export function ValidationDialog({
 
         {/* Details - Using new refactored component */}
         <div className="space-y-4">
+          {Object.keys(resourcePreview).length > 0 && (
+            <DetailsSectionNew
+              title="Current Resource"
+              data={resourcePreview}
+              isEditing={false}
+            />
+          )}
+
           {Object.keys(pathParams).length > 0 && (
             <DetailsSectionNew
               title="Target Resource"
