@@ -5,10 +5,69 @@ import type {
 import { validationManager } from "../../../../modules/assistant/lib/validation-manager";
 import { getMcp } from "../../../../lib/mcp/manager";
 
+type ToolContentEntry = {
+  type?: string;
+  text?: string;
+  [k: string]: unknown;
+};
+
+type ToolExecutionResult = {
+  content?: ToolContentEntry[];
+  isError?: boolean;
+  [k: string]: unknown;
+};
+
+type OpenApiExecutionPayload = {
+  status?: string;
+  statusCode?: number;
+  data?: Record<string, unknown>;
+  [k: string]: unknown;
+};
+
 type ValidationResponsePayload = {
   id: string;
   approved: boolean;
   editedData?: Record<string, unknown>;
+};
+
+const getFirstTextContent = (result: ToolExecutionResult): string | null => {
+  if (!result?.content || !Array.isArray(result.content)) {
+    return null;
+  }
+
+  for (const entry of result.content) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      entry.type === "text" &&
+      typeof entry.text === "string"
+    ) {
+      return entry.text;
+    }
+  }
+
+  return null;
+};
+
+const safeParseJson = <T>(value: string | null): T | null => {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeErrorMessage = (raw: string | null, fallback: string): string => {
+  if (!raw) {
+    return fallback;
+  }
+
+  const trimmed = raw.replace(/^Error:\s*/i, "").trim();
+  return trimmed.length ? trimmed : fallback;
 };
 
 export async function POST(
@@ -72,6 +131,41 @@ export async function POST(
     }
 
     const result = await mcp.callTool("openapi.execute", argsToExecute);
+
+    const toolResult = result as ToolExecutionResult;
+    const textContent = getFirstTextContent(toolResult);
+    const payload = safeParseJson<OpenApiExecutionPayload>(textContent);
+    const statusCode =
+      typeof payload?.statusCode === "number" ? payload.statusCode : undefined;
+    const isErrorResult = Boolean(toolResult?.isError);
+    const isFailureStatus =
+      typeof statusCode === "number" && statusCode >= 400 && statusCode <= 599;
+
+    if (isErrorResult || isFailureStatus) {
+      const defaultMessage = "Unable to execute the requested operation.";
+      const dataMessage =
+        payload?.data && typeof payload.data === "object"
+          ? (payload.data as { message?: unknown }).message
+          : undefined;
+
+      const errorMessage =
+        typeof dataMessage === "string" && dataMessage.trim().length
+          ? dataMessage.trim()
+          : normalizeErrorMessage(textContent, defaultMessage);
+
+      validationManager.respondToValidation({ id, approved: false });
+
+      const httpStatus =
+        typeof statusCode === "number" && statusCode >= 400
+          ? statusCode
+          : 400;
+
+      return res.status(httpStatus).json({
+        status: "failed",
+        error: errorMessage,
+        result: toolResult,
+      });
+    }
 
     // Mark validation as approved
     validationManager.respondToValidation({ id, approved: true });

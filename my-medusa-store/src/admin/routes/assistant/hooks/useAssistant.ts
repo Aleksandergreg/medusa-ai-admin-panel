@@ -12,6 +12,72 @@ type ValidationRequest = {
   args: Record<string, unknown>;
 };
 
+type ValidationExecutionResult = {
+  isError?: boolean;
+  content?: Array<{ type?: string; text?: string }>;
+  [k: string]: unknown;
+};
+
+type ValidationApproveResponse = {
+  status?: "approved" | "failed";
+  error?: string;
+  result?: ValidationExecutionResult;
+  [k: string]: unknown;
+};
+
+const extractResultText = (
+  result?: ValidationExecutionResult | null
+): string | null => {
+  if (!result?.content || !Array.isArray(result.content)) {
+    return null;
+  }
+
+  for (const entry of result.content) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      entry.type === "text" &&
+      typeof entry.text === "string"
+    ) {
+      return entry.text;
+    }
+  }
+
+  return null;
+};
+
+const deriveExecutionError = (
+  response: ValidationApproveResponse
+): string | null => {
+  const explicitError =
+    typeof response.error === "string" && response.error.trim().length
+      ? response.error.trim()
+      : null;
+
+  if (explicitError) {
+    return explicitError;
+  }
+
+  if (!response.result?.isError) {
+    return null;
+  }
+
+  const rawText = extractResultText(response.result);
+  if (!rawText) {
+    return "The assistant could not complete the operation.";
+  }
+
+  const normalized = rawText.replace(/^Error:\s*/i, "").trim();
+  return normalized.length
+    ? normalized
+    : "The assistant could not complete the operation.";
+};
+
+const formatFailureAnswer = (reason: string): string => {
+  const trimmed = reason.trim();
+  return `## ❗ Action Failed\n\n${trimmed}\n\nYou can adjust the request details and ask me to try again, or provide a new prompt if you want to take a different approach.`;
+};
+
 export function useAssistant() {
   // persisted user prefs + prompt
   const [prompt, setPrompt] = useLocalStorageState<string>(
@@ -150,14 +216,26 @@ export function useAssistant() {
           body: JSON.stringify(payload),
         });
 
-        const json = await res.json();
+        const json = (await res.json()) as ValidationApproveResponse;
         console.log("Approval response:", json);
-        if (!res.ok) {
-          throw new Error(json.error ?? "Failed to approve validation");
+
+        const executionError = deriveExecutionError(json);
+        if (!res.ok || json.status !== "approved" || executionError) {
+          const reason =
+            executionError ??
+            json.error ??
+            "The assistant could not complete the operation.";
+
+          setValidationRequest(null);
+          const failureAnswer = formatFailureAnswer(reason);
+          setAnswer(failureAnswer);
+          setError(reason);
+          return;
         }
 
         // Clear validation request and update with result
         setValidationRequest(null);
+        setError(null);
 
         // Format success message in a user-friendly way
         const successMessage = `## ✅ Action Completed Successfully\n\nYour request has been processed and the changes have been applied to your store.\n\nYou can now continue with your next task or ask me for help with something else.`;
