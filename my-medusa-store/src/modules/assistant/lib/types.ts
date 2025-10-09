@@ -25,17 +25,12 @@ export type InitialOperation = {
 
 // Service Layer Types
 
-/**
- * Input for the `prompt` method in the Assistant service.
- */
 export type PromptInput = {
   prompt: string;
   actorId: string;
 };
 
-/**
- * Defines the shape of a pending action that requires user validation.
- */
+
 export type ValidationRequest = {
   id: string;
   operationId: string;
@@ -44,9 +39,7 @@ export type ValidationRequest = {
   args: Record<string, unknown>;
 };
 
-/**
- * The result object returned by the `prompt` method.
- */
+
 export type PromptResult = {
   answer: string;
   history: ConversationEntry[];
@@ -56,9 +49,7 @@ export type PromptResult = {
 
 // Database Row Types
 
-/**
- * Represents a row in the `conversation_session` database table.
- */
+
 export type ConversationRow = {
   id: string;
   actor_id: string;
@@ -66,9 +57,7 @@ export type ConversationRow = {
   updated_at: Date | string;
 };
 
-/**
- * Represents a row in the `conversation_message` database table.
- */
+
 export type MessageRow = {
   id: string;
   session_id: string;
