@@ -1,4 +1,10 @@
-import { Entity, PrimaryKey, Property, ManyToOne, Index } from "@mikro-orm/core";
+import {
+  Entity,
+  PrimaryKey,
+  Property,
+  ManyToOne,
+  Index,
+} from "@mikro-orm/core";
 import { ConversationSession } from "./conversation-session";
 
 @Entity({ tableName: "conversation_message" })

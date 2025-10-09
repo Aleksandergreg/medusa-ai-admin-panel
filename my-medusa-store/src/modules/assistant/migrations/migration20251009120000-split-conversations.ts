@@ -28,7 +28,9 @@ export class Migration20251009120000 extends Migration {
 
     for (const session of sessions) {
       // Generate a new session ID
-      const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+      const sessionId = `sess_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2, 15)}`;
 
       // Update the session with its new ID
       await knex("conversation_session")
@@ -61,7 +63,9 @@ export class Migration20251009120000 extends Migration {
           if (entry.role === "user") {
             // If we have a pending question without an answer, save it
             if (currentQuestion) {
-              const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random().toString(36).substring(2, 9)}`;
+              const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random()
+                .toString(36)
+                .substring(2, 9)}`;
               await knex("conversation_message").insert({
                 id: messageId,
                 session_id: sessionId,
@@ -72,7 +76,9 @@ export class Migration20251009120000 extends Migration {
             currentQuestion = entry.content;
           } else if (entry.role === "assistant" && currentQuestion) {
             // Save the question-answer pair
-            const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random().toString(36).substring(2, 9)}`;
+            const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random()
+              .toString(36)
+              .substring(2, 9)}`;
             await knex("conversation_message").insert({
               id: messageId,
               session_id: sessionId,
@@ -85,7 +91,9 @@ export class Migration20251009120000 extends Migration {
 
         // If there's a remaining question without an answer
         if (currentQuestion) {
-          const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random().toString(36).substring(2, 9)}`;
+          const messageId = `msg_${Date.now()}_${messageCounter++}_${Math.random()
+            .toString(36)
+            .substring(2, 9)}`;
           await knex("conversation_message").insert({
             id: messageId,
             session_id: sessionId,
@@ -139,7 +147,9 @@ export class Migration20251009120000 extends Migration {
     });
 
     // Step 2: Rebuild history from conversation_message
-    const sessions = await knex.select("id", "actor_id").from("conversation_session");
+    const sessions = await knex
+      .select("id", "actor_id")
+      .from("conversation_session");
 
     for (const session of sessions) {
       const messages = await knex
