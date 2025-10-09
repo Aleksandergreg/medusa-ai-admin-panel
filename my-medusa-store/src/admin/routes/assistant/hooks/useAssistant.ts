@@ -139,6 +139,14 @@ export function useAssistant() {
         const outcome = await approveAssistantValidation(id, editedData);
         setValidationRequest(null);
         setAnswer(outcome.answer);
+
+        // Update history with the new answer
+        const updatedHistory: ConversationEntry[] = [
+          ...history,
+          { role: "assistant", content: outcome.answer },
+        ];
+        setHistory(updatedHistory);
+
         setError(outcome.kind === "failure" ? outcome.error : null);
       } catch (e: unknown) {
         setError((e as Error)?.message ?? "Failed to approve operation");
@@ -146,22 +154,33 @@ export function useAssistant() {
         setLoading(false);
       }
     },
-    []
+    [history]
   );
 
-  const rejectValidation = useCallback(async (id: string) => {
-    try {
-      setLoading(true);
-      const answerMessage = await rejectAssistantValidation(id);
-      setValidationRequest(null);
-      setAnswer(answerMessage);
-      setError(null);
-    } catch (e: unknown) {
-      setError((e as Error)?.message ?? "Failed to reject operation");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const rejectValidation = useCallback(
+    async (id: string) => {
+      try {
+        setLoading(true);
+        const answerMessage = await rejectAssistantValidation(id);
+        setValidationRequest(null);
+        setAnswer(answerMessage);
+
+        // Update history with the rejection message
+        const updatedHistory: ConversationEntry[] = [
+          ...history,
+          { role: "assistant", content: answerMessage },
+        ];
+        setHistory(updatedHistory);
+
+        setError(null);
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to reject operation");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [history]
+  );
 
   const clear = useCallback(() => {
     setAnswer(null);

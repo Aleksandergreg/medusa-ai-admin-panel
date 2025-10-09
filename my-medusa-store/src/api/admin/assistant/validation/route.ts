@@ -4,6 +4,53 @@ import type {
 } from "@medusajs/framework/http";
 import { validationManager } from "../../../../modules/assistant/lib/validation-manager";
 import { getMcp } from "../../../../lib/mcp/manager";
+import AssistantModuleService from "../../../../modules/assistant/service";
+
+// Define the expected session structure
+interface SessionWithAuthContext {
+  auth_context?: {
+    actor_id?: string;
+  };
+}
+
+// Type guard for session
+function hasAuthContext(session: unknown): session is SessionWithAuthContext {
+  return (
+    typeof session === "object" &&
+    session !== null &&
+    "auth_context" in session &&
+    typeof (session as Record<string, unknown>).auth_context === "object" &&
+    (session as Record<string, unknown>).auth_context !== null
+  );
+}
+
+function getActorId(req: AuthenticatedMedusaRequest): string | null {
+  const fromAuthContext = req.auth_context?.actor_id;
+  if (fromAuthContext) {
+    return fromAuthContext;
+  }
+
+  let sessionActor: string | undefined;
+  if (hasAuthContext(req.session)) {
+    sessionActor = req.session.auth_context?.actor_id;
+  }
+  if (sessionActor && typeof sessionActor === "string" && sessionActor.trim()) {
+    return sessionActor;
+  }
+
+  const legacyUserId = (req as unknown as Record<string, unknown>)?.user as
+    | { id?: string }
+    | undefined;
+  if (
+    legacyUserId?.id &&
+    typeof legacyUserId.id === "string" &&
+    legacyUserId.id.trim()
+  ) {
+    return legacyUserId.id;
+  }
+
+  return null;
+}
 
 type ToolContentEntry = {
   type?: string;
@@ -48,7 +95,9 @@ const isToolContentEntry = (value: unknown): value is ToolContentEntry => {
   return true;
 };
 
-const isToolExecutionResult = (value: unknown): value is ToolExecutionResult => {
+const isToolExecutionResult = (
+  value: unknown
+): value is ToolExecutionResult => {
   if (!isRecord(value)) {
     return false;
   }
@@ -102,13 +151,113 @@ const safeParseJson = <T>(value: string | null): T | null => {
   }
 };
 
-const normalizeErrorMessage = (raw: string | null, fallback: string): string => {
+const normalizeErrorMessage = (
+  raw: string | null,
+  fallback: string
+): string => {
   if (!raw) {
     return fallback;
   }
 
   const trimmed = raw.replace(/^Error:\s*/i, "").trim();
   return trimmed.length ? trimmed : fallback;
+};
+
+const generateSuccessMessage = (
+  validation: {
+    method: string;
+    path: string;
+    operationId: string;
+    args: Record<string, unknown>;
+  },
+  payload: OpenApiExecutionPayload | null
+): string => {
+  const method = validation.method.toUpperCase();
+  const data = payload?.data;
+
+  // Determine action type
+  let action = "modified";
+  if (method === "POST") {
+    action = "created";
+  } else if (method === "DELETE") {
+    action = "deleted";
+  } else if (method === "PUT" || method === "PATCH") {
+    action = "updated";
+  }
+
+  // Extract resource type from path or operationId
+  let resourceType = "item";
+  const pathMatch = validation.path.match(/\/admin\/([^/]+)/);
+  if (pathMatch) {
+    resourceType = pathMatch[1].replace(/-/g, " ");
+  }
+
+  // Build the message
+  let message = `## ✅ Successfully ${action} ${resourceType}\n\n`;
+
+  // Add details about what was created/deleted/updated
+  if (data && typeof data === "object") {
+    message += "**Details:**\n\n";
+
+    // Format the data in a readable way
+    const formatValue = (value: unknown): string => {
+      if (value === null || value === undefined) return "N/A";
+      if (typeof value === "boolean") return value ? "Yes" : "No";
+      if (typeof value === "object" && !Array.isArray(value)) {
+        return JSON.stringify(value, null, 2);
+      }
+      if (Array.isArray(value)) {
+        return value.map((v) => formatValue(v)).join(", ");
+      }
+      return String(value);
+    };
+
+    // Key fields to display prominently
+    const importantFields = [
+      "id",
+      "code",
+      "title",
+      "name",
+      "type",
+      "value",
+      "handle",
+      "status",
+      "discount",
+      "amount",
+    ];
+    const displayedFields = new Set<string>();
+
+    // Show important fields first
+    for (const field of importantFields) {
+      if (field in data) {
+        const value = (data as Record<string, unknown>)[field];
+        message += `- **${
+          field.charAt(0).toUpperCase() + field.slice(1)
+        }**: ${formatValue(value)}\n`;
+        displayedFields.add(field);
+      }
+    }
+
+    // Show other fields
+    const otherFields = Object.keys(data).filter(
+      (key) => !displayedFields.has(key) && !key.startsWith("_")
+    );
+    if (otherFields.length > 0) {
+      message += "\n**Additional Fields:**\n\n";
+      for (const field of otherFields.slice(0, 10)) {
+        // Limit to 10 additional fields
+        const value = (data as Record<string, unknown>)[field];
+        message += `- **${
+          field.charAt(0).toUpperCase() + field.slice(1)
+        }**: ${formatValue(value)}\n`;
+      }
+    }
+  }
+
+  message +=
+    "\n\nThe operation has been completed successfully. You can continue with your next task.";
+
+  return message;
 };
 
 export async function POST(
@@ -140,9 +289,35 @@ export async function POST(
     if (!approved) {
       // User rejected the operation
       validationManager.respondToValidation({ id, approved: false });
+
+      // Save rejection message to conversation history
+      const rejectionMessage =
+        "## ❌ Action Cancelled\n\nNo changes were made to your store. The operation has been cancelled as requested.\n\nFeel free to ask me to do something else!";
+
+      const actorId = getActorId(req);
+      if (actorId) {
+        try {
+          const assistantService: AssistantModuleService =
+            req.scope.resolve("assistant");
+
+          // Update the last message (which has the user's question) with the rejection answer
+          await assistantService.updateLastMessageAnswer(
+            actorId,
+            rejectionMessage
+          );
+
+          console.log("Successfully saved rejection message to database");
+        } catch (err) {
+          console.error(
+            "Failed to save rejection message to conversation:",
+            err
+          );
+        }
+      }
+
       return res.json({
         status: "rejected",
-        message: "Operation was rejected by user",
+        message: rejectionMessage,
       });
     }
 
@@ -206,9 +381,7 @@ export async function POST(
       validationManager.respondToValidation({ id, approved: false });
 
       const httpStatus =
-        typeof statusCode === "number" && statusCode >= 400
-          ? statusCode
-          : 400;
+        typeof statusCode === "number" && statusCode >= 400 ? statusCode : 400;
 
       return res.status(httpStatus).json({
         status: "failed",
@@ -220,9 +393,30 @@ export async function POST(
     // Mark validation as approved
     validationManager.respondToValidation({ id, approved: true });
 
+    // Generate a descriptive success message
+    const successMessage = generateSuccessMessage(validation, payload);
+
+    // Save the success message to the conversation history
+    const actorId = getActorId(req);
+    if (actorId) {
+      try {
+        const assistantService: AssistantModuleService =
+          req.scope.resolve("assistant");
+
+        // Update the last message (which has the user's question) with the success answer
+        await assistantService.updateLastMessageAnswer(actorId, successMessage);
+
+        console.log("Successfully saved success message to database");
+      } catch (err) {
+        console.error("Failed to save success message to conversation:", err);
+        // Don't fail the request if we can't save to history
+      }
+    }
+
     return res.json({
       status: "approved",
       result,
+      message: successMessage,
     });
   } catch (e: unknown) {
     console.error("\n--- Validation Route Error ---\n", e);

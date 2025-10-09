@@ -80,18 +80,26 @@ class AssistantModuleService extends MedusaService({}) {
       ? agentResult.answer
       : "Sorry, I could not find an answer to your question.";
 
+    // Check if there's validation data in agent result
+    const validationData = isValidationRequest(agentResult.data)
+      ? agentResult.data
+      : undefined;
+
     const finalHistory: ConversationEntry[] = [
       ...workingHistory,
       { role: "assistant", content: answer },
     ];
 
     const updatedAt = new Date();
-    await this.persistConversation(actorId, finalHistory, updatedAt);
 
-    // Check if there's validation data in agent result
-    const validationData = isValidationRequest(agentResult.data)
-      ? agentResult.data
-      : undefined;
+    // If there's validation required, save only the user's question
+    // The assistant's answer will be saved later after approval/rejection
+    if (validationData) {
+      await this.persistUserMessage(actorId, trimmedPrompt, updatedAt);
+    } else {
+      // Normal flow: save both question and answer
+      await this.persistConversation(actorId, finalHistory, updatedAt);
+    }
 
     return {
       answer,
@@ -143,6 +151,82 @@ class AssistantModuleService extends MedusaService({}) {
       tool_args: { role: entry.role },
       tool_result: { content: entry.content },
     }));
+  }
+
+  private async persistUserMessage(
+    actorId: string,
+    question: string,
+    updatedAt: Date
+  ): Promise<void> {
+    // Get or create session
+    let session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+      .where({ actor_id: actorId })
+      .first();
+
+    if (!session) {
+      const sessionId = generateId("sess");
+      await this.db(CONVERSATION_TABLE).insert({
+        id: sessionId,
+        actor_id: actorId,
+        created_at: updatedAt,
+        updated_at: updatedAt,
+      });
+      session = {
+        id: sessionId,
+        actor_id: actorId,
+        created_at: updatedAt,
+        updated_at: updatedAt,
+      };
+    } else {
+      // Update session timestamp
+      await this.db(CONVERSATION_TABLE)
+        .where({ id: session.id })
+        .update({ updated_at: updatedAt });
+    }
+
+    // Save just the user's question (answer will be added later)
+    const messageId = generateId("msg");
+    await this.db(MESSAGE_TABLE).insert({
+      id: messageId,
+      session_id: session.id,
+      question,
+      answer: null,
+      created_at: updatedAt,
+    });
+  }
+
+  async updateLastMessageAnswer(
+    actorId: string,
+    answer: string
+  ): Promise<void> {
+    // Get the session
+    const session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+      .where({ actor_id: actorId })
+      .first();
+
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    // Get the last message for this session
+    const lastMessage = await this.db<MessageRow>(MESSAGE_TABLE)
+      .where({ session_id: session.id })
+      .orderBy("created_at", "desc")
+      .first();
+
+    if (!lastMessage) {
+      throw new Error("No message found to update");
+    }
+
+    // Update the answer
+    await this.db(MESSAGE_TABLE)
+      .where({ id: lastMessage.id })
+      .update({ answer });
+
+    // Update session timestamp
+    await this.db(CONVERSATION_TABLE)
+      .where({ id: session.id })
+      .update({ updated_at: new Date() });
   }
 
   private async persistConversation(

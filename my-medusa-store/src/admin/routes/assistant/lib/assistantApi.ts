@@ -39,6 +39,7 @@ const ValidationApproveResponseSchema = z
     status: z.enum(["approved", "failed"]).optional(),
     error: z.string().optional(),
     result: ValidationExecutionResultSchema.optional(),
+    message: z.string().optional(),
   })
   .passthrough();
 
@@ -64,8 +65,12 @@ const CANCEL_MESSAGE =
   `No changes were made to your store. The operation has been cancelled as requested.\n\n` +
   `Feel free to ask me to do something else!`;
 
-type ValidationExecutionResult = z.infer<typeof ValidationExecutionResultSchema>;
-type ValidationApproveResponse = z.infer<typeof ValidationApproveResponseSchema>;
+type ValidationExecutionResult = z.infer<
+  typeof ValidationExecutionResultSchema
+>;
+type ValidationApproveResponse = z.infer<
+  typeof ValidationApproveResponseSchema
+>;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -245,9 +250,15 @@ export async function approveAssistantValidation(
     };
   }
 
+  // Use the custom message from backend if available, otherwise use default
+  const successAnswer =
+    response.message && response.message.trim()
+      ? response.message
+      : SUCCESS_MESSAGE;
+
   return {
     kind: "success",
-    answer: SUCCESS_MESSAGE,
+    answer: successAnswer,
   };
 }
 
@@ -269,5 +280,8 @@ export async function rejectAssistantValidation(id: string): Promise<string> {
     throw new Error(msg);
   }
 
-  return CANCEL_MESSAGE;
+  // Use the message from backend if available, otherwise use default
+  return json && typeof json.message === "string"
+    ? json.message
+    : CANCEL_MESSAGE;
 }
