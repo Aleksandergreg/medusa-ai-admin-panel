@@ -1,162 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorageState } from "../../../hooks/useLocalStorageState";
 import { STORAGE_KEYS } from "../lib/storageKeys";
-import { askAssistant, fetchAssistantConversation } from "../lib/assistantApi";
+import {
+  askAssistant,
+  fetchAssistantConversation,
+  approveAssistantValidation,
+  rejectAssistantValidation,
+} from "../lib/assistantApi";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
-
-type ValidationRequest = {
-  id: string;
-  operationId: string;
-  method: string;
-  path: string;
-  args: Record<string, unknown>;
-};
-
-type ValidationExecutionResult = {
-  isError?: boolean;
-  content?: Array<{ type?: string; text?: string }>;
-  [k: string]: unknown;
-};
-
-type ValidationApproveResponse = {
-  status?: "approved" | "failed";
-  error?: string;
-  result?: ValidationExecutionResult;
-  [k: string]: unknown;
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const isValidationExecutionResult = (
-  value: unknown
-): value is ValidationExecutionResult => {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const isError = (value as { isError?: unknown }).isError;
-  if (isError !== undefined && typeof isError !== "boolean") {
-    return false;
-  }
-
-  if ("content" in value) {
-    const content = (value as { content?: unknown }).content;
-    if (!Array.isArray(content)) {
-      return false;
-    }
-    if (
-      !content.every((entry) => {
-        if (!isRecord(entry)) {
-          return false;
-        }
-        const { type, text } = entry as {
-          type?: unknown;
-          text?: unknown;
-        };
-        if (type !== undefined && typeof type !== "string") {
-          return false;
-        }
-        if (text !== undefined && typeof text !== "string") {
-          return false;
-        }
-        return true;
-      })
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-const isValidationApproveResponse = (
-  value: unknown
-): value is ValidationApproveResponse => {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if ("status" in value) {
-    const status = (value as { status?: unknown }).status;
-    if (
-      status !== undefined &&
-      (typeof status !== "string" ||
-        (status !== "approved" && status !== "failed"))
-    ) {
-      return false;
-    }
-  }
-
-  if ("error" in value) {
-    const error = (value as { error?: unknown }).error;
-    if (error !== undefined && typeof error !== "string") {
-      return false;
-    }
-  }
-
-  if ("result" in value) {
-    const result = (value as { result?: unknown }).result;
-    if (result !== undefined && !isValidationExecutionResult(result)) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-const extractResultText = (
-  result?: ValidationExecutionResult | null
-): string | null => {
-  if (!result?.content || !Array.isArray(result.content)) {
-    return null;
-  }
-
-  for (const entry of result.content) {
-    if (
-      entry &&
-      typeof entry === "object" &&
-      entry.type === "text" &&
-      typeof entry.text === "string"
-    ) {
-      return entry.text;
-    }
-  }
-
-  return null;
-};
-
-const deriveExecutionError = (
-  response: ValidationApproveResponse
-): string | null => {
-  const explicitError =
-    typeof response.error === "string" && response.error.trim().length
-      ? response.error.trim()
-      : null;
-
-  if (explicitError) {
-    return explicitError;
-  }
-
-  if (!response.result?.isError) {
-    return null;
-  }
-
-  const rawText = extractResultText(response.result);
-  if (!rawText) {
-    return "The assistant could not complete the operation.";
-  }
-
-  const normalized = rawText.replace(/^Error:\s*/i, "").trim();
-  return normalized.length
-    ? normalized
-    : "The assistant could not complete the operation.";
-};
-
-const formatFailureAnswer = (reason: string): string => {
-  const trimmed = reason.trim();
-  return `## ❗ Action Failed\n\n${trimmed}\n\nYou can adjust the request details and ask me to try again, or provide a new prompt if you want to take a different approach.`;
-};
+import type { ValidationRequest } from "../types";
 
 export function useAssistant() {
   // persisted user prefs + prompt
@@ -265,9 +117,7 @@ export function useAssistant() {
       }
     } catch (e: unknown) {
       setHistory(previousHistory);
-      if (e instanceof Error && e.name === "AbortError") {
-        console.log("Request aborted");
-      } else {
+      if (!(e instanceof Error && e.name === "AbortError")) {
         setError((e as Error)?.message ?? "Unknown error");
       }
     } finally {
@@ -286,61 +136,10 @@ export function useAssistant() {
     async (id: string, editedData?: Record<string, unknown>) => {
       try {
         setLoading(true);
-        const payload = { id, approved: true, editedData };
-        console.log("Sending approval payload:", payload);
-
-        const res = await fetch("/admin/assistant/validation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(payload),
-        });
-
-        let parsed: unknown = null;
-        try {
-          parsed = await res.json();
-        } catch (parseError) {
-          console.error("Failed to parse validation response:", parseError);
-        }
-
-        if (!isValidationApproveResponse(parsed)) {
-          console.error("Invalid validation response shape:", parsed);
-          const fallback =
-            isRecord(parsed) && typeof parsed.error === "string"
-              ? parsed.error
-              : "Unexpected response from validation service.";
-          setValidationRequest(null);
-          const failureAnswer = formatFailureAnswer(fallback);
-          setAnswer(failureAnswer);
-          setError(fallback);
-          return;
-        }
-
-        const json = parsed;
-        console.log("Approval response:", json);
-
-        const executionError = deriveExecutionError(json);
-        if (!res.ok || json.status !== "approved" || executionError) {
-          const reason =
-            executionError ??
-            json.error ??
-            "The assistant could not complete the operation.";
-
-          setValidationRequest(null);
-          const failureAnswer = formatFailureAnswer(reason);
-          setAnswer(failureAnswer);
-          setError(reason);
-          return;
-        }
-
-        // Clear validation request and update with result
+        const outcome = await approveAssistantValidation(id, editedData);
         setValidationRequest(null);
-        setError(null);
-
-        // Format success message in a user-friendly way
-        const successMessage = `## ✅ Action Completed Successfully\n\nYour request has been processed and the changes have been applied to your store.\n\nYou can now continue with your next task or ask me for help with something else.`;
-
-        setAnswer(successMessage);
+        setAnswer(outcome.answer);
+        setError(outcome.kind === "failure" ? outcome.error : null);
       } catch (e: unknown) {
         setError((e as Error)?.message ?? "Failed to approve operation");
       } finally {
@@ -353,23 +152,10 @@ export function useAssistant() {
   const rejectValidation = useCallback(async (id: string) => {
     try {
       setLoading(true);
-      const res = await fetch("/admin/assistant/validation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ id, approved: false }),
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error ?? "Failed to reject validation");
-      }
-
+      const answerMessage = await rejectAssistantValidation(id);
       setValidationRequest(null);
-
-      const cancelMessage = `## ❌ Action Cancelled\n\nNo changes were made to your store. The operation has been cancelled as requested.\n\nFeel free to ask me to do something else!`;
-
-      setAnswer(cancelMessage);
+      setAnswer(answerMessage);
+      setError(null);
     } catch (e: unknown) {
       setError((e as Error)?.message ?? "Failed to reject operation");
     } finally {
