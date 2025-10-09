@@ -6,17 +6,10 @@ import {
   setNestedValue,
 } from "./validation/helpers";
 import { DetailsSectionNew } from "./validation";
+import type { ValidationRequest } from "../types";
 
 type ValidationDialogProps = {
-  validationRequest: {
-    id: string;
-    operationId: string;
-    method: string;
-    path: string;
-    args: Record<string, unknown>;
-    bodyFieldEnums?: Record<string, string[]>;
-    bodyFieldReadOnly?: string[];
-  };
+  validationRequest: ValidationRequest;
   onApprove: (
     id: string,
     editedData?: Record<string, unknown>
@@ -65,16 +58,6 @@ export function ValidationDialog({
     setIsEditing(false);
     setHasChanges(false);
 
-    // Debug: Log enum and readonly fields
-    if (validationRequest.bodyFieldEnums) {
-      console.log(
-        "📋 Enum fields available:",
-        validationRequest.bodyFieldEnums
-      );
-    }
-    if (validationRequest.bodyFieldReadOnly) {
-      console.log("🔒 ReadOnly fields:", validationRequest.bodyFieldReadOnly);
-    }
   }, [
     validationRequest.id,
     validationRequest.args,
@@ -94,7 +77,6 @@ export function ValidationDialog({
     try {
       // Always send edited data for POST operations if we have any edits
       if (operationMetadata.isPost) {
-        console.log("Approving with edited data:", editedData);
         await onApprove(validationRequest.id, editedData);
       } else {
         await onApprove(validationRequest.id);
