@@ -5,19 +5,19 @@ import { FieldValue, FieldPath } from "../types/field.types";
 import { TextFieldEditor } from "./fields/TextFieldEditor";
 import { NumberFieldEditor } from "./fields/NumberFieldEditor";
 import { SelectFieldEditor } from "./fields/SelectFieldEditor";
-import { CollapsibleComplexDataNew } from "../CollapsibleComplexData";
+import { CollapsibleComplexData } from "./CollapsibleComplexData";
 import { formatValueDisplay, isLongText } from "../utils/fieldFormatters";
 import { isObject } from "../utils/typeCheckers";
 
-interface EditableFieldNewProps {
+interface EditableFieldProps {
   value: FieldValue;
   path: FieldPath;
 }
 
-export function EditableFieldNew({
+export function EditableField({
   value,
   path,
-}: EditableFieldNewProps): React.ReactNode {
+}: EditableFieldProps): React.ReactNode {
   const { isEditing, onChange } = useValidationContext();
   const metadata = useFieldMetadata(path, value);
 
@@ -144,7 +144,7 @@ export function EditableFieldNew({
 
   // Handle arrays and objects (complex data)
   if (Array.isArray(value) || isObject(value)) {
-    return <CollapsibleComplexDataNew data={value} nestLevel={0} path={path} />;
+    return <CollapsibleComplexData data={value} nestLevel={0} path={path} />;
   }
 
   // Fallback

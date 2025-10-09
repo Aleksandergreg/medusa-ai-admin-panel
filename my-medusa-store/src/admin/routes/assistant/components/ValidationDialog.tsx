@@ -4,8 +4,8 @@ import {
   deepClone,
   formatOperationTitle,
   setNestedValue,
-} from "./validation/helpers";
-import { DetailsSectionNew } from "./validation";
+  DetailsSection,
+} from "../validation";
 import type { ValidationRequest } from "../types";
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -275,7 +275,7 @@ export function ValidationDialog({
         {/* Details - Using new refactored component */}
         <div className="space-y-4">
           {Object.keys(resourcePreview).length > 0 && (
-            <DetailsSectionNew
+            <DetailsSection
               title="Current Resource"
               data={resourcePreview}
               isEditing={false}
@@ -283,7 +283,7 @@ export function ValidationDialog({
           )}
 
           {Object.keys(pathParams).length > 0 && (
-            <DetailsSectionNew
+            <DetailsSection
               title="Target Resource"
               data={pathParams}
               isEditing={false}
@@ -291,7 +291,7 @@ export function ValidationDialog({
           )}
 
           {Object.keys(queryParams).length > 0 && (
-            <DetailsSectionNew
+            <DetailsSection
               title="Query Parameters"
               data={queryParams}
               isEditing={false}
@@ -299,7 +299,7 @@ export function ValidationDialog({
           )}
 
           {Object.keys(headerParams).length > 0 && (
-            <DetailsSectionNew
+            <DetailsSection
               title="Custom Headers"
               data={headerParams}
               isEditing={false}
@@ -307,7 +307,7 @@ export function ValidationDialog({
           )}
 
           {hasBodyData && (
-            <DetailsSectionNew
+            <DetailsSection
               title={bodySectionTitle}
               data={displayData as Record<string, unknown>}
               isEditing={isEditing && operationMetadata.isPost}

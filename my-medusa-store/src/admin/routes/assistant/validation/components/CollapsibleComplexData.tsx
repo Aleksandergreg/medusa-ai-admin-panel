@@ -1,23 +1,23 @@
 import { Badge, Text } from "@medusajs/ui";
 import { ChevronDownMini, ChevronUpMini } from "@medusajs/icons";
 import { useState, useMemo } from "react";
-import { useValidationContext } from "./context/ValidationContext";
-import { EditableFieldNew } from "./components/EditableField";
-import { formatValueDisplay } from "./utils/fieldFormatters";
-import { isSimpleObject } from "./utils/typeCheckers";
-import { FieldPath } from "./types/field.types";
+import { useValidationContext } from "../context/ValidationContext";
+import { EditableField } from "./EditableField";
+import { formatValueDisplay } from "../utils/fieldFormatters";
+import { isSimpleObject } from "../utils/typeCheckers";
+import { FieldPath } from "../types/field.types";
 
-interface CollapsibleComplexDataNewProps {
+interface CollapsibleComplexDataProps {
   data: unknown;
   nestLevel?: number;
   path?: FieldPath;
 }
 
-export function CollapsibleComplexDataNew({
+export function CollapsibleComplexData({
   data,
   nestLevel = 0,
   path = [],
-}: CollapsibleComplexDataNewProps) {
+}: CollapsibleComplexDataProps) {
   const [isExpanded, setIsExpanded] = useState(nestLevel === 0);
   const { isEditing, onChange } = useValidationContext();
 
@@ -66,7 +66,7 @@ export function CollapsibleComplexDataNew({
                 </div>
                 <div className="ml-1">
                   {typeof item === "object" && item !== null ? (
-                    <CollapsibleComplexDataNew
+                    <CollapsibleComplexData
                       data={item}
                       nestLevel={nestLevel + 1}
                       path={[...path, String(idx)]}
@@ -123,7 +123,7 @@ export function CollapsibleComplexDataNew({
                   {key}
                 </Text>
                 <div className="ml-1">
-                  <EditableFieldNew value={value} path={[...path, key]} />
+                  <EditableField value={value} path={[...path, key]} />
                 </div>
               </div>
             ))}
@@ -164,7 +164,7 @@ export function CollapsibleComplexDataNew({
               </Text>
               <div className="ml-3 mt-0.5">
                 {typeof value === "object" && value !== null ? (
-                  <CollapsibleComplexDataNew
+                  <CollapsibleComplexData
                     data={value}
                     nestLevel={nestLevel + 1}
                     path={[...path, key]}

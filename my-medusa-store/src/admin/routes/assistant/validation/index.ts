@@ -1,7 +1,7 @@
-// New refactored components
-export { EditableFieldNew } from "./components/EditableField";
-export { CollapsibleComplexDataNew } from "./CollapsibleComplexData";
-export { DetailsSectionNew } from "./DetailsSection";
+// Components
+export { EditableField } from "./components/EditableField";
+export { CollapsibleComplexData } from "./components/CollapsibleComplexData";
+export { DetailsSection } from "./components/DetailsSection";
 
 // Field editors
 export { TextFieldEditor } from "./components/fields/TextFieldEditor";
@@ -60,3 +60,10 @@ export {
   validatePattern,
   validateEnum,
 } from "./utils/fieldValidators";
+
+// Helpers
+export {
+  deepClone,
+  formatOperationTitle,
+  setNestedValue,
+} from "./lib/helpers";
