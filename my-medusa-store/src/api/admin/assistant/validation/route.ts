@@ -30,6 +30,47 @@ type ValidationResponsePayload = {
   editedData?: Record<string, unknown>;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isToolContentEntry = (value: unknown): value is ToolContentEntry => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const { type, text } = value as { type?: unknown; text?: unknown };
+  if (type !== undefined && typeof type !== "string") {
+    return false;
+  }
+  if (text !== undefined && typeof text !== "string") {
+    return false;
+  }
+  return true;
+};
+
+const isToolExecutionResult = (value: unknown): value is ToolExecutionResult => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const isError = (value as { isError?: unknown }).isError;
+  if (isError !== undefined && typeof isError !== "boolean") {
+    return false;
+  }
+
+  if ("content" in value) {
+    const content = (value as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+      return false;
+    }
+    if (!content.every(isToolContentEntry)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const getFirstTextContent = (result: ToolExecutionResult): string | null => {
   if (!result?.content || !Array.isArray(result.content)) {
     return null;
@@ -132,7 +173,16 @@ export async function POST(
 
     const result = await mcp.callTool("openapi.execute", argsToExecute);
 
-    const toolResult = result as ToolExecutionResult;
+    if (!isToolExecutionResult(result)) {
+      console.error("Unexpected tool result shape:", result);
+      validationManager.respondToValidation({ id, approved: false });
+      return res.status(502).json({
+        status: "failed",
+        error: "Unexpected response from assistant execution.",
+      });
+    }
+
+    const toolResult = result;
     const textContent = getFirstTextContent(toolResult);
     const payload = safeParseJson<OpenApiExecutionPayload>(textContent);
     const statusCode =

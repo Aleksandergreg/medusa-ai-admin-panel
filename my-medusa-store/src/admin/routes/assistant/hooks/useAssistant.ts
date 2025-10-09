@@ -25,6 +25,86 @@ type ValidationApproveResponse = {
   [k: string]: unknown;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isValidationExecutionResult = (
+  value: unknown
+): value is ValidationExecutionResult => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const isError = (value as { isError?: unknown }).isError;
+  if (isError !== undefined && typeof isError !== "boolean") {
+    return false;
+  }
+
+  if ("content" in value) {
+    const content = (value as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+      return false;
+    }
+    if (
+      !content.every((entry) => {
+        if (!isRecord(entry)) {
+          return false;
+        }
+        const { type, text } = entry as {
+          type?: unknown;
+          text?: unknown;
+        };
+        if (type !== undefined && typeof type !== "string") {
+          return false;
+        }
+        if (text !== undefined && typeof text !== "string") {
+          return false;
+        }
+        return true;
+      })
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const isValidationApproveResponse = (
+  value: unknown
+): value is ValidationApproveResponse => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if ("status" in value) {
+    const status = (value as { status?: unknown }).status;
+    if (
+      status !== undefined &&
+      (typeof status !== "string" ||
+        (status !== "approved" && status !== "failed"))
+    ) {
+      return false;
+    }
+  }
+
+  if ("error" in value) {
+    const error = (value as { error?: unknown }).error;
+    if (error !== undefined && typeof error !== "string") {
+      return false;
+    }
+  }
+
+  if ("result" in value) {
+    const result = (value as { result?: unknown }).result;
+    if (result !== undefined && !isValidationExecutionResult(result)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const extractResultText = (
   result?: ValidationExecutionResult | null
 ): string | null => {
@@ -216,7 +296,27 @@ export function useAssistant() {
           body: JSON.stringify(payload),
         });
 
-        const json = (await res.json()) as ValidationApproveResponse;
+        let parsed: unknown = null;
+        try {
+          parsed = await res.json();
+        } catch (parseError) {
+          console.error("Failed to parse validation response:", parseError);
+        }
+
+        if (!isValidationApproveResponse(parsed)) {
+          console.error("Invalid validation response shape:", parsed);
+          const fallback =
+            isRecord(parsed) && typeof parsed.error === "string"
+              ? parsed.error
+              : "Unexpected response from validation service.";
+          setValidationRequest(null);
+          const failureAnswer = formatFailureAnswer(fallback);
+          setAnswer(failureAnswer);
+          setError(fallback);
+          return;
+        }
+
+        const json = parsed;
         console.log("Approval response:", json);
 
         const executionError = deriveExecutionError(json);
