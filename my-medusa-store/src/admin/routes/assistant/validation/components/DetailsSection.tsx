@@ -1,8 +1,8 @@
 import { Badge, Text } from "@medusajs/ui";
-import { ValidationProvider } from "./context/ValidationContext";
-import { EditableFieldNew } from "../validation/components/EditableField";
+import { ValidationProvider } from "../context/ValidationContext";
+import { EditableField } from "./EditableField";
 
-type DetailsSectionNewProps = {
+type DetailsSectionProps = {
   title: string;
   data: Record<string, unknown>;
   isEditing: boolean;
@@ -11,14 +11,14 @@ type DetailsSectionNewProps = {
   bodyFieldReadOnly?: string[];
 };
 
-export function DetailsSectionNew({
+export function DetailsSection({
   title,
   data,
   isEditing,
   onChange,
   bodyFieldEnums,
   bodyFieldReadOnly,
-}: DetailsSectionNewProps) {
+}: DetailsSectionProps) {
   const entries = Object.entries(data).filter(([, value]) => {
     return value !== undefined && value !== null;
   });
@@ -80,8 +80,8 @@ export function DetailsSectionNew({
                       ([subKey, subValue]) => (
                         <div
                           key={subKey}
-                          className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2"
-                        >
+                            className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2"
+                          >
                           <Text
                             size="small"
                             className="text-ui-fg-subtle font-medium min-w-[160px]"
@@ -89,7 +89,7 @@ export function DetailsSectionNew({
                             {subKey}
                           </Text>
                           <div className="flex-1 min-w-0">
-                            <EditableFieldNew
+                            <EditableField
                               value={subValue}
                               path={[key, subKey]}
                             />
@@ -115,7 +115,7 @@ export function DetailsSectionNew({
                   {key}
                 </Text>
                 <div className="flex-1 min-w-0">
-                  <EditableFieldNew value={value} path={[key]} />
+                  <EditableField value={value} path={[key]} />
                 </div>
               </div>
             );
