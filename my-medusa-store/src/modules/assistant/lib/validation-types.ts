@@ -11,6 +11,7 @@ export type ValidationRequest = {
   timestamp: Date;
   bodyFieldEnums?: Record<string, string[]>;
   bodyFieldReadOnly?: string[];
+  resourcePreview?: Record<string, unknown>;
 };
 
 export type ValidationResponse = {

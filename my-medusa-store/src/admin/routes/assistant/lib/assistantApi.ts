@@ -15,6 +15,7 @@ const ValidationRequestSchema = z.object({
   args: z.record(z.unknown()),
   bodyFieldEnums: z.record(z.array(z.string())).optional(),
   bodyFieldReadOnly: z.array(z.string()).optional(),
+  resourcePreview: z.record(z.unknown()).optional(),
 });
 
 const ValidationExecutionResultSchema = z
@@ -54,12 +55,12 @@ const AssistantConversationSchema = z.object({
 });
 
 const SUCCESS_MESSAGE =
-  `## Action Completed Successfully\n\n` +
+  `## ✅ Action Completed Successfully\n\n` +
   `Your request has been processed and the changes have been applied to your store.\n\n` +
   `You can now continue with your next task or ask me for help with something else.`;
 
 const CANCEL_MESSAGE =
-  `## Action Cancelled\n\n` +
+  `## ❌ Action Cancelled\n\n` +
   `No changes were made to your store. The operation has been cancelled as requested.\n\n` +
   `Feel free to ask me to do something else!`;
 

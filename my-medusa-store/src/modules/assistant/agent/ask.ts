@@ -136,7 +136,7 @@ export async function askAgent(
 
       // Handle validation request
       if (outcome.validationRequest) {
-        console.log(`   🛑 Validation required for operation`);
+        console.log(`    Validation required for operation`);
 
         // Determine operation type for user-friendly message
         const isDelete = outcome.validationRequest.method === "DELETE";
