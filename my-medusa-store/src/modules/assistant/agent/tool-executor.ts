@@ -82,18 +82,6 @@ export async function executeTool(params: {
         const schemaData = JSON.parse(schemaResult.content[0].text);
         bodyFieldEnums = schemaData.bodyFieldEnums || {};
         bodyFieldReadOnly = schemaData.bodyFieldReadOnly || [];
-        if (bodyFieldEnums && Object.keys(bodyFieldEnums).length > 0) {
-          console.log(
-            `   ✓ Extracted enum fields for ${details.operationId}:`,
-            Object.keys(bodyFieldEnums)
-          );
-        }
-        if (bodyFieldReadOnly && bodyFieldReadOnly.length > 0) {
-          console.log(
-            `   ✓ Extracted readOnly fields for ${details.operationId}:`,
-            bodyFieldReadOnly
-          );
-        }
       }
     } catch (error) {
       console.warn(
@@ -110,9 +98,6 @@ export async function executeTool(params: {
       bodyFieldEnums,
       bodyFieldReadOnly
     );
-
-    console.log(`   ⚠️  Operation requires validation: ${details.operationId}`);
-    console.log(`   Waiting for user approval...`);
 
     // Return early with validation request
     return {
