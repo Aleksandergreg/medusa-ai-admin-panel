@@ -5,43 +5,31 @@ import {
 import type { Knex } from "knex";
 import { askAgent } from "./agent/ask";
 import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
-import { ConversationEntry, HistoryEntry } from "./lib/types";
-
-type PromptInput = {
-  prompt: string;
-  actorId: string;
-};
-
-type PromptResult = {
-  answer: string;
-  history: ConversationEntry[];
-  updatedAt: Date;
-  validationRequest?: {
-    id: string;
-    operationId: string;
-    method: string;
-    path: string;
-    args: Record<string, unknown>;
-  };
-};
-
-type ConversationRow = {
-  id: string;
-  actor_id: string;
-  created_at: Date | string;
-  updated_at: Date | string;
-};
-
-type MessageRow = {
-  id: string;
-  session_id: string;
-  question: string;
-  answer: string | null;
-  created_at: Date | string;
-};
+import {
+  ConversationEntry,
+  ConversationRow,
+  HistoryEntry,
+  MessageRow,
+  PromptInput,
+  PromptResult,
+  ValidationRequest,
+} from "./lib/types";
 
 const CONVERSATION_TABLE = "conversation_session";
 const MESSAGE_TABLE = "conversation_message";
+
+// Type guard for validation request
+function isValidationRequest(data: unknown): data is ValidationRequest {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "id" in data &&
+    "operationId" in data &&
+    "method" in data &&
+    "path" in data &&
+    "args" in data
+  );
+}
 
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
@@ -100,19 +88,9 @@ class AssistantModuleService extends MedusaService({}) {
     await this.persistConversation(actorId, finalHistory, updatedAt);
 
     // Check if there's validation data in agent result
-    const validationData =
-      typeof agentResult.data === "object" &&
-      agentResult.data !== null &&
-      "id" in agentResult.data &&
-      "operationId" in agentResult.data
-        ? (agentResult.data as {
-            id: string;
-            operationId: string;
-            method: string;
-            path: string;
-            args: Record<string, unknown>;
-          })
-        : undefined;
+    const validationData = isValidationRequest(agentResult.data)
+      ? agentResult.data
+      : undefined;
 
     return {
       answer,
