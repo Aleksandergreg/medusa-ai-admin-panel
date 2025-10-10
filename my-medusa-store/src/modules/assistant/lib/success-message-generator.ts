@@ -35,7 +35,7 @@ Result data:
 \`\`\`json
 ${resultData}
 \`\`\`
-Please provide a brief, natural, human-friendly summary (2-4 sentences) of what was successfully done, highlighting only the most important details. Be conversational and concise. Start with a success emoji (e.g., ✅ or 🎉).`;
+Please provide a brief, natural, human-friendly summary. Include all relevant fields for a e-commerce manager from the body (YOU MUST INCLUDE STATUS AND START AND END DATE). Start with a success emoji (e.g., ✅ or 🎉).`;
 
     // Call askAgent directly without saving to database
     // This bypasses the service's prompt() method which always persists conversations
