@@ -1,7 +1,9 @@
 /**
  * Generates human-friendly success messages using AI summarization
+ * This function calls the AI directly without saving to the database
  */
 
+import { askAgent } from "../agent/ask";
 import type AssistantModuleService from "../service";
 
 type OpenApiExecutionPayload = {
@@ -35,12 +37,15 @@ ${resultData}
 \`\`\`
 Please provide a brief, natural, human-friendly summary (2-4 sentences) of what was successfully done, highlighting only the most important details. Be conversational and concise. Start with a success emoji (e.g., ✅ or 🎉).`;
 
-    // Use the assistant service to generate a natural response.
-    // A temporary actorId is used to ensure this summarization step doesn't get saved to the user's main chat history.
-    const result = await assistantService.prompt({
-      prompt,
-      actorId: `${actorId}_summary`,
-    });
+    // Call askAgent directly without saving to database
+    // This bypasses the service's prompt() method which always persists conversations
+    const result = await askAgent(
+      {
+        prompt,
+        history: [], // Empty history for one-off summary generation
+      },
+      { config: assistantService.getConfig() }
+    );
 
     if (result.answer && !result.answer.includes("Sorry")) {
       return result.answer;

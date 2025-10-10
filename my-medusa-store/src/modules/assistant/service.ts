@@ -47,6 +47,10 @@ class AssistantModuleService extends MedusaService({}) {
     return this.__container__[ContainerRegistrationKeys.PG_CONNECTION] as Knex;
   }
 
+  public getConfig(): AssistantModuleOptions {
+    return this.config;
+  }
+
   async prompt(input: PromptInput): Promise<PromptResult> {
     const trimmedPrompt = input.prompt?.trim();
     if (!trimmedPrompt) {
