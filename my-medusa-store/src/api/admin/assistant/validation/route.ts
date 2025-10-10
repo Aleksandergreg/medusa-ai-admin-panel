@@ -159,8 +159,6 @@ export async function POST(
     let argsToExecute = validation.args;
 
     if (editedData) {
-      console.log("Original args:", JSON.stringify(validation.args, null, 2));
-      console.log("Edited data:", JSON.stringify(editedData, null, 2));
 
       // Replace the body content with edited data
       argsToExecute = {
