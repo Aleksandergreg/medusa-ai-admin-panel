@@ -2,9 +2,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export function ResponseView({ answer }: { answer: string | null }) {
+  // Split the answer by the separator and take only the first part for the UI.
+  const displayAnswer = answer ? answer.split("\n\n---\n\n")[0] : null;
+
   return (
     <>
-      {answer && (
+      {displayAnswer && (
         <div className="border-ui-border-base bg-ui-bg-subtle rounded-md border p-3">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -35,7 +38,7 @@ export function ResponseView({ answer }: { answer: string | null }) {
               ),
             }}
           >
-            {answer}
+            {displayAnswer}
           </ReactMarkdown>
         </div>
       )}

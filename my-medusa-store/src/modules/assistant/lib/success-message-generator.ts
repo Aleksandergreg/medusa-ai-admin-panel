@@ -48,7 +48,17 @@ Please provide a brief, natural, human-friendly summary (2-4 sentences) of what 
     );
 
     if (result.answer && !result.answer.includes("Sorry")) {
-      return result.answer;
+      // Combine the AI's friendly summary with the raw JSON data
+      const combinedResponse = `${result.answer}
+
+---
+
+**Response Data:**
+\`\`\`json
+${resultData}
+\`\`\``;
+
+      return combinedResponse;
     }
   } catch (err) {
     console.error("Failed to generate AI summary:", err);
