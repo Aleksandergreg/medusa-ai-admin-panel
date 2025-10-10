@@ -166,7 +166,7 @@ export async function POST(
         body: editedData,
       };
 
-      console.log("Args to execute:", JSON.stringify(argsToExecute, null, 2));
+      
     }
 
     const result = await mcp.callTool("openapi.execute", argsToExecute);
