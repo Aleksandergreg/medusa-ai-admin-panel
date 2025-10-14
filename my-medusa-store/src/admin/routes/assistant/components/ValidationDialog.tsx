@@ -98,8 +98,7 @@ export function ValidationDialog({
   );
 
   const pathParams = useMemo(
-    () =>
-      extractRecord(validationRequest.args, ["pathParams", "path_parameters"]),
+    () => extractRecord(validationRequest.args, ["pathParams", "path_parameters"]),
     [validationRequest.args]
   );
 
