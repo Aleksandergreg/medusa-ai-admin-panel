@@ -27,7 +27,7 @@ const MESSAGE_TABLE = "conversation_message";
 const DEFAULT_FAILURE_MESSAGE =
   "Sorry, I could not find an answer to your question.";
 const CANCEL_MESSAGE =
-  `## �?O Action Cancelled\n\n` +
+  `## ❌ Action Cancelled\n\n` +
   `No changes were made to your store. The operation has been cancelled as requested.\n\n` +
   `Feel free to ask me to do something else!`;
 
