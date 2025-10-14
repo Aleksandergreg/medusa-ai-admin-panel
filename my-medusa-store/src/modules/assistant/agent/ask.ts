@@ -12,6 +12,7 @@ import {
   ValidationContinuationHandler,
   ValidationContinuationPayload,
   ValidationContinuationResult,
+  ValidationRequest,
 } from "../lib/validation-types";
 
 type AskInput = {
@@ -27,6 +28,244 @@ type ToolSuccessContext = {
   toolName: string;
   args: Record<string, unknown>;
   cacheable: boolean;
+};
+
+const LABEL_CANDIDATE_KEYS = ["name", "title", "code", "handle", "id"];
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const hasRenderableData = (value: unknown): boolean => {
+  if (value === undefined) return false;
+  if (value === null) return true;
+  if (Array.isArray(value)) {
+    return value.some((item) => hasRenderableData(item));
+  }
+  if (isPlainRecord(value)) {
+    return Object.values(value).some((entry) => hasRenderableData(entry));
+  }
+  return true;
+};
+
+const prettifyKey = (key: string): string =>
+  key
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatPrimitive = (value: unknown): string => {
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : '""';
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const formatArray = (values: unknown[], indent: number): string => {
+  if (!values.length) {
+    return `${"  ".repeat(indent)}- (none)`;
+  }
+
+  return values
+    .map((item) => {
+      const prefix = `${"  ".repeat(indent)}- `;
+      if (isPlainRecord(item)) {
+        const nested = formatRecord(item, indent + 1);
+        return `${prefix}Item\n${nested}`;
+      }
+      if (Array.isArray(item)) {
+        const nested = formatArray(item, indent + 1);
+        return `${prefix}Items\n${nested}`;
+      }
+      return `${prefix}${formatPrimitive(item)}`;
+    })
+    .join("\n");
+};
+
+const formatRecord = (
+  record: Record<string, unknown>,
+  indent = 0
+): string => {
+  const entries = Object.entries(record).filter(([, value]) =>
+    hasRenderableData(value)
+  );
+  if (!entries.length) {
+    return `${"  ".repeat(indent)}- (empty)`;
+  }
+
+  return entries
+    .map(([key, value]) => {
+      const prefix = `${"  ".repeat(indent)}- **${prettifyKey(key)}**`;
+      if (isPlainRecord(value)) {
+        const nested = formatRecord(value, indent + 1);
+        return `${prefix}\n${nested}`;
+      }
+      if (Array.isArray(value)) {
+        const nested = formatArray(value, indent + 1);
+        return `${prefix}\n${nested}`;
+      }
+      return `${prefix}: ${formatPrimitive(value)}`;
+    })
+    .join("\n");
+};
+
+const formatData = (value: unknown, indent = 0): string => {
+  if (Array.isArray(value)) {
+    return formatArray(value, indent);
+  }
+  if (isPlainRecord(value)) {
+    return formatRecord(value, indent);
+  }
+  if (!hasRenderableData(value)) {
+    return "";
+  }
+  return `${"  ".repeat(indent)}- ${formatPrimitive(value)}`;
+};
+
+const extractRecord = (
+  source: Record<string, unknown>,
+  keys: string[]
+): Record<string, unknown> | undefined => {
+  for (const key of keys) {
+    const candidate = source[key];
+    if (isPlainRecord(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+};
+
+const pickLabelFromRecord = (
+  record: Record<string, unknown> | undefined
+): string | undefined => {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const key of LABEL_CANDIDATE_KEYS) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+
+  for (const value of Object.values(record)) {
+    if (typeof value === "string" && value.trim().length) {
+      return value.trim();
+    }
+    if (isPlainRecord(value)) {
+      const nested = pickLabelFromRecord(value);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  return undefined;
+};
+
+const normalizeBodyForDisplay = (value: unknown): unknown => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (isPlainRecord(value) || Array.isArray(value)) {
+    return value;
+  }
+  return { Value: value };
+};
+
+const buildValidationSummaryMessage = (
+  request: ValidationRequest
+): string => {
+  const method = (request.method ?? "POST").toUpperCase();
+  const action =
+    method === "DELETE"
+      ? "delete"
+      : method === "POST"
+      ? "create"
+      : method === "PUT" || method === "PATCH"
+      ? "update"
+      : "process";
+
+  const bodyData = normalizeBodyForDisplay(
+    (request.args as Record<string, unknown>)["body"]
+  );
+  const pathParams = extractRecord(request.args, ["pathParams", "path_parameters"]);
+  const queryParams = extractRecord(request.args, ["query", "queryParams"]);
+  const headerParams = extractRecord(request.args, ["headers"]);
+
+  const label =
+    pickLabelFromRecord(request.resourcePreview) ??
+    (isPlainRecord(bodyData) ? pickLabelFromRecord(bodyData) : undefined);
+
+  const intro = label
+    ? `I'm ready to ${action} **${label}**.`
+    : `I'm ready to ${action} this resource.`;
+
+  const sections: string[] = [];
+
+  const operationLines: string[] = [];
+  if (request.operationId) {
+    operationLines.push(`- Operation: \`${request.operationId}\``);
+  }
+  if (request.path || request.method) {
+    const endpoint = `${method}${request.path ? ` ${request.path}` : ""}`.trim();
+    operationLines.push(`- Endpoint: \`${endpoint}\``);
+  }
+  if (operationLines.length) {
+    sections.push(`**Operation**\n${operationLines.join("\n")}`);
+  }
+
+  if (hasRenderableData(request.resourcePreview)) {
+    sections.push(
+      `**Existing Resource**\n${formatData(request.resourcePreview)}`
+    );
+  }
+
+  if (hasRenderableData(bodyData)) {
+    const title =
+      method === "DELETE"
+        ? "Target Details"
+        : method === "POST"
+        ? "Request Payload"
+        : "Proposed Changes";
+    sections.push(`**${title}**\n${formatData(bodyData)}`);
+  }
+
+  if (hasRenderableData(pathParams)) {
+    sections.push(`**Path Parameters**\n${formatData(pathParams)}`);
+  }
+
+  if (hasRenderableData(queryParams)) {
+    sections.push(`**Query Parameters**\n${formatData(queryParams)}`);
+  }
+
+  if (hasRenderableData(headerParams)) {
+    sections.push(`**Custom Headers**\n${formatData(headerParams)}`);
+  }
+
+  const details = sections.length
+    ? sections.join("\n\n")
+    : "_No structured details available for review._";
+
+  return `## 🔐 Pending Approval\n\n${intro}\n\n${details}\n\n---\n\nNothing has been executed yet. Click **Confirm** below to proceed or **Cancel** to abort.`;
 };
 
 export async function askAgent(
@@ -193,9 +432,9 @@ export async function askAgent(
     if (outcome.validationRequest) {
       console.log(`    Validation required for operation`);
 
-      const isDelete = outcome.validationRequest.method === "DELETE";
-      const action = isDelete ? "delete" : "create";
-      const validationMessage = `## 🔐 Your Approval is Required\n\nI've prepared everything to ${action} this item, but I need your confirmation before proceeding.\n\nPlease review the details below and click **"Approve & Execute"** if you'd like me to continue, or **"Cancel"** if you've changed your mind.`;
+      const validationMessage = buildValidationSummaryMessage(
+        outcome.validationRequest
+      );
 
       const continuation: ValidationContinuationHandler = async (
         payload: ValidationContinuationPayload
@@ -208,13 +447,7 @@ export async function askAgent(
           };
         }
 
-        const argsToExecute =
-          payload.editedData !== undefined
-            ? {
-                ...normalizedArgs,
-                body: payload.editedData,
-              }
-            : normalizedArgs;
+        const argsToExecute = normalizedArgs;
 
         const resumedOutcome = await executeTool(
           {

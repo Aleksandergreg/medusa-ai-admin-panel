@@ -3,7 +3,6 @@ import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { ResponseView } from "./components/ResponseView";
 import { AssistantLoading } from "./components/Loading";
-import { ValidationDialog } from "./components/ValidationDialog";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text } from "@medusajs/ui";
 import { AiAssistent } from "@medusajs/icons";
@@ -75,15 +74,36 @@ const AssistantPage = () => {
           </div>
         )}
 
-        {validationRequest && (
-          <ValidationDialog
-            validationRequest={validationRequest}
-            onApprove={approveValidation}
-            onReject={rejectValidation}
-          />
-        )}
-
         <ResponseView answer={answer} />
+
+        {validationRequest && (
+          <div className="rounded-md border p-3 bg-ui-bg-base space-y-3">
+            <Text size="small">
+              Review the assistant&apos;s response above and confirm to execute
+              this action. Nothing happens until you click confirm.
+            </Text>
+            <div className="flex gap-2">
+              <button
+                onClick={() => approveValidation(validationRequest.id)}
+                disabled={loading}
+                className={`rounded-md px-3 py-1.5 text-white ${
+                  loading
+                    ? "bg-ui-border-disabled cursor-not-allowed"
+                    : "bg-ui-bg-interactive"
+                }`}
+              >
+                {loading ? "Processing…" : "Confirm"}
+              </button>
+              <button
+                onClick={() => rejectValidation(validationRequest.id)}
+                className="rounded-md px-3 py-1.5 border bg-ui-bg-base text-ui-fg-base"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </Container>
   );
