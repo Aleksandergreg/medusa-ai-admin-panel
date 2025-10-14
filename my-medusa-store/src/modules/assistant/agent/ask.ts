@@ -1,6 +1,10 @@
 import { getMcp } from "../../../lib/mcp/manager";
 import { metricsStore } from "../../../lib/metrics/store";
-import { normalizeToolArgs, ensureMarkdownMinimum } from "../lib/utils";
+import {
+  normalizeToolArgs,
+  ensureMarkdownMinimum,
+  extractToolJsonPayload,
+} from "../lib/utils";
 import { FALLBACK_MESSAGE } from "../lib/plan-normalizer";
 import { HistoryEntry, InitialOperation, McpTool } from "../lib/types";
 import { AssistantModuleOptions } from "../config";
@@ -30,7 +34,27 @@ type ToolSuccessContext = {
   cacheable: boolean;
 };
 
-const LABEL_CANDIDATE_KEYS = ["name", "title", "code", "handle", "id"];
+const LABEL_CANDIDATE_KEYS = [
+  "name",
+  "title",
+  "handle",
+  "code",
+  "sku",
+  "display_name",
+  "label",
+];
+
+type ValidationSummaryRequest = Pick<
+  ValidationRequest,
+  | "id"
+  | "operationId"
+  | "method"
+  | "path"
+  | "args"
+  | "bodyFieldEnums"
+  | "bodyFieldReadOnly"
+  | "resourcePreview"
+>;
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -78,7 +102,25 @@ const formatPrimitive = (value: unknown): string => {
   }
 };
 
-const formatArray = (values: unknown[], indent: number): string => {
+const resolveLabel = (
+  raw: unknown,
+  labelMap: Map<string, string>
+): string | undefined => {
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  const direct = labelMap.get(raw);
+  if (direct) {
+    return direct;
+  }
+  return undefined;
+};
+
+const formatArray = (
+  values: unknown[],
+  indent: number,
+  labelMap: Map<string, string>
+): string => {
   if (!values.length) {
     return `${"  ".repeat(indent)}- (none)`;
   }
@@ -87,12 +129,18 @@ const formatArray = (values: unknown[], indent: number): string => {
     .map((item) => {
       const prefix = `${"  ".repeat(indent)}- `;
       if (isPlainRecord(item)) {
-        const nested = formatRecord(item, indent + 1);
+        const nested = formatRecord(item, indent + 1, labelMap);
         return `${prefix}Item\n${nested}`;
       }
       if (Array.isArray(item)) {
-        const nested = formatArray(item, indent + 1);
+        const nested = formatArray(item, indent + 1, labelMap);
         return `${prefix}Items\n${nested}`;
+      }
+      if (typeof item === "string") {
+        const label = resolveLabel(item, labelMap);
+        if (label && label !== item) {
+          return `${prefix}${label} (${item})`;
+        }
       }
       return `${prefix}${formatPrimitive(item)}`;
     })
@@ -101,7 +149,8 @@ const formatArray = (values: unknown[], indent: number): string => {
 
 const formatRecord = (
   record: Record<string, unknown>,
-  indent = 0
+  indent = 0,
+  labelMap: Map<string, string>
 ): string => {
   const entries = Object.entries(record).filter(([, value]) =>
     hasRenderableData(value)
@@ -114,27 +163,43 @@ const formatRecord = (
     .map(([key, value]) => {
       const prefix = `${"  ".repeat(indent)}- **${prettifyKey(key)}**`;
       if (isPlainRecord(value)) {
-        const nested = formatRecord(value, indent + 1);
+        const nested = formatRecord(value, indent + 1, labelMap);
         return `${prefix}\n${nested}`;
       }
       if (Array.isArray(value)) {
-        const nested = formatArray(value, indent + 1);
+        const nested = formatArray(value, indent + 1, labelMap);
         return `${prefix}\n${nested}`;
+      }
+      if (typeof value === "string") {
+        const label = resolveLabel(value, labelMap);
+        if (label && label !== value) {
+          return `${prefix}: ${label} (${value})`;
+        }
       }
       return `${prefix}: ${formatPrimitive(value)}`;
     })
     .join("\n");
 };
 
-const formatData = (value: unknown, indent = 0): string => {
+const formatData = (
+  value: unknown,
+  indent = 0,
+  labelMap: Map<string, string>
+): string => {
   if (Array.isArray(value)) {
-    return formatArray(value, indent);
+    return formatArray(value, indent, labelMap);
   }
   if (isPlainRecord(value)) {
-    return formatRecord(value, indent);
+    return formatRecord(value, indent, labelMap);
   }
   if (!hasRenderableData(value)) {
     return "";
+  }
+  if (typeof value === "string") {
+    const label = resolveLabel(value, labelMap);
+    if (label && label !== value) {
+      return `${"  ".repeat(indent)}- ${label} (${value})`;
+    }
   }
   return `${"  ".repeat(indent)}- ${formatPrimitive(value)}`;
 };
@@ -191,8 +256,83 @@ const normalizeBodyForDisplay = (value: unknown): unknown => {
   return { Value: value };
 };
 
+const trimLabel = (raw: unknown): string | undefined => {
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  return trimmed.length ? trimmed : undefined;
+};
+
+const collectLabels = (
+  value: unknown,
+  labelMap: Map<string, string>
+): void => {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectLabels(entry, labelMap);
+    }
+    return;
+  }
+
+  if (!isPlainRecord(value)) {
+    return;
+  }
+
+  const candidateId = value.id;
+  if (typeof candidateId === "string" && !labelMap.has(candidateId)) {
+    for (const key of LABEL_CANDIDATE_KEYS) {
+      const label = trimLabel(value[key]);
+      if (label && label !== candidateId) {
+        labelMap.set(candidateId, label);
+        break;
+      }
+    }
+  }
+
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw !== "string") {
+      continue;
+    }
+    if (!key.endsWith("_id")) {
+      continue;
+    }
+    const base = key.slice(0, -3);
+    if (!base) {
+      continue;
+    }
+    const baseLabelKeys = [
+      `${base}_name`,
+      `${base}_title`,
+      `${base}_label`,
+      `${base}_code`,
+      `${base}_handle`,
+    ];
+    for (const labelKey of baseLabelKeys) {
+      const label = trimLabel(value[labelKey]);
+      if (label && label !== raw && !labelMap.has(raw)) {
+        labelMap.set(raw, label);
+        break;
+      }
+    }
+  }
+
+  for (const entry of Object.values(value)) {
+    collectLabels(entry, labelMap);
+  }
+};
+
+const buildLabelMap = (...sources: unknown[]): Map<string, string> => {
+  const labelMap = new Map<string, string>();
+  for (const source of sources) {
+    collectLabels(source, labelMap);
+  }
+  return labelMap;
+};
+
 const buildValidationSummaryMessage = (
-  request: ValidationRequest
+  request: ValidationSummaryRequest,
+  labelMap: Map<string, string>
 ): string => {
   const method = (request.method ?? "POST").toUpperCase();
   const action =
@@ -235,7 +375,11 @@ const buildValidationSummaryMessage = (
 
   if (hasRenderableData(request.resourcePreview)) {
     sections.push(
-      `**Existing Resource**\n${formatData(request.resourcePreview)}`
+      `**Existing Resource**\n${formatData(
+        request.resourcePreview,
+        0,
+        labelMap
+      )}`
     );
   }
 
@@ -246,19 +390,19 @@ const buildValidationSummaryMessage = (
         : method === "POST"
         ? "Request Payload"
         : "Proposed Changes";
-    sections.push(`**${title}**\n${formatData(bodyData)}`);
+    sections.push(`**${title}**\n${formatData(bodyData, 0, labelMap)}`);
   }
 
   if (hasRenderableData(pathParams)) {
-    sections.push(`**Path Parameters**\n${formatData(pathParams)}`);
+    sections.push(`**Path Parameters**\n${formatData(pathParams, 0, labelMap)}`);
   }
 
   if (hasRenderableData(queryParams)) {
-    sections.push(`**Query Parameters**\n${formatData(queryParams)}`);
+    sections.push(`**Query Parameters**\n${formatData(queryParams, 0, labelMap)}`);
   }
 
   if (hasRenderableData(headerParams)) {
-    sections.push(`**Custom Headers**\n${formatData(headerParams)}`);
+    sections.push(`**Custom Headers**\n${formatData(headerParams, 0, labelMap)}`);
   }
 
   const details = sections.length
@@ -432,8 +576,26 @@ export async function askAgent(
     if (outcome.validationRequest) {
       console.log(`    Validation required for operation`);
 
+      const labelSources: unknown[] = [
+        outcome.validationRequest.resourcePreview,
+        outcome.validationRequest.args,
+        (
+          outcome.validationRequest.args as Record<string, unknown>
+        )?.["body"],
+      ];
+
+      for (const entry of historyTracker.list) {
+        const payload = extractToolJsonPayload(entry.tool_result);
+        if (payload !== undefined) {
+          labelSources.push(payload);
+        }
+      }
+
+      const labelMap = buildLabelMap(...labelSources);
+
       const validationMessage = buildValidationSummaryMessage(
-        outcome.validationRequest
+        outcome.validationRequest,
+        labelMap
       );
 
       const continuation: ValidationContinuationHandler = async (
