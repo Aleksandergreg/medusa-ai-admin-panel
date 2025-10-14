@@ -5,18 +5,28 @@ export type TokenizedField = {
     field: "operationId" | "summary" | "description" | "path" | "tags";
     original: string;
     tokens: string[];
+    tokenSet: Set<string>;
+    firstIndex: Map<string, number>;
 };
 
 export type TokenizedFields = TokenizedField[];
 
 export type IndexedOperation = Operation & {
     tokenized: TokenizedFields;
+    normalizedOperationId: string;
 };
 
 export function buildIndexedOperation(operation: Operation): IndexedOperation {
+    const tokenized = tokenizeOperation(operation);
+    const normalizedOperationId =
+        tokenized.find((entry) => entry.field === "operationId")?.tokens.join(
+            ""
+        ) ?? "";
+
     return {
         ...operation,
-        tokenized: tokenizeOperation(operation)
+        tokenized,
+        normalizedOperationId
     };
 }
 
@@ -31,7 +41,14 @@ function tokenizeOperation(op: Operation): TokenizedFields {
         }
         const original = Array.isArray(value) ? value.join(" ") : value;
         const tokens = tokenize(original, { preserveStopwords: true });
-        entries.push({ field, original, tokens });
+        const tokenSet = new Set(tokens);
+        const firstIndex = new Map<string, number>();
+        tokens.forEach((token, index) => {
+            if (!firstIndex.has(token)) {
+                firstIndex.set(token, index);
+            }
+        });
+        entries.push({ field, original, tokens, tokenSet, firstIndex });
     };
 
     pushField("operationId", op.operationId);
