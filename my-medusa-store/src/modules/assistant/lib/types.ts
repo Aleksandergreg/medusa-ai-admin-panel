@@ -37,6 +37,9 @@ export type ValidationRequest = {
   method: string;
   path: string;
   args: Record<string, unknown>;
+  bodyFieldEnums?: Record<string, string[]>;
+  bodyFieldReadOnly?: string[];
+  resourcePreview?: Record<string, unknown>;
 };
 
 

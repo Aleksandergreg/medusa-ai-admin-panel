@@ -112,9 +112,7 @@ export function useAssistant() {
       setAnswer(res.answer);
 
       // Check if response includes validation request
-      if (res.validationRequest) {
-        setValidationRequest(res.validationRequest);
-      }
+      setValidationRequest(res.validationRequest ?? null);
     } catch (e: unknown) {
       setHistory(previousHistory);
       if (!(e instanceof Error && e.name === "AbortError")) {
@@ -137,9 +135,10 @@ export function useAssistant() {
       try {
         setLoading(true);
         const outcome = await approveAssistantValidation(id, editedData);
-        setValidationRequest(null);
+        setHistory(outcome.history);
         setAnswer(outcome.answer);
-        setError(outcome.kind === "failure" ? outcome.error : null);
+        setValidationRequest(outcome.validationRequest ?? null);
+        setError(null);
       } catch (e: unknown) {
         setError((e as Error)?.message ?? "Failed to approve operation");
       } finally {
@@ -152,9 +151,10 @@ export function useAssistant() {
   const rejectValidation = useCallback(async (id: string) => {
     try {
       setLoading(true);
-      const answerMessage = await rejectAssistantValidation(id);
-      setValidationRequest(null);
-      setAnswer(answerMessage);
+      const outcome = await rejectAssistantValidation(id);
+      setHistory(outcome.history);
+      setAnswer(outcome.answer);
+      setValidationRequest(outcome.validationRequest ?? null);
       setError(null);
     } catch (e: unknown) {
       setError((e as Error)?.message ?? "Failed to reject operation");
