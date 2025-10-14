@@ -2,6 +2,8 @@
  * Types for user validation of destructive operations
  */
 
+import type { HistoryEntry } from "./types";
+
 export type ValidationRequest = {
   id: string;
   operationId: string;
@@ -14,13 +16,39 @@ export type ValidationRequest = {
   resourcePreview?: Record<string, unknown>;
 };
 
-export type ValidationResponse = {
+export type ValidationResolution = {
   id: string;
   approved: boolean;
+  editedData?: Record<string, unknown>;
+};
+
+export type ValidationContinuationPayload = {
+  approved: boolean;
+  editedData?: Record<string, unknown>;
+};
+
+export type ValidationContinuationResult = {
+  answer?: string;
+  data: unknown | null;
+  history: HistoryEntry[];
+  validationRequest?: ValidationRequest;
+  continuation?: ValidationContinuationHandler;
+};
+
+export type ValidationContinuationHandler = (
+  payload: ValidationContinuationPayload
+) => Promise<ValidationContinuationResult>;
+
+export type PendingValidationContext = {
+  actorId: string;
+  sessionId: string;
+  messageId: string;
+  continuation?: ValidationContinuationHandler;
 };
 
 export type PendingValidation = {
   request: ValidationRequest;
-  resolve: (approved: boolean) => void;
+  resolve: (resolution: ValidationResolution) => void;
   reject: (error: Error) => void;
+  context?: PendingValidationContext;
 };

@@ -222,15 +222,23 @@ async function buildResourcePreview(params: {
   }
 }
 
-export async function executeTool(params: {
-  mcp: MCPResult;
-  toolName: string;
-  args: Record<string, unknown>;
-}): Promise<ExecuteOutcome> {
+type ExecuteOptions = {
+  skipValidation?: boolean;
+};
+
+export async function executeTool(
+  params: {
+    mcp: MCPResult;
+    toolName: string;
+    args: Record<string, unknown>;
+  },
+  options: ExecuteOptions = {}
+): Promise<ExecuteOutcome> {
   const { mcp, toolName, args } = params;
+  const { skipValidation = false } = options;
 
   // Check if this operation needs validation
-  if (needsValidation(toolName, args)) {
+  if (!skipValidation && needsValidation(toolName, args)) {
     const details = extractOperationDetails(args);
     let operationMethod = details.method;
     let operationPath = details.path;

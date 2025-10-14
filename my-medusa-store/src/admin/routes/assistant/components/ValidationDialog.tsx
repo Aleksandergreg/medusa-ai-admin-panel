@@ -1,4 +1,5 @@
 import { Button, Heading, Text, Badge, Container } from "@medusajs/ui";
+import { Spinner } from "@medusajs/icons";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   deepClone,
@@ -89,7 +90,11 @@ export function ValidationDialog({
       method: (validationRequest.method ?? "POST").toUpperCase(),
       path: validationRequest.path,
     }),
-    [validationRequest.operationId, validationRequest.method, validationRequest.path]
+    [
+      validationRequest.operationId,
+      validationRequest.method,
+      validationRequest.path,
+    ]
   );
 
   const pathParams = useMemo(
@@ -327,13 +332,18 @@ export function ValidationDialog({
             size="large"
             className="flex-1"
           >
-            {loading
-              ? "Processing..."
-              : operationMetadata.isDelete
-              ? "⚠️ Confirm Delete"
-              : hasChanges
-              ? "✓ Approve with Changes"
-              : "✓ Approve & Execute"}
+            {loading ? (
+              <div className="flex items-center justify-center gap-x-2">
+                <Spinner className="animate-spin" />
+                <span>Processing...</span>
+              </div>
+            ) : operationMetadata.isDelete ? (
+              "⚠️ Confirm Delete"
+            ) : hasChanges ? (
+              "✓ Approve with Changes"
+            ) : (
+              "✓ Approve & Execute"
+            )}
           </Button>
           <Button
             onClick={handleReject}

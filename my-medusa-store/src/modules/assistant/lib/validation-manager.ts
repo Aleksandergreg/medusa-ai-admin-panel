@@ -4,8 +4,9 @@
 
 import {
   PendingValidation,
+  PendingValidationContext,
   ValidationRequest,
-  ValidationResponse,
+  ValidationResolution,
 } from "./validation-types";
 
 class ValidationManager {
@@ -19,7 +20,7 @@ class ValidationManager {
     bodyFieldEnums?: Record<string, string[]>,
     bodyFieldReadOnly?: string[],
     resourcePreview?: Record<string, unknown>
-  ): { request: ValidationRequest; promise: Promise<boolean> } {
+  ): { request: ValidationRequest; promise: Promise<ValidationResolution> } {
     const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
     const request: ValidationRequest = {
@@ -34,7 +35,7 @@ class ValidationManager {
       resourcePreview,
     };
 
-    const promise = new Promise<boolean>((resolve, reject) => {
+    const promise = new Promise<ValidationResolution>((resolve, reject) => {
       this.pendingValidations.set(id, {
         request,
         resolve,
@@ -52,14 +53,33 @@ class ValidationManager {
     return { request, promise };
   }
 
-  respondToValidation(response: ValidationResponse): void {
+  respondToValidation(response: ValidationResolution): void {
     const pending = this.pendingValidations.get(response.id);
     if (!pending) {
       throw new Error(`No pending validation found for id: ${response.id}`);
     }
 
-    pending.resolve(response.approved);
+    pending.resolve(response);
     this.pendingValidations.delete(response.id);
+  }
+
+  attachContext(id: string, context: PendingValidationContext): void {
+    const pending = this.pendingValidations.get(id);
+    if (!pending) {
+      throw new Error(`No pending validation found for id: ${id}`);
+    }
+    pending.context = context;
+  }
+
+  getPendingValidation(id: string): PendingValidation | undefined {
+    return this.pendingValidations.get(id);
+  }
+
+  clearContext(id: string): void {
+    const pending = this.pendingValidations.get(id);
+    if (pending) {
+      pending.context = undefined;
+    }
   }
 
   rejectValidation(id: string, error: Error): void {
