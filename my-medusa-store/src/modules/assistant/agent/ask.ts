@@ -264,219 +264,66 @@ const trimLabel = (raw: unknown): string | undefined => {
   return trimmed.length ? trimmed : undefined;
 };
 
-const looksLikeResourceId = (value: string): boolean =>
-  /^[a-z]+_[0-9A-Za-z]+$/.test(value);
-
-type LabelCollection = {
-  map: Map<string, string>;
-  unresolved: Set<string>;
-};
-
-const registerLabel = (
-  id: string,
-  label: string,
-  collection: LabelCollection
-) => {
-  const cleanLabel = label.trim();
-  if (!cleanLabel) {
-    return;
-  }
-  collection.map.set(id, cleanLabel);
-  collection.unresolved.delete(id);
-};
-
-const markUnresolved = (id: string, collection: LabelCollection) => {
-  if (!collection.map.has(id)) {
-    collection.unresolved.add(id);
-  }
-};
-
-const collectLabels = (value: unknown, collection: LabelCollection): void => {
+const collectLabels = (
+  value: unknown,
+  labelMap: Map<string, string>
+): void => {
   if (Array.isArray(value)) {
     for (const entry of value) {
-      if (typeof entry === "string" && looksLikeResourceId(entry)) {
-        markUnresolved(entry, collection);
-      }
-      collectLabels(entry, collection);
+      collectLabels(entry, labelMap);
     }
     return;
   }
 
   if (!isPlainRecord(value)) {
-    if (typeof value === "string" && looksLikeResourceId(value)) {
-      markUnresolved(value, collection);
-    }
     return;
   }
 
   const candidateId = value.id;
-  if (typeof candidateId === "string") {
+  if (typeof candidateId === "string" && !labelMap.has(candidateId)) {
     for (const key of LABEL_CANDIDATE_KEYS) {
       const label = trimLabel(value[key]);
       if (label && label !== candidateId) {
-        registerLabel(candidateId, label, collection);
+        labelMap.set(candidateId, label);
         break;
       }
-    }
-    if (!collection.map.has(candidateId)) {
-      markUnresolved(candidateId, collection);
     }
   }
 
   for (const [key, raw] of Object.entries(value)) {
-    if (typeof raw === "string" && looksLikeResourceId(raw)) {
-      if (key.endsWith("_id")) {
-        const base = key.slice(0, -3);
-        if (base) {
-          const candidates = [
-            `${base}_name`,
-            `${base}_title`,
-            `${base}_label`,
-            `${base}_code`,
-            `${base}_handle`,
-          ];
-          for (const labelKey of candidates) {
-            const sibling = trimLabel(value[labelKey]);
-            if (sibling && sibling !== raw) {
-              registerLabel(raw, sibling, collection);
-              break;
-            }
-          }
+    if (typeof raw === "string") {
+      if (!key.endsWith("_id")) {
+        continue;
+      }
+      const base = key.slice(0, -3);
+      if (!base) {
+        continue;
+      }
+      const baseLabelKeys = [
+        `${base}_name`,
+        `${base}_title`,
+        `${base}_label`,
+        `${base}_code`,
+        `${base}_handle`,
+      ];
+      for (const labelKey of baseLabelKeys) {
+        const label = trimLabel(value[labelKey]);
+        if (label && label !== raw && !labelMap.has(raw)) {
+          labelMap.set(raw, label);
+          break;
         }
       }
-      markUnresolved(raw, collection);
     }
-    collectLabels(raw, collection);
+    collectLabels(raw, labelMap);
   }
 };
 
-const applyProductLabels = (
-  products: unknown,
-  collection: LabelCollection
-) => {
-  if (!Array.isArray(products)) {
-    return;
-  }
-
-  for (const entry of products) {
-    if (!isPlainRecord(entry)) {
-      continue;
-    }
-    const id = trimLabel(entry.id);
-    if (!id) {
-      continue;
-    }
-    const labelCandidateKeys = [
-      "title",
-      "name",
-      "handle",
-      "code",
-      "display_name",
-    ] as const;
-    let label: string | undefined;
-    for (const key of labelCandidateKeys) {
-      const candidate = trimLabel(entry[key]);
-      if (candidate) {
-        label = candidate;
-        break;
-      }
-    }
-    if (label) {
-      registerLabel(id, label, collection);
-    }
-  }
-};
-
-const enrichLabelsFromMcp = async (
-  mcp: unknown,
-  collection: LabelCollection
-): Promise<void> => {
-  if (!collection.unresolved.size || !mcp) {
-    return;
-  }
-
-  const unresolvedIds = Array.from(collection.unresolved);
-  const productIds = unresolvedIds.filter((id) => id.startsWith("prod_"));
-
-  if (productIds.length) {
-    try {
-      const result = await (mcp as { callTool: Function }).callTool(
-        "openapi.execute",
-        {
-          operationId: "AdminGetProducts",
-          query: {
-            id: productIds.length === 1 ? productIds[0] : productIds,
-            fields: "id,title,name,handle",
-          },
-        }
-      );
-      const payload = extractToolJsonPayload(result);
-      if (isPlainRecord(payload)) {
-        if (Array.isArray((payload as Record<string, unknown>).products)) {
-          applyProductLabels(
-            (payload as Record<string, unknown>).products,
-            collection
-          );
-        } else if (Array.isArray((payload as Record<string, unknown>).data)) {
-          applyProductLabels(
-            (payload as Record<string, unknown>).data,
-            collection
-          );
-        }
-      }
-    } catch (error) {
-      console.warn(
-        "   Could not batch fetch product labels for validation summary:",
-        error
-      );
-    }
-
-    const remaining = productIds.filter((id) => collection.unresolved.has(id));
-    for (const id of remaining) {
-      try {
-        const result = await (mcp as { callTool: Function }).callTool(
-          "openapi.execute",
-          {
-            operationId: "AdminGetProductsId",
-            pathParams: { id },
-            schemaAware: true,
-          }
-        );
-        const payload = extractToolJsonPayload(result);
-        if (isPlainRecord(payload)) {
-          const product =
-            (payload as Record<string, unknown>).product ??
-            (payload as Record<string, unknown>).data;
-          if (isPlainRecord(product)) {
-            applyProductLabels([product], collection);
-          }
-        }
-      } catch (error) {
-        console.warn(
-          `   Could not fetch product label for ${id} in validation summary:`,
-          error
-        );
-      }
-    }
-  }
-};
-
-const buildLabelMap = async (
-  mcp: unknown,
-  ...sources: unknown[]
-): Promise<Map<string, string>> => {
-  const collection: LabelCollection = {
-    map: new Map<string, string>(),
-    unresolved: new Set<string>(),
-  };
-
+const buildLabelMap = (...sources: unknown[]): Map<string, string> => {
+  const labelMap = new Map<string, string>();
   for (const source of sources) {
-    collectLabels(source, collection);
+    collectLabels(source, labelMap);
   }
-
-  await enrichLabelsFromMcp(mcp, collection);
-
-  return collection.map;
+  return labelMap;
 };
 
 const buildValidationSummaryMessage = (
@@ -740,7 +587,7 @@ export async function askAgent(
         }
       }
 
-      const labelMap = await buildLabelMap(mcp, ...labelSources);
+      const labelMap = buildLabelMap(...labelSources);
 
       const validationMessage = buildValidationSummaryMessage(
         outcome.validationRequest,
