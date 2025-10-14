@@ -46,69 +46,6 @@ export async function POST(
       approved,
       editedData,
     });
-    // Execute the actual operation with edited data if provided
-    const mcp = await getMcp();
-    let argsToExecute = validation.args;
-
-    if (editedData) {
-
-      // Replace the body content with edited data
-      argsToExecute = {
-        ...validation.args,
-        body: editedData,
-      };
-
-      
-    }
-
-    const result = await mcp.callTool("openapi.execute", argsToExecute);
-
-    if (!isToolExecutionResult(result)) {
-      console.error("Unexpected tool result shape:", result);
-      validationManager.respondToValidation({ id, approved: false });
-      return res.status(502).json({
-        status: "failed",
-        error: "Unexpected response from assistant execution.",
-      });
-    }
-
-    const toolResult = result;
-    const textContent = getFirstTextContent(toolResult);
-    const payload = safeParseJson<OpenApiExecutionPayload>(textContent);
-    const statusCode =
-      typeof payload?.statusCode === "number" ? payload.statusCode : undefined;
-    const isErrorResult = Boolean(toolResult?.isError);
-    const isFailureStatus =
-      typeof statusCode === "number" && statusCode >= 400 && statusCode <= 599;
-
-    if (isErrorResult || isFailureStatus) {
-      const defaultMessage = "Unable to execute the requested operation.";
-      const dataMessage =
-        payload?.data && typeof payload.data === "object"
-          ? (payload.data as { message?: unknown }).message
-          : undefined;
-
-      const errorMessage =
-        typeof dataMessage === "string" && dataMessage.trim().length
-          ? dataMessage.trim()
-          : normalizeErrorMessage(textContent, defaultMessage);
-
-      validationManager.respondToValidation({ id, approved: false });
-
-      const httpStatus =
-        typeof statusCode === "number" && statusCode >= 400
-          ? statusCode
-          : 400;
-
-      return res.status(httpStatus).json({
-        status: "failed",
-        error: errorMessage,
-        result: toolResult,
-      });
-    }
-
-    // Mark validation as approved
-    validationManager.respondToValidation({ id, approved: true });
 
     return res.json({
       response: result.answer,
