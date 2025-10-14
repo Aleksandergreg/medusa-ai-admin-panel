@@ -82,26 +82,40 @@ const AssistantPage = () => {
               Review the assistant&apos;s response above and confirm to execute
               this action. Nothing happens until you click confirm.
             </Text>
-            <div className="flex gap-2">
-              <button
-                onClick={() => approveValidation(validationRequest.id)}
-                disabled={loading}
-                className={`rounded-md px-3 py-1.5 text-white ${
-                  loading
-                    ? "bg-ui-border-disabled cursor-not-allowed"
-                    : "bg-ui-bg-interactive"
-                }`}
+            {loading ? (
+              <div
+                className="flex items-center gap-2 text-ui-fg-subtle text-sm"
+                role="status"
+                aria-live="polite"
               >
-                {loading ? "Processing…" : "Confirm"}
-              </button>
-              <button
-                onClick={() => rejectValidation(validationRequest.id)}
-                className="rounded-md px-3 py-1.5 border bg-ui-bg-base text-ui-fg-base"
-                disabled={loading}
-              >
-                Cancel
-              </button>
-            </div>
+                <span
+                  className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ui-border-subtle border-t-ui-bg-interactive"
+                  aria-hidden="true"
+                />
+                <span>The assistant is preparing the next step…</span>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => approveValidation(validationRequest.id)}
+                  disabled={loading}
+                  className={`rounded-md px-3 py-1.5 text-white ${
+                    loading
+                      ? "bg-ui-border-disabled cursor-not-allowed"
+                      : "bg-ui-bg-interactive"
+                  }`}
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={() => rejectValidation(validationRequest.id)}
+                  className="rounded-md px-3 py-1.5 border bg-ui-bg-base text-ui-fg-base"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
