@@ -31,6 +31,10 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 const isJSONObject = (v: unknown): v is JSONObject =>
   isObject(v) && !Array.isArray(v);
 
+// Common record check used across agent modules
+export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
  * Parse a JSON-looking string safely. Returns T if you know the shape,
  * otherwise defaults to JSONValue.

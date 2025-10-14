@@ -31,16 +31,8 @@ export type PromptInput = {
 };
 
 
-export type ValidationRequest = {
-  id: string;
-  operationId: string;
-  method: string;
-  path: string;
-  args: Record<string, unknown>;
-  bodyFieldEnums?: Record<string, string[]>;
-  bodyFieldReadOnly?: string[];
-  resourcePreview?: Record<string, unknown>;
-};
+// Re-export the canonical validation types to avoid duplication
+export type { ValidationRequest } from "./validation-types";
 
 
 export type PromptResult = {

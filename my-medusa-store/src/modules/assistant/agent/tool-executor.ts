@@ -1,5 +1,5 @@
 import { withToolLogging } from "../../../lib/metrics/store";
-import { JSONValue, MCPResult, extractToolJsonPayload } from "../lib/utils";
+import { JSONValue, MCPResult, extractToolJsonPayload, isPlainRecord } from "../lib/utils";
 import { collectGroundTruthNumbers } from "../analysis/validation";
 import { summarizePayload, AssistantSummary } from "../analysis/aggregators";
 import { validationManager } from "../lib/validation-manager";
@@ -79,8 +79,7 @@ const SUMMARY_FIELD_PRIORITY = [
 
 const FALLBACK_SUMMARY_LIMIT = 6;
 
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+// use shared isPlainRecord from utils
 
 const extractPathParams = (
   args: Record<string, unknown>
