@@ -5,6 +5,7 @@ import {
   ensureMarkdownMinimum,
   extractToolJsonPayload,
 } from "../lib/utils";
+import { pickFinalResponseModel } from "./model-selector";
 
 const MAX_TOOL_EVENTS = 8;
 const MAX_ARGS_LENGTH = 600;
@@ -133,12 +134,19 @@ export async function craftFinalAnswer(params: {
     planAnswer && planAnswer.trim().length ? planAnswer : FALLBACK_MESSAGE
   );
 
-  const finalModel = config.finalModelName ?? config.modelName;
+  const finalModel = pickFinalResponseModel({
+    prompt,
+    planAnswer,
+    history: params.history,
+    config,
+  });
 
-  // If no dedicated final model is configured, reuse the planner answer.
-  if (!finalModel || finalModel === config.modelName) {
+  // If no dedicated final model is needed, reuse the planner answer.
+  if (!finalModel) {
     return baseAnswer;
   }
+
+  console.log(`[Assistant] Using ${finalModel} for final user-facing answer`);
 
   if (!config.geminiApiKey) {
     return baseAnswer;
