@@ -1,9 +1,11 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+const RESPONSE_SEPARATOR = "\n\n---\n\n";
+
 export function ResponseView({ answer }: { answer: string | null }) {
   // Split the answer by the separator and take only the first part for the UI.
-  const displayAnswer = answer ? answer.split("\n\n---\n\n")[0] : null;
+  const displayAnswer = answer ? answer.split(RESPONSE_SEPARATOR)[0] : null;
 
   return (
     <>
