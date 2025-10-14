@@ -5,6 +5,11 @@ import {
 import type { Knex } from "knex";
 import { askAgent } from "./agent/ask";
 import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
+import { validationManager } from "./lib/validation-manager";
+import type {
+  PendingValidationContext,
+  ValidationContinuationResult,
+} from "./lib/validation-types";
 import {
   ConversationEntry,
   ConversationRow,
@@ -19,18 +24,12 @@ import { generateId } from "./utils/idGenerator";
 const CONVERSATION_TABLE = "conversation_session";
 const MESSAGE_TABLE = "conversation_message";
 
-// Type guard for validation request
-function isValidationRequest(data: unknown): data is ValidationRequest {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "id" in data &&
-    "operationId" in data &&
-    "method" in data &&
-    "path" in data &&
-    "args" in data
-  );
-}
+const DEFAULT_FAILURE_MESSAGE =
+  "Sorry, I could not find an answer to your question.";
+const CANCEL_MESSAGE =
+  `## �?O Action Cancelled\n\n` +
+  `No changes were made to your store. The operation has been cancelled as requested.\n\n` +
+  `Feel free to ask me to do something else!`;
 
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
@@ -82,12 +81,7 @@ class AssistantModuleService extends MedusaService({}) {
 
     const answer = agentResult.answer?.trim()
       ? agentResult.answer
-      : "Sorry, I could not find an answer to your question.";
-
-    // Check if there's validation data in agent result
-    const validationData = isValidationRequest(agentResult.data)
-      ? agentResult.data
-      : undefined;
+      : DEFAULT_FAILURE_MESSAGE;
 
     const finalHistory: ConversationEntry[] = [
       ...workingHistory,
@@ -95,14 +89,25 @@ class AssistantModuleService extends MedusaService({}) {
     ];
 
     const updatedAt = new Date();
+    const persistence = await this.persistConversation(
+      actorId,
+      finalHistory,
+      updatedAt
+    );
 
-    // If there's validation required, save only the user's question
-    // The assistant's answer will be saved later after approval/rejection
-    if (validationData) {
-      await this.persistUserMessage(actorId, trimmedPrompt, updatedAt);
-    } else {
-      // Normal flow: save both question and answer
-      await this.persistConversation(actorId, finalHistory, updatedAt);
+    const validationData = agentResult.validationRequest;
+    if (
+      validationData &&
+      agentResult.continuation &&
+      persistence
+    ) {
+      const context: PendingValidationContext = {
+        actorId,
+        sessionId: persistence.sessionId,
+        messageId: persistence.messageId,
+        continuation: agentResult.continuation,
+      };
+      validationManager.attachContext(validationData.id, context);
     }
 
     return {
@@ -149,6 +154,108 @@ class AssistantModuleService extends MedusaService({}) {
     };
   }
 
+  async handleValidationResponse(params: {
+    actorId: string;
+    id: string;
+    approved: boolean;
+    editedData?: Record<string, unknown>;
+  }): Promise<PromptResult> {
+    const actorId = params.actorId?.trim();
+    if (!actorId) {
+      throw new Error("Missing actor identifier");
+    }
+
+    const id = params.id?.trim();
+    if (!id) {
+      throw new Error("Missing validation id");
+    }
+
+    const pending = validationManager.getPendingValidation(id);
+    if (!pending) {
+      throw new Error("Validation request not found or expired");
+    }
+
+    const context = pending.context;
+    if (!context) {
+      throw new Error("No continuation context available for this validation");
+    }
+
+    if (context.actorId !== actorId) {
+      throw new Error("Validation does not belong to this actor");
+    }
+
+    const updatedAt = new Date();
+
+    if (!params.approved) {
+      validationManager.respondToValidation({ id, approved: false });
+      await this.updateConversationMessage(
+        context.sessionId,
+        context.messageId,
+        CANCEL_MESSAGE,
+        updatedAt
+      );
+
+      const conversation = await this.getConversation(actorId);
+      return {
+        answer: CANCEL_MESSAGE,
+        history: conversation?.history ?? [],
+        updatedAt,
+      };
+    }
+
+    if (!context.continuation) {
+      throw new Error("No continuation handler registered for validation");
+    }
+
+    let agentResult: ValidationContinuationResult;
+    try {
+      agentResult = await context.continuation({
+        approved: true,
+        editedData: params.editedData,
+      });
+    } catch (error) {
+      validationManager.respondToValidation({ id, approved: false });
+      throw error;
+    }
+
+    const answer = agentResult.answer?.trim()
+      ? agentResult.answer
+      : DEFAULT_FAILURE_MESSAGE;
+
+    await this.updateConversationMessage(
+      context.sessionId,
+      context.messageId,
+      answer,
+      updatedAt
+    );
+
+    validationManager.respondToValidation({
+      id,
+      approved: true,
+      editedData: params.editedData,
+    });
+
+    const nextValidation = agentResult.validationRequest;
+    if (nextValidation && agentResult.continuation) {
+      const nextContext: PendingValidationContext = {
+        actorId,
+        sessionId: context.sessionId,
+        messageId: context.messageId,
+        continuation: agentResult.continuation,
+      };
+      validationManager.attachContext(nextValidation.id, nextContext);
+    }
+
+    const conversation = await this.getConversation(actorId);
+
+    return {
+      answer,
+      history: conversation?.history ?? [],
+      updatedAt,
+      validationRequest: nextValidation as ValidationRequest | undefined,
+    };
+  }
+
   private toAgentHistory(entries: ConversationEntry[]): HistoryEntry[] {
     return entries.map((entry) => ({
       tool_name: "conversation",
@@ -157,87 +264,11 @@ class AssistantModuleService extends MedusaService({}) {
     }));
   }
 
-  private async persistUserMessage(
-    actorId: string,
-    question: string,
-    updatedAt: Date
-  ): Promise<void> {
-    // Get or create session
-    let session = await this.db<ConversationRow>(CONVERSATION_TABLE)
-      .where({ actor_id: actorId })
-      .first();
-
-    if (!session) {
-      const sessionId = generateId("sess");
-      await this.db(CONVERSATION_TABLE).insert({
-        id: sessionId,
-        actor_id: actorId,
-        created_at: updatedAt,
-        updated_at: updatedAt,
-      });
-      session = {
-        id: sessionId,
-        actor_id: actorId,
-        created_at: updatedAt,
-        updated_at: updatedAt,
-      };
-    } else {
-      // Update session timestamp
-      await this.db(CONVERSATION_TABLE)
-        .where({ id: session.id })
-        .update({ updated_at: updatedAt });
-    }
-
-    // Save just the user's question (answer will be added later)
-    const messageId = generateId("msg");
-    await this.db(MESSAGE_TABLE).insert({
-      id: messageId,
-      session_id: session.id,
-      question,
-      answer: null,
-      created_at: updatedAt,
-    });
-  }
-
-  async updateLastMessageAnswer(
-    actorId: string,
-    answer: string
-  ): Promise<void> {
-    // Get the session
-    const session = await this.db<ConversationRow>(CONVERSATION_TABLE)
-      .where({ actor_id: actorId })
-      .first();
-
-    if (!session) {
-      throw new Error("Session not found");
-    }
-
-    // Get the last message for this session
-    const lastMessage = await this.db<MessageRow>(MESSAGE_TABLE)
-      .where({ session_id: session.id })
-      .orderBy("created_at", "desc")
-      .first();
-
-    if (!lastMessage) {
-      throw new Error("No message found to update");
-    }
-
-    // Update the answer
-    await this.db(MESSAGE_TABLE)
-      .where({ id: lastMessage.id })
-      .update({ answer });
-
-    // Update session timestamp
-    await this.db(CONVERSATION_TABLE)
-      .where({ id: session.id })
-      .update({ updated_at: new Date() });
-  }
-
   private async persistConversation(
     actorId: string,
     history: ConversationEntry[],
     updatedAt: Date
-  ): Promise<void> {
+  ): Promise<{ sessionId: string; messageId: string } | null> {
     // Get or create session
     let session = await this.db<ConversationRow>(CONVERSATION_TABLE)
       .where({ actor_id: actorId })
@@ -263,6 +294,8 @@ class AssistantModuleService extends MedusaService({}) {
         .where({ id: session.id })
         .update({ updated_at: updatedAt });
     }
+
+    let result: { sessionId: string; messageId: string } | null = null;
 
     // Extract the last question-answer pair from history
     // (We only persist the new exchange, not the entire history)
@@ -279,8 +312,26 @@ class AssistantModuleService extends MedusaService({}) {
           answer: lastAnswer.content,
           created_at: updatedAt,
         });
+        result = { sessionId: session.id, messageId };
       }
     }
+
+    return result;
+  }
+
+  private async updateConversationMessage(
+    sessionId: string,
+    messageId: string,
+    answer: string,
+    updatedAt: Date
+  ): Promise<void> {
+    await this.db(MESSAGE_TABLE).where({ id: messageId }).update({
+      answer,
+    });
+
+    await this.db(CONVERSATION_TABLE)
+      .where({ id: sessionId })
+      .update({ updated_at: updatedAt });
   }
 }
 

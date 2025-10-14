@@ -18,31 +18,6 @@ const ValidationRequestSchema = z.object({
   resourcePreview: z.record(z.unknown()).optional(),
 });
 
-const ValidationExecutionResultSchema = z
-  .object({
-    isError: z.boolean().optional(),
-    content: z
-      .array(
-        z
-          .object({
-            type: z.string().optional(),
-            text: z.string().optional(),
-          })
-          .passthrough()
-      )
-      .optional(),
-  })
-  .passthrough();
-
-const ValidationApproveResponseSchema = z
-  .object({
-    status: z.enum(["approved", "failed"]).optional(),
-    error: z.string().optional(),
-    result: ValidationExecutionResultSchema.optional(),
-    message: z.string().optional(),
-  })
-  .passthrough();
-
 const AssistantResponseSchema = z.object({
   response: z.string().default(""),
   history: z.array(ConversationEntrySchema).default([]),
@@ -55,88 +30,25 @@ const AssistantConversationSchema = z.object({
   updatedAt: z.string().nullish().default(null),
 });
 
-const SUCCESS_MESSAGE =
-  `## ✅ Action Completed Successfully\n\n` +
-  `Your request has been processed and the changes have been applied to your store.\n\n` +
-  `You can now continue with your next task or ask me for help with something else.`;
-
-const CANCEL_MESSAGE =
-  `## ❌ Action Cancelled\n\n` +
-  `No changes were made to your store. The operation has been cancelled as requested.\n\n` +
-  `Feel free to ask me to do something else!`;
-
-type ValidationExecutionResult = z.infer<
-  typeof ValidationExecutionResultSchema
->;
-type ValidationApproveResponse = z.infer<
-  typeof ValidationApproveResponseSchema
->;
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const extractResultText = (
-  result?: ValidationExecutionResult | null
-): string | null => {
-  if (!result?.content) {
-    return null;
+const toAssistantResponse = (json: unknown): AssistantResponse => {
+  const parsed = AssistantResponseSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error("Invalid response from server :(");
   }
 
-  for (const entry of result.content) {
-    if (entry?.type === "text" && typeof entry.text === "string") {
-      return entry.text;
-    }
-  }
-
-  return null;
-};
-
-const deriveExecutionError = (
-  response: ValidationApproveResponse
-): string | null => {
-  const explicitError =
-    typeof response.error === "string" && response.error.trim().length
-      ? response.error.trim()
-      : null;
-
-  if (explicitError) {
-    return explicitError;
-  }
-
-  if (!response.result?.isError) {
-    return null;
-  }
-
-  const rawText = extractResultText(response.result);
-  if (!rawText) {
-    return "The assistant could not complete the operation.";
-  }
-
-  const normalized = rawText.replace(/^Error:\s*/i, "").trim();
-  return normalized.length
-    ? normalized
-    : "The assistant could not complete the operation.";
-};
-
-const formatFailureAnswer = (reason: string): string => {
-  const trimmed = reason.trim();
-  return (
-    "## ❗ Action Failed\n\n" +
-    `${trimmed}\n\n` +
-    "You can adjust the request details and ask me to try again, or provide a new prompt if you want to take a different approach."
-  );
-};
-
-export type ValidationApprovalOutcome =
-  | { kind: "success"; answer: string }
-  | { kind: "failure"; answer: string; error: string };
-
-export type AskPayload = {
-  prompt: string;
+  return {
+    answer: parsed.data.response,
+    history: parsed.data.history as ConversationEntry[],
+    updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
+    validationRequest: parsed.data.validationRequest,
+  };
 };
 
 export async function askAssistant(
-  payload: AskPayload,
+  payload: { prompt: string },
   signal?: AbortSignal
 ): Promise<AssistantResponse> {
   const res = await fetch("/admin/assistant", {
@@ -150,23 +62,13 @@ export async function askAssistant(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg =
-      json && json.error
+      json && isRecord(json) && json.error
         ? String(json.error)
         : `Request failed with ${res.status}`;
     throw new Error(msg);
   }
 
-  const parsed = AssistantResponseSchema.safeParse(json);
-  if (!parsed.success) {
-    throw new Error("Invalid response from server :(");
-  }
-
-  return {
-    answer: parsed.data.response,
-    history: parsed.data.history as ConversationEntry[],
-    updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
-    validationRequest: parsed.data.validationRequest,
-  };
+  return toAssistantResponse(json);
 }
 
 export async function fetchAssistantConversation(
@@ -181,7 +83,7 @@ export async function fetchAssistantConversation(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg =
-      json && json.error
+      json && isRecord(json) && json.error
         ? String(json.error)
         : `Request failed with ${res.status}`;
     throw new Error(msg);
@@ -201,7 +103,7 @@ export async function fetchAssistantConversation(
 export async function approveAssistantValidation(
   id: string,
   editedData?: Record<string, unknown>
-): Promise<ValidationApprovalOutcome> {
+): Promise<AssistantResponse> {
   const res = await fetch("/admin/assistant/validation", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -209,60 +111,21 @@ export async function approveAssistantValidation(
     body: JSON.stringify({ id, approved: true, editedData }),
   });
 
-  let parsedJson: unknown = null;
-  try {
-    parsedJson = await res.json();
-  } catch {
-    // ignore parse failure; handled below
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
   }
 
-  const parsed = parsedJson
-    ? ValidationApproveResponseSchema.safeParse(parsedJson)
-    : null;
-
-  if (!parsed?.success) {
-    const fallback =
-      isRecord(parsedJson) && typeof parsedJson.error === "string"
-        ? parsedJson.error
-        : "Unexpected response from validation service.";
-    return {
-      kind: "failure",
-      answer: formatFailureAnswer(fallback),
-      error: fallback,
-    };
-  }
-
-  const response = parsed.data;
-  const executionError = deriveExecutionError(response);
-
-  if (!res.ok || response.status !== "approved" || executionError) {
-    const reason =
-      executionError ??
-      response.error ??
-      (isRecord(parsedJson) && typeof parsedJson.error === "string"
-        ? parsedJson.error
-        : "The assistant could not complete the operation.");
-
-    return {
-      kind: "failure",
-      answer: formatFailureAnswer(reason),
-      error: reason,
-    };
-  }
-
-  // Use the custom message from backend if available, otherwise use default
-  const successAnswer =
-    response.message && response.message.trim()
-      ? response.message
-      : SUCCESS_MESSAGE;
-
-  return {
-    kind: "success",
-    answer: successAnswer,
-  };
+  return toAssistantResponse(json);
 }
 
-export async function rejectAssistantValidation(id: string): Promise<string> {
+export async function rejectAssistantValidation(
+  id: string
+): Promise<AssistantResponse> {
   const res = await fetch("/admin/assistant/validation", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -271,17 +134,13 @@ export async function rejectAssistantValidation(id: string): Promise<string> {
   });
 
   const json = await res.json().catch(() => ({}));
-
   if (!res.ok) {
     const msg =
-      json && typeof json.error === "string"
+      json && isRecord(json) && json.error
         ? String(json.error)
         : `Request failed with ${res.status}`;
     throw new Error(msg);
   }
 
-  // Use the message from backend if available, otherwise use default
-  return json && typeof json.message === "string"
-    ? json.message
-    : CANCEL_MESSAGE;
+  return toAssistantResponse(json);
 }
