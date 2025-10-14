@@ -195,7 +195,7 @@ export async function askAgent(
 
       const isDelete = outcome.validationRequest.method === "DELETE";
       const action = isDelete ? "delete" : "create";
-      const validationMessage = `## dY"? Your Approval is Required\n\nI've prepared everything to ${action} this item, but I need your confirmation before proceeding.\n\nPlease review the details below and click **"Approve & Execute"** if you'd like me to continue, or **"Cancel"** if you've changed your mind.`;
+      const validationMessage = `## 🔐 Your Approval is Required\n\nI've prepared everything to ${action} this item, but I need your confirmation before proceeding.\n\nPlease review the details below and click **"Approve & Execute"** if you'd like me to continue, or **"Cancel"** if you've changed your mind.`;
 
       const continuation: ValidationContinuationHandler = async (
         payload: ValidationContinuationPayload
