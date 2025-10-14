@@ -3,6 +3,8 @@ export interface AssistantModuleOptions {
   maxSteps: number;
   /** Default AI model to use for planning */
   modelName: string;
+  /** Optional higher-capacity model used to craft the final user-facing answer */
+  finalModelName?: string;
   /** Gemini API key for AI integration */
   geminiApiKey?: string;
   /** Planner mode: 'ci' for deterministic CI mode, 'live' for LLM integration */

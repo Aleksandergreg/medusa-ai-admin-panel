@@ -13,6 +13,7 @@ import {
   ValidationContinuationPayload,
   ValidationContinuationResult,
 } from "../lib/validation-types";
+import { craftFinalAnswer } from "./final-responder";
 
 type AskInput = {
   prompt: string;
@@ -130,7 +131,22 @@ export async function askAgent(
           ? plan.answer
           : FALLBACK_MESSAGE;
 
-      metricsStore.endAssistantTurn(turnId, chosenAnswer);
+      let finalAnswer = chosenAnswer;
+      try {
+        finalAnswer = await craftFinalAnswer({
+          prompt,
+          planAnswer: chosenAnswer,
+          history: historyTracker.list,
+          config: options.config,
+        });
+      } catch (error) {
+        console.warn(
+          "Failed to refine final answer with dedicated model:",
+          error
+        );
+      }
+
+      metricsStore.endAssistantTurn(turnId, finalAnswer);
 
       const t = metricsStore.getLastTurn?.();
       const grounded = t?.groundedNumbers ?? {};
@@ -141,7 +157,7 @@ export async function askAgent(
       }
 
       const latestPayload = historyTracker.latestPayload();
-      const formattedAnswer = ensureMarkdownMinimum(chosenAnswer);
+      const formattedAnswer = ensureMarkdownMinimum(finalAnswer);
 
       return {
         answer: formattedAnswer,
