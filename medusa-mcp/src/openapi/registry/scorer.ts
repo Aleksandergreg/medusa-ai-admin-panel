@@ -59,7 +59,7 @@ export function scoreOperation(
         if (!fieldTokens.length) {
             continue;
         }
-        const tokenSet = new Set(fieldTokens);
+        const tokenSet = entry.tokenSet;
         let matches = 0;
         let weightedMatches = 0;
 
@@ -85,8 +85,8 @@ export function scoreOperation(
         if (nonStopTokens.length >= PROXIMITY_MIN_TOKENS) {
             const positions: number[] = [];
             for (const token of nonStopTokens) {
-                const idx = fieldTokens.indexOf(token);
-                if (idx >= 0) {
+                const idx = entry.firstIndex.get(token);
+                if (idx !== undefined) {
                     positions.push(idx);
                 }
             }
@@ -100,7 +100,7 @@ export function scoreOperation(
         }
 
         if (entry.field === "operationId") {
-            const normalizedId = entry.tokens.join("");
+            const normalizedId = op.normalizedOperationId;
             if (compactQuery && normalizedId.startsWith(compactQuery)) {
                 fieldScore *= 1.15;
                 prefixBoost = true;
