@@ -12,6 +12,7 @@ import { CONVERSATION_HISTORY_RULES } from "./system-message-parts/conversation-
 import type { McpTool } from "../lib/types";
 import { SIMILAR_QUESTIONS_HANDLING } from "./system-message-parts/similar-questions-handling";
 import { OUTPUT_STYLE_REQUIREMENTS } from "./system-message-parts/output-style";
+import { ADMIN_FRIENDLY_OUTPUT } from "./system-message-parts/admin-friendly-output";
 import { MEDUSA_GLOSSARY } from "./system-message-parts/medusa-glossary";
 import { API_CALLING_PATTERN } from "./system-message-parts/api-calling-pattern";
 import { getContextAwareness } from "./system-message-parts/context-awareness";
@@ -31,6 +32,8 @@ export function buildSystemMessage(tools: McpTool[]): string {
     SIMILAR_QUESTIONS_HANDLING,
     "",
     OUTPUT_STYLE_REQUIREMENTS,
+    "",
+    ADMIN_FRIENDLY_OUTPUT,
     "",
     MEDUSA_GLOSSARY,
     "",
