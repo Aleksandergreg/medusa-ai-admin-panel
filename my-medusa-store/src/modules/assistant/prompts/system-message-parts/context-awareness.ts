@@ -10,11 +10,11 @@ export function getContextAwareness(): string {
 - User's local time: ${dateInfo.userLocalDateTime} (${dateInfo.userTimezone})
 - Current UTC: ${dateInfo.utcDateTime}
 
-TIMEZONE RULES:
-- When user says "now" or specifies a time, use the UTC timestamp above: ${dateInfo.utcDateTime}
-- Always use ISO 8601 format ending with 'Z' (e.g., "${dateInfo.utcDateTime}")
-- NEVER use timezone offsets like "-01:00" or "+02:00" in timestamps
-- Display times to users in their local timezone (${dateInfo.userTimezone})
+CRITICAL TIMESTAMP FORMAT RULE:
+- When user says "now" or specifies a time, use this EXACT format: ${dateInfo.userLocalDateTime}
+- Format MUST be: YYYY-MM-DD HH:MM:SS (e.g., "2025-10-15 10:46:49")
+- NO timezone suffix (no 'Z', no '+HH:MM', no '-HH:MM')
+- This is the user's LOCAL time in ${dateInfo.userTimezone}
 
 OTHER INSTRUCTIONS:
 - Find products by batch operation with tool, don't just return product IDs

@@ -17,10 +17,31 @@ export function formatValueDisplay(value: FieldValue): string {
   }
 
   if (typeof value === "string") {
-    // Check if it's a date
-    if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
+    // Check if it's an ISO 8601 datetime string
+    if (
+      value.match(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.?\d+)?(Z|[+-]\d{2}:\d{2})?$/
+      )
+    ) {
       try {
-        return new Date(value).toLocaleString();
+        const date = new Date(value);
+        // Format in user's local timezone without showing "Z" or timezone offset
+        return date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      } catch {
+        return value;
+      }
+    }
+    // Check if it's a date-only string
+    if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      try {
+        return new Date(value + "T00:00:00").toLocaleDateString();
       } catch {
         return value;
       }
