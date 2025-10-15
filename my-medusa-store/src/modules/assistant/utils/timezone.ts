@@ -1,4 +1,4 @@
-import { format, toZonedTime } from "date-fns-tz";
+import { format } from "date-fns-tz";
 import { formatISO } from "date-fns";
 
 /**
@@ -16,14 +16,12 @@ export function getCurrentDateTimeInfo(): {
   const now = new Date();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // Convert to user's local timezone
-  const zonedDate = toZonedTime(now, timezone);
-
   return {
     // User-facing date/time in their local timezone
-    userLocalDate: format(zonedDate, "yyyy-MM-dd", { timeZone: timezone }),
-    userLocalTime: format(zonedDate, "HH:mm:ss", { timeZone: timezone }),
-    userLocalDateTime: format(zonedDate, "yyyy-MM-dd HH:mm:ss", {
+    // Using format with timeZone option directly formats the date in that timezone
+    userLocalDate: format(now, "yyyy-MM-dd", { timeZone: timezone }),
+    userLocalTime: format(now, "HH:mm:ss", { timeZone: timezone }),
+    userLocalDateTime: format(now, "yyyy-MM-dd HH:mm:ss", {
       timeZone: timezone,
     }),
     userTimezone: timezone,
