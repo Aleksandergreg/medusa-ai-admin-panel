@@ -170,7 +170,7 @@ export async function askAgent(
 
     if (previousSuccess) {
       console.log(
-        "   Duplicate tool call detected; reusing prior successful result."
+        "   2uplicate tool call detected; reusing prior successful result."
       );
       historyTracker.recordDuplicate(toolName);
       return runLoop(step + 1);
