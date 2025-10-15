@@ -3,6 +3,7 @@ import { JSONValue, MCPResult, extractToolJsonPayload, isPlainRecord } from "../
 import { collectGroundTruthNumbers } from "../analysis/validation";
 import { summarizePayload, AssistantSummary } from "../analysis/aggregators";
 import { validationManager } from "../lib/validation-manager";
+import { isToolExecutionResult } from "../utils/type-guards";
 
 export type ExecuteOutcome = {
   result?: unknown;
@@ -303,6 +304,25 @@ export async function executeTool(
     const result = await withToolLogging(toolName, args, async () => {
       return mcp.callTool(toolName, args);
     });
+
+    if (isToolExecutionResult(result) && result.isError) {
+      const textEntry = result.content?.find(
+        (item) => typeof item.text === "string" && item.text.trim().length > 0
+      );
+      const textContent = textEntry?.text ?? "";
+      const message =
+        typeof textContent === "string" && textContent.trim().length
+          ? textContent.trim()
+          : "Tool returned an error response.";
+
+      return {
+        error: {
+          error: true,
+          message,
+          result,
+        },
+      };
+    }
 
     const payload = extractToolJsonPayload(result);
     const truth = collectGroundTruthNumbers(payload);
