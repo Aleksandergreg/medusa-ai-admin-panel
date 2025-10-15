@@ -26,6 +26,8 @@ type ToolSuccessContext = {
   cacheable: boolean;
 };
 
+const MAX_DUPLICATE_REPLAYS = 3;
+
 export async function askAgent(
   input: AskInput,
   options: { config: AssistantModuleOptions }
@@ -47,6 +49,7 @@ export async function askAgent(
 
   const historyTracker = new HistoryTracker(input.history || []);
   const turnId = metricsStore.startAssistantTurn({ user: prompt });
+  let consecutiveDuplicateHits = 0;
 
   let isCancelled = false;
   if (typeof input.onCancel === "function") {
@@ -169,13 +172,24 @@ export async function askAgent(
     );
 
     if (previousSuccess) {
+      consecutiveDuplicateHits += 1;
       console.log(
         "   Duplicate tool call detected; reusing prior successful result."
       );
-      historyTracker.recordDuplicate(toolName);
+      historyTracker.recordDuplicate(toolName, previousSuccess);
+      if (consecutiveDuplicateHits >= MAX_DUPLICATE_REPLAYS) {
+        metricsStore.endAssistantTurn(
+          turnId,
+          "[aborted: duplicate tool loop]"
+        );
+        throw new Error(
+          `Detected ${consecutiveDuplicateHits} consecutive duplicate tool calls for ${toolName}. Aborting to avoid infinite loop.`
+        );
+      }
       return runLoop(step + 1);
     }
 
+    consecutiveDuplicateHits = 0;
     metricsStore.noteToolUsed(turnId, toolName);
 
     const outcome = await executeTool(
