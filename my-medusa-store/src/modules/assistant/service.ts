@@ -10,6 +10,7 @@ import type {
   PendingValidationContext,
   ValidationContinuationResult,
 } from "./lib/validation-types";
+import { buildValidationSummary } from "./lib/validation-summary";
 import {
   ConversationEntry,
   ConversationRow,
@@ -79,9 +80,21 @@ class AssistantModuleService extends MedusaService({}) {
       { config: this.config }
     );
 
-    const answer = agentResult.answer?.trim()
+    let answer = agentResult.answer?.trim()
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
+    let validationData = agentResult.validationRequest;
+    if (!validationData) {
+      const pendingForActor =
+        validationManager.getLatestValidationForActor(actorId);
+      if (pendingForActor) {
+        validationData = pendingForActor.request;
+        answer = buildValidationSummary(
+          pendingForActor.request,
+          agentResult.history
+        );
+      }
+    }
 
     const finalHistory: ConversationEntry[] = [
       ...workingHistory,
@@ -95,9 +108,8 @@ class AssistantModuleService extends MedusaService({}) {
       updatedAt
     );
 
-    const validationData = agentResult.validationRequest;
     if (
-      validationData &&
+      agentResult.validationRequest &&
       agentResult.continuation &&
       persistence
     ) {

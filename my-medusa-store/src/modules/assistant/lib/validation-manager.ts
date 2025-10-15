@@ -75,6 +75,40 @@ class ValidationManager {
     return this.pendingValidations.get(id);
   }
 
+  getLatestValidationForActor(actorId: string): PendingValidation | undefined {
+    const normalizedActorId = actorId?.trim();
+    if (!normalizedActorId) {
+      return undefined;
+    }
+
+    let latest: PendingValidation | undefined;
+    for (const pending of this.pendingValidations.values()) {
+      if (pending.context?.actorId !== normalizedActorId) {
+        continue;
+      }
+
+      if (!latest) {
+        latest = pending;
+        continue;
+      }
+
+      const pendingTime =
+        pending.request.timestamp instanceof Date
+          ? pending.request.timestamp.getTime()
+          : new Date(pending.request.timestamp as string).getTime();
+      const latestTime =
+        latest.request.timestamp instanceof Date
+          ? latest.request.timestamp.getTime()
+          : new Date(latest.request.timestamp as string).getTime();
+
+      if (pendingTime > latestTime) {
+        latest = pending;
+      }
+    }
+
+    return latest;
+  }
+
   clearContext(id: string): void {
     const pending = this.pendingValidations.get(id);
     if (pending) {
