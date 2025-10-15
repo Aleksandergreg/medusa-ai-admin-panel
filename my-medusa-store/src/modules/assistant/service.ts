@@ -69,10 +69,9 @@ class AssistantModuleService extends MedusaService({}) {
     const resumeHistory: HistoryEntry[] =
       pendingForActor?.context?.history?.map((entry) => ({ ...entry })) ?? [];
     const resumeStep = pendingForActor?.context?.nextStep;
-
-    if (pendingForActor) {
-      validationManager.removeValidation(pendingForActor.request.id);
-    }
+    const detachedPending = pendingForActor
+      ? validationManager.removeValidation(pendingForActor.request.id)
+      : undefined;
 
     const userTurn: ConversationEntry = {
       role: "user",
@@ -97,7 +96,12 @@ class AssistantModuleService extends MedusaService({}) {
     const answer = agentResult.answer?.trim()
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
-    const validationData = agentResult.validationRequest;
+    let validationData = agentResult.validationRequest;
+    const restoredPending = !validationData ? detachedPending : undefined;
+
+    if (!validationData && restoredPending) {
+      validationData = restoredPending.request;
+    }
 
     const finalHistory: ConversationEntry[] = [
       ...workingHistory,
@@ -121,6 +125,22 @@ class AssistantModuleService extends MedusaService({}) {
         nextStep: agentResult.nextStep,
       };
       validationManager.attachContext(validationData.id, context);
+    } else if (restoredPending) {
+      if (restoredPending.context && persistence) {
+        restoredPending.context = {
+          ...restoredPending.context,
+          actorId,
+          sessionId: persistence.sessionId,
+          messageId: persistence.messageId,
+        };
+      }
+      validationManager.restoreValidation(restoredPending);
+      if (restoredPending.context) {
+        validationManager.attachContext(
+          restoredPending.request.id,
+          restoredPending.context
+        );
+      }
     }
 
     return {

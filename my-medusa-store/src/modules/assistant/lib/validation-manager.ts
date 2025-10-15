@@ -132,6 +132,13 @@ class ValidationManager {
     return pending;
   }
 
+  restoreValidation(pending: PendingValidation): void {
+    if (!pending?.request?.id) {
+      return;
+    }
+    this.pendingValidations.set(pending.request.id, pending);
+  }
+
   getPendingValidations(): ValidationRequest[] {
     return Array.from(this.pendingValidations.values()).map((v) => v.request);
   }
