@@ -2,14 +2,6 @@ import { format, toZonedTime } from "date-fns-tz";
 import { formatISO } from "date-fns";
 
 /**
- * Gets the system's local timezone
- * This will detect the timezone from the server/computer running the code
- */
-export function getSystemTimezone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
-}
-
-/**
  * Gets current date and time information for both user display (local timezone)
  * and Medusa operations (UTC)
  */
@@ -22,7 +14,7 @@ export function getCurrentDateTimeInfo(): {
   utcDateTime: string;
 } {
   const now = new Date();
-  const timezone = getSystemTimezone();
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Convert to user's local timezone
   const zonedDate = toZonedTime(now, timezone);

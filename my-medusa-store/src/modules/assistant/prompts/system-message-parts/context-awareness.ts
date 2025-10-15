@@ -7,14 +7,17 @@ export function getContextAwareness(): string {
   const dateInfo = getCurrentDateTimeInfo();
 
   return `CURRENT DATE AND TIME:
-- Your local date/time: ${dateInfo.userLocalDateTime} (${dateInfo.userTimezone})
-- For Medusa operations, use UTC: ${dateInfo.utcDate}
+- User's local time: ${dateInfo.userLocalDateTime} (${dateInfo.userTimezone})
+- Current UTC: ${dateInfo.utcDateTime}
 
-IMPORTANT INSTRUCTIONS:
-- When displaying dates/times to the user, use their local timezone (${dateInfo.userTimezone})
-- When making API calls or database operations, Medusa uses UTC timestamps
-- If finding products related to anything, use tool and batch operation to find the name of these products, don't just answer with a product id
-- If needing to find basic information about a product, try the most basic endpoint first, as this will often give you the information you need
-  Example: /admin/products?title=Medusa%Sweatshirt without any fields. ALWAYS DO THIS FIRST
-- If needing to insert a price, do it in normal currency format, e.g. 10 dollars as 10.00, not in cents as 1000`;
+TIMEZONE RULES:
+- When user says "now" or specifies a time, use the UTC timestamp above: ${dateInfo.utcDateTime}
+- Always use ISO 8601 format ending with 'Z' (e.g., "${dateInfo.utcDateTime}")
+- NEVER use timezone offsets like "-01:00" or "+02:00" in timestamps
+- Display times to users in their local timezone (${dateInfo.userTimezone})
+
+OTHER INSTRUCTIONS:
+- Find products by batch operation with tool, don't just return product IDs
+- Try basic endpoints first: /admin/products?title=Product%20Name (without fields parameter)
+- Prices in normal format: 10 dollars = 10.00 (not 1000 cents)`;
 }
