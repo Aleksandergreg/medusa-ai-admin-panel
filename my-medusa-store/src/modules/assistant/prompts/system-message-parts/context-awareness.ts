@@ -1,11 +1,23 @@
+import { getCurrentDateTimeInfo } from "../../utils/timezone";
+
 /**
  * Context awareness and current date information
  */
 export function getContextAwareness(): string {
-  const currentDate = new Date().toISOString().split("T")[0];
-  return `THIS IS THE CURRENT DATE ${currentDate}
-If finding products related to anything use tool and batch operation to find the name of these products, don't just answer with a product id.
-If needing to find basic information about a product try the most basic endpoint first, as this alot of the time will give you the information you need,
-e.g /admin/products?title=Medusa%Sweatshirt without any fields. ALWAYS DO THIS FIRST
-If needing to insert a price, do it in normal currency format, e.g 10 dollars as 10.00, not in cents as 1000.`;
+  const dateInfo = getCurrentDateTimeInfo();
+
+  return `CURRENT DATE AND TIME:
+- User's local time: ${dateInfo.userLocalDateTime} (${dateInfo.userTimezone})
+- Current UTC: ${dateInfo.utcDateTime}
+
+CRITICAL TIMESTAMP FORMAT RULE:
+- When user says "now" or specifies a time, use this EXACT format: ${dateInfo.userLocalDateTime}
+- Format MUST be: YYYY-MM-DD HH:MM:SS (e.g., "2025-10-15 10:46:49")
+- NO timezone suffix (no 'Z', no '+HH:MM', no '-HH:MM')
+- This is the user's LOCAL time in ${dateInfo.userTimezone}
+
+OTHER INSTRUCTIONS:
+- Find products by batch operation with tool, don't just return product IDs
+- Try basic endpoints first: /admin/products?title=Product%20Name (without fields parameter)
+- Prices in normal format: 10 dollars = 10.00 (not 1000 cents)`;
 }
