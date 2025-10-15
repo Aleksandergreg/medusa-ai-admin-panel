@@ -92,7 +92,7 @@ const AssistantPage = () => {
                   className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ui-border-subtle border-t-ui-bg-interactive"
                   aria-hidden="true"
                 />
-                <span>The assistant is preparing the next step…</span>
+                <span>The assistant is preparing the next step...</span>
               </div>
             ) : (
               <div className="flex gap-2">
