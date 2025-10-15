@@ -1,4 +1,4 @@
-import { extractToolJsonPayload } from "./utils";
+import { extractToolJsonPayload, isPlainRecord } from "./utils";
 import { HistoryEntry } from "./types";
 import { ValidationRequest } from "./validation-types";
 import { buildLabelMap, pickLabelFromRecord } from "./label-utils";
@@ -8,6 +8,246 @@ import {
   hasRenderableData,
   normalizeBodyForDisplay,
 } from "./formatters";
+
+type PlainRecord = Record<string, unknown>;
+
+const DIFF_VALUE_MAX_LENGTH = 120;
+const DIFF_KEYS = [
+  "body",
+  "pathParams",
+  "path_parameters",
+  "query",
+  "queryParams",
+  "headers",
+];
+const MAX_DIFF_NOTES = 6;
+const MAX_DIFF_DEPTH = 4;
+
+const truncateText = (text: string, maxLength: number): string => {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 3)}...`;
+};
+
+const formatDiffValue = (value: unknown): string => {
+  if (value === undefined) {
+    return "`undefined`";
+  }
+  if (typeof value === "string") {
+    const normalized = truncateText(value, DIFF_VALUE_MAX_LENGTH);
+    return `"${normalized}"`;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value === null) {
+    return "null";
+  }
+
+  try {
+    const json = JSON.stringify(value);
+    if (!json) {
+      return String(value);
+    }
+    return truncateText(json, DIFF_VALUE_MAX_LENGTH);
+  } catch {
+    return truncateText(String(value), DIFF_VALUE_MAX_LENGTH);
+  }
+};
+
+const stableStringify = (value: unknown): string => {
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+
+  const record = value as PlainRecord;
+  const entries = Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`);
+  return `{${entries.join(",")}}`;
+};
+
+const valuesEqual = (a: unknown, b: unknown): boolean => {
+  return stableStringify(a) === stableStringify(b);
+};
+
+const describeChange = (
+  path: string,
+  previous: unknown,
+  current: unknown
+): string => {
+  if (previous === undefined) {
+    return `Added \`${path}\` = ${formatDiffValue(current)}`;
+  }
+  if (current === undefined) {
+    return `Removed \`${path}\` (was ${formatDiffValue(previous)})`;
+  }
+  return `Updated \`${path}\` from ${formatDiffValue(
+    previous
+  )} to ${formatDiffValue(current)}`;
+};
+
+const recordDiff = (
+  path: string,
+  previous: unknown,
+  current: unknown,
+  notes: string[],
+  depth: number
+): void => {
+  if (notes.length >= MAX_DIFF_NOTES) {
+    return;
+  }
+
+  if (valuesEqual(previous, current)) {
+    return;
+  }
+
+  if (
+    depth < MAX_DIFF_DEPTH &&
+    isPlainRecord(previous) &&
+    isPlainRecord(current)
+  ) {
+    const prevRecord = previous as PlainRecord;
+    const currRecord = current as PlainRecord;
+    const keys = new Set([...Object.keys(prevRecord), ...Object.keys(currRecord)]);
+    for (const key of keys) {
+      const nextPath = path ? `${path}.${key}` : key;
+      recordDiff(nextPath, prevRecord[key], currRecord[key], notes, depth + 1);
+      if (notes.length >= MAX_DIFF_NOTES) {
+        return;
+      }
+    }
+    return;
+  }
+
+  if (
+    Array.isArray(previous) &&
+    Array.isArray(current) &&
+    valuesEqual(previous, current)
+  ) {
+    return;
+  }
+
+  notes.push(describeChange(path, previous, current));
+};
+
+const collectDiffNotes = (
+  previousArgs: PlainRecord | undefined,
+  currentArgs: PlainRecord
+): string[] => {
+  if (!previousArgs) {
+    return [];
+  }
+
+  const notes: string[] = [];
+  for (const key of DIFF_KEYS) {
+    const prevValue = previousArgs[key];
+    const currValue = currentArgs[key];
+    if (prevValue === undefined && currValue === undefined) {
+      continue;
+    }
+    const pathLabel = key === "path_parameters" ? "pathParams" : key;
+    recordDiff(pathLabel, prevValue, currValue, notes, 0);
+    if (notes.length >= MAX_DIFF_NOTES) {
+      break;
+    }
+  }
+
+  return notes;
+};
+
+const isErrorResult = (result: unknown): result is PlainRecord => {
+  if (!isPlainRecord(result)) {
+    return false;
+  }
+
+  if (result.error === true || result.isError === true) {
+    return true;
+  }
+
+  const statusCandidates = [
+    result.status,
+    result.statusCode,
+    result.status_code,
+    result.code,
+  ];
+
+  for (const candidate of statusCandidates) {
+    if (typeof candidate === "number" && candidate >= 400) {
+      return true;
+    }
+  }
+
+  const nestedResult = result.result;
+  if (isPlainRecord(nestedResult)) {
+    if (nestedResult.isError === true) {
+      return true;
+    }
+    const nestedStatus = (nestedResult as PlainRecord).status;
+    if (typeof nestedStatus === "number" && nestedStatus >= 400) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const extractErrorMessage = (result: unknown): string | undefined => {
+  if (!isPlainRecord(result)) {
+    return undefined;
+  }
+
+  const candidates: unknown[] = [
+    result.message,
+    (result.error && typeof result.error === "string") ? result.error : undefined,
+  ];
+
+  const data = result.data;
+  if (isPlainRecord(data)) {
+    candidates.push(data.message);
+    const errors = data.errors;
+    if (Array.isArray(errors)) {
+      for (const entry of errors) {
+        if (typeof entry === "string") {
+          candidates.push(entry);
+        } else if (isPlainRecord(entry) && typeof entry.message === "string") {
+          candidates.push(entry.message);
+        }
+      }
+    }
+  }
+
+  const nestedResult = result.result;
+  if (isPlainRecord(nestedResult)) {
+    candidates.push(nestedResult.message);
+    const content = nestedResult.content;
+    if (Array.isArray(content)) {
+      for (const item of content) {
+        if (isPlainRecord(item) && typeof item.text === "string") {
+          candidates.push(item.text);
+        }
+      }
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed.length) {
+        return truncateText(trimmed, 160);
+      }
+    }
+  }
+
+  return undefined;
+};
 
 export function buildValidationSummary(
   request: ValidationRequest,
@@ -56,6 +296,47 @@ export function buildValidationSummary(
     : `I'm ready to ${action} this resource.`;
 
   const sections: string[] = [];
+  const changeNotes: string[] = [];
+
+  const previousAttempt = [...history]
+    .reverse()
+    .find((entry) => {
+      if (entry.tool_name !== "openapi.execute") {
+        return false;
+      }
+      const args = entry.tool_args;
+      if (!isPlainRecord(args)) {
+        return false;
+      }
+      return args.operationId === request.operationId;
+    });
+
+  if (
+    previousAttempt &&
+    isErrorResult(previousAttempt.tool_result) &&
+    isPlainRecord(previousAttempt.tool_args) &&
+    isPlainRecord(request.args)
+  ) {
+    const errorMessage = extractErrorMessage(previousAttempt.tool_result);
+    const diffNotes = collectDiffNotes(
+      previousAttempt.tool_args as PlainRecord,
+      request.args as PlainRecord
+    );
+
+    if (errorMessage) {
+      changeNotes.push(`- Last attempt failed: ${errorMessage}`);
+    }
+    if (diffNotes.length) {
+      changeNotes.push("- Updates since last attempt:");
+      for (const note of diffNotes) {
+        changeNotes.push(`  - ${note}`);
+      }
+    }
+
+    if (changeNotes.length) {
+      sections.push(`**What Changed**\n${changeNotes.join("\n")}`);
+    }
+  }
 
   const operationLines: string[] = [];
   if (request.operationId) {
@@ -101,4 +382,3 @@ export function buildValidationSummary(
 
   return `## 🔐 Pending Approval\n\n${intro}\n\n${details}\n\n---\n\nNothing has been executed yet. Click **Confirm** below to proceed or **Cancel** to abort.`;
 }
-
