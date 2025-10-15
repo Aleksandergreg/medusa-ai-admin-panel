@@ -23,6 +23,28 @@ const DIFF_KEYS = [
 const MAX_DIFF_NOTES = 6;
 const MAX_DIFF_DEPTH = 4;
 
+const formatOperationTitle = (operationId: string): string => {
+  if (!operationId) {
+    return "";
+  }
+  const withoutPrefix = operationId.replace(
+    /^(Admin|Store)(Post|Delete|Put|Patch)/i,
+    ""
+  );
+  const spaced = withoutPrefix.replace(/([A-Z])/g, " $1").trim();
+
+  const isDelete = /Delete/i.test(operationId);
+  const isUpdate = /(Put|Patch)/i.test(operationId);
+  const isCreate = /Post/i.test(operationId);
+
+  let action = "Modify";
+  if (isDelete) action = "Delete";
+  else if (isCreate) action = "Create";
+  else if (isUpdate) action = "Update";
+
+  return `${action} ${spaced}`;
+};
+
 const truncateText = (text: string, maxLength: number): string => {
   if (text.length <= maxLength) {
     return text;
@@ -340,7 +362,12 @@ export function buildValidationSummary(
 
   const operationLines: string[] = [];
   if (request.operationId) {
-    operationLines.push(`- Operation: \`${request.operationId}\``);
+    const operationTitle = formatOperationTitle(request.operationId);
+    if (operationTitle.trim().length) {
+      operationLines.push(`- Operation: ${operationTitle}`);
+    } else {
+      operationLines.push(`- Operation: ${request.operationId}`);
+    }
   }
   if (request.path || request.method) {
     const endpoint = `${method}${request.path ? ` ${request.path}` : ""}`.trim();
