@@ -30,7 +30,11 @@ const MAX_DUPLICATE_REPLAYS = 3;
 
 export async function askAgent(
   input: AskInput,
-  options: { config: AssistantModuleOptions }
+  options: {
+    config: AssistantModuleOptions;
+    initialToolHistory?: HistoryEntry[];
+    initialStep?: number;
+  }
 ): Promise<AgentResult> {
   const prompt = input.prompt?.trim();
   if (!prompt) {
@@ -47,7 +51,11 @@ export async function askAgent(
     availableTools
   );
 
-  const historyTracker = new HistoryTracker(input.history || []);
+  const seededHistory = [
+    ...(options.initialToolHistory ?? []),
+    ...(input.history ?? []),
+  ];
+  const historyTracker = new HistoryTracker(seededHistory);
   const turnId = metricsStore.startAssistantTurn({ user: prompt });
   let consecutiveDuplicateHits = 0;
 
@@ -212,6 +220,7 @@ export async function askAgent(
         cacheable,
         handleSuccessfulExecution,
         runNext: () => runLoop(step + 1),
+        step,
       });
     }
 
@@ -230,5 +239,5 @@ export async function askAgent(
     return runLoop(step + 1);
   };
 
-  return runLoop(0);
+  return runLoop(options.initialStep ?? 0);
 }

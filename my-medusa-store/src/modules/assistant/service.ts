@@ -10,7 +10,6 @@ import type {
   PendingValidationContext,
   ValidationContinuationResult,
 } from "./lib/validation-types";
-import { buildValidationSummary } from "./lib/validation-summary";
 import {
   ConversationEntry,
   ConversationRow,
@@ -65,36 +64,40 @@ class AssistantModuleService extends MedusaService({}) {
     const existing = await this.getConversation(actorId);
     const existingHistory = existing?.history ?? [];
 
+    const pendingForActor =
+      validationManager.getLatestValidationForActor(actorId);
+    const resumeHistory: HistoryEntry[] =
+      pendingForActor?.context?.history?.map((entry) => ({ ...entry })) ?? [];
+    const resumeStep = pendingForActor?.context?.nextStep;
+
+    if (pendingForActor) {
+      validationManager.removeValidation(pendingForActor.request.id);
+    }
+
     const userTurn: ConversationEntry = {
       role: "user",
       content: trimmedPrompt,
     };
 
     const workingHistory = [...existingHistory, userTurn];
+    const conversationHistoryForAgent = this.toAgentHistory(workingHistory);
 
     const agentResult = await askAgent(
       {
         prompt: trimmedPrompt,
-        history: this.toAgentHistory(workingHistory),
+        history: conversationHistoryForAgent,
       },
-      { config: this.config }
+      {
+        config: this.config,
+        initialToolHistory: resumeHistory.length ? resumeHistory : undefined,
+        initialStep: resumeStep,
+      }
     );
 
-    let answer = agentResult.answer?.trim()
+    const answer = agentResult.answer?.trim()
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
-    let validationData = agentResult.validationRequest;
-    if (!validationData) {
-      const pendingForActor =
-        validationManager.getLatestValidationForActor(actorId);
-      if (pendingForActor) {
-        validationData = pendingForActor.request;
-        answer = buildValidationSummary(
-          pendingForActor.request,
-          agentResult.history
-        );
-      }
-    }
+    const validationData = agentResult.validationRequest;
 
     const finalHistory: ConversationEntry[] = [
       ...workingHistory,
@@ -108,16 +111,14 @@ class AssistantModuleService extends MedusaService({}) {
       updatedAt
     );
 
-    if (
-      agentResult.validationRequest &&
-      agentResult.continuation &&
-      persistence
-    ) {
+    if (validationData && agentResult.continuation && persistence) {
       const context: PendingValidationContext = {
         actorId,
         sessionId: persistence.sessionId,
         messageId: persistence.messageId,
         continuation: agentResult.continuation,
+        history: agentResult.history,
+        nextStep: agentResult.nextStep,
       };
       validationManager.attachContext(validationData.id, context);
     }
@@ -254,6 +255,8 @@ class AssistantModuleService extends MedusaService({}) {
         sessionId: context.sessionId,
         messageId: context.messageId,
         continuation: agentResult.continuation,
+        history: agentResult.history,
+        nextStep: agentResult.nextStep,
       };
       validationManager.attachContext(nextValidation.id, nextContext);
     }

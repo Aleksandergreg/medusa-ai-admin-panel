@@ -124,6 +124,14 @@ class ValidationManager {
     }
   }
 
+  removeValidation(id: string): PendingValidation | undefined {
+    const pending = this.pendingValidations.get(id);
+    if (pending) {
+      this.pendingValidations.delete(id);
+    }
+    return pending;
+  }
+
   getPendingValidations(): ValidationRequest[] {
     return Array.from(this.pendingValidations.values()).map((v) => v.request);
   }

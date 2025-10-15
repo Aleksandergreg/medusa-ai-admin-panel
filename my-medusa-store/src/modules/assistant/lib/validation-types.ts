@@ -33,6 +33,7 @@ export type ValidationContinuationResult = {
   history: HistoryEntry[];
   validationRequest?: ValidationRequest;
   continuation?: ValidationContinuationHandler;
+  nextStep?: number;
 };
 
 export type ValidationContinuationHandler = (
@@ -44,6 +45,8 @@ export type PendingValidationContext = {
   sessionId: string;
   messageId: string;
   continuation?: ValidationContinuationHandler;
+  history?: HistoryEntry[];
+  nextStep?: number;
 };
 
 export type PendingValidation = {
