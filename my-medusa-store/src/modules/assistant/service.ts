@@ -275,7 +275,7 @@ class AssistantModuleService extends MedusaService({}) {
       : DEFAULT_FAILURE_MESSAGE;
 
     // Add the assistant's response as a new message instead of updating the old one
-    await this.addMessageToConversation(
+    const newMessageId = await this.addMessageToConversation(
       context.sessionId,
       "assistant",
       answer,
@@ -293,7 +293,7 @@ class AssistantModuleService extends MedusaService({}) {
       const nextContext: PendingValidationContext = {
         actorId,
         sessionId: context.sessionId,
-        messageId: context.messageId,
+        messageId: newMessageId,
         continuation: agentResult.continuation,
         history: agentResult.history,
         nextStep: agentResult.nextStep,
