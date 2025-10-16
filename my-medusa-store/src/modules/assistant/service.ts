@@ -180,7 +180,9 @@ class AssistantModuleService extends MedusaService({}) {
 
     const history: ConversationEntry[] = [];
     for (const message of messages) {
-      history.push({ role: "user", content: message.question });
+      if (message.question) {
+        history.push({ role: "user", content: message.question });
+      }
       if (message.answer) {
         history.push({ role: "assistant", content: message.answer });
       }
@@ -241,6 +243,18 @@ class AssistantModuleService extends MedusaService({}) {
       };
     }
 
+    // Add a user message indicating approval
+    const approvalMessage: ConversationEntry = {
+      role: "user",
+      content: "✓ Approved",
+    };
+    await this.addMessageToConversation(
+      context.sessionId,
+      approvalMessage.role,
+      approvalMessage.content,
+      updatedAt
+    );
+
     if (!context.continuation) {
       throw new Error("No continuation handler registered for validation");
     }
@@ -260,9 +274,10 @@ class AssistantModuleService extends MedusaService({}) {
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
 
-    await this.updateConversationMessage(
+    // Add the assistant's response as a new message instead of updating the old one
+    await this.addMessageToConversation(
       context.sessionId,
-      context.messageId,
+      "assistant",
       answer,
       updatedAt
     );
@@ -404,6 +419,41 @@ class AssistantModuleService extends MedusaService({}) {
       .update({ updated_at: updatedAt });
   }
 
+  private async addMessageToConversation(
+    sessionId: string,
+    role: "user" | "assistant",
+    content: string,
+    timestamp: Date
+  ): Promise<string> {
+    const messageId = generateId("msg");
+
+    // If it's a user message, we need to store it with empty answer for now
+    // If it's an assistant message, we store it as a complete Q&A pair with empty question
+    if (role === "user") {
+      await this.db(MESSAGE_TABLE).insert({
+        id: messageId,
+        session_id: sessionId,
+        question: content,
+        answer: "",
+        created_at: timestamp,
+      });
+    } else {
+      await this.db(MESSAGE_TABLE).insert({
+        id: messageId,
+        session_id: sessionId,
+        question: "",
+        answer: content,
+        created_at: timestamp,
+      });
+    }
+
+    await this.db(CONVERSATION_TABLE)
+      .where({ id: sessionId })
+      .update({ updated_at: timestamp });
+
+    return messageId;
+  }
+
   async listConversations(actorId: string): Promise<ConversationSummary[]> {
     const sessions = await this.db<ConversationRow>(CONVERSATION_TABLE)
       .where({ actor_id: actorId })
@@ -499,7 +549,9 @@ class AssistantModuleService extends MedusaService({}) {
 
     const history: ConversationEntry[] = [];
     for (const message of messages) {
-      history.push({ role: "user", content: message.question });
+      if (message.question) {
+        history.push({ role: "user", content: message.question });
+      }
       if (message.answer) {
         history.push({ role: "assistant", content: message.answer });
       }
