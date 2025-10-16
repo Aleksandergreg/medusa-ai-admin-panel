@@ -4,6 +4,7 @@ import { PromptInput } from "./components/PromptInput";
 import { ResponseView } from "./components/ResponseView";
 import { AssistantLoading } from "./components/Loading";
 import { ChatHistory } from "./components/ChatHistory";
+import { ConversationList } from "./components/ConversationList";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text } from "@medusajs/ui";
 import { AiAssistent } from "@medusajs/icons";
@@ -13,6 +14,9 @@ const AssistantPage = () => {
     prompt,
     setPrompt,
     history,
+    conversations,
+    conversationsLoading,
+    currentSessionId,
     answer,
     loading,
     error,
@@ -23,6 +27,9 @@ const AssistantPage = () => {
     validationRequest,
     approveValidation,
     rejectValidation,
+    createConversation,
+    switchConversation,
+    deleteConversation,
   } = useAssistant();
 
   return (
@@ -32,6 +39,15 @@ const AssistantPage = () => {
       </div>
 
       <div className="px-6 py-4 grid gap-3">
+        <ConversationList
+          conversations={conversations}
+          currentSessionId={currentSessionId}
+          onSelectConversation={switchConversation}
+          onCreateConversation={createConversation}
+          onDeleteConversation={deleteConversation}
+          loading={conversationsLoading}
+        />
+
         <Text size="small">
           Ask the assistant for help with products, customers, orders,
           promotions, and more.
