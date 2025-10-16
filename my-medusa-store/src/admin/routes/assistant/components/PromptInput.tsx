@@ -9,6 +9,7 @@ onChange: (v: string) => void;
 onSubmit: () => void;
 }) {
 return (
+<div className="max-w-3xl mx-auto w-full">
 <textarea
 value={value}
 onChange={(e) => onChange(e.target.value)}
@@ -19,8 +20,9 @@ onSubmit();
 }
 }}
 placeholder={getPlaceholder()}
-rows={4}
-className="border-ui-border-base bg-ui-bg-base text-ui-fg-base rounded-md border p-2"
+rows={6}
+className="w-full border-ui-border-base bg-ui-bg-base text-ui-fg-base rounded-md border p-3 resize-none focus:outline-none focus:ring-2 focus:ring-ui-fg-interactive"
 />
+</div>
 );
 }
