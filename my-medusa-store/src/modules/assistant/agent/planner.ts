@@ -101,6 +101,15 @@ export async function planNextStepWithGemini(
   ].join("\n\n");
 
   const ai = new GoogleGenAI({ apiKey });
+  const baseRequestConfig = {
+    systemInstruction: {
+      parts: [{ text: systemMessage }],
+    },
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.2,
+    },
+  };
 
   const generate = async () =>
     ai.models.generateContent({
@@ -111,11 +120,7 @@ export async function planNextStepWithGemini(
           parts: [{ text: userMessage }],
         },
       ],
-      config: {
-        systemInstruction: {
-          parts: [{ text: systemMessage }],
-        },
-      },
+      config: baseRequestConfig,
     });
 
   let result = await generate();
@@ -167,9 +172,44 @@ export async function planNextStepWithGemini(
     };
   }
 
+  try {
+    const repairPrompt = [
+      "Your previous response was not valid JSON.",
+      "Reformat it into a SINGLE JSON object matching one of these forms:",
+      '{"action":"call_tool","tool_name":"<tool>","tool_args":{...}}',
+      '{"action":"final_answer","answer":"..."}',
+      "Do not include any extra text, commentary, or code fences.",
+      "Previous response:",
+      text,
+    ].join("\n\n");
+
+    const repairResult = await ai.models.generateContent({
+      model: modelName,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: repairPrompt }],
+        },
+      ],
+      config: baseRequestConfig,
+    });
+    const repairText = extractText(repairResult);
+    const repaired = safeParseJSON(repairText ?? "");
+    if (repaired && typeof repaired === "object" && "action" in repaired) {
+      return repaired as {
+        action: "call_tool" | "final_answer";
+        tool_name?: string;
+        tool_args?: unknown;
+        answer?: string;
+      };
+    }
+  } catch (repairError) {
+    console.warn("JSON repair attempt failed", repairError);
+  }
+
   // As a last resort, treat the raw response as a final answer
   console.warn(
-    "LLM response was not in expected JSON format. Treating as final answer."
+    "LLM response was not in expected JSON format after repair. Treating as final answer."
   );
   console.warn(
     "Raw response:",
