@@ -3,6 +3,7 @@ import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { ResponseView } from "./components/ResponseView";
 import { AssistantLoading } from "./components/Loading";
+import { ChatHistory } from "./components/ChatHistory";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text } from "@medusajs/ui";
 import { AiAssistent } from "@medusajs/icons";
@@ -11,6 +12,7 @@ const AssistantPage = () => {
   const {
     prompt,
     setPrompt,
+    history,
     answer,
     loading,
     error,
@@ -75,6 +77,8 @@ const AssistantPage = () => {
         )}
 
         <ResponseView answer={answer} />
+
+        <ChatHistory history={history} />
 
         {validationRequest && (
           <div className="rounded-md border p-3 bg-ui-bg-base space-y-3">
