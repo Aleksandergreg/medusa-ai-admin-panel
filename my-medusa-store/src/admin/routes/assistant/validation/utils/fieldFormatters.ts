@@ -1,4 +1,5 @@
 import { FieldValue } from "../types/field.types";
+import { parseISO, parse, isValid } from "date-fns";
 
 /**
  * Formats a value for display purposes
@@ -17,14 +18,64 @@ export function formatValueDisplay(value: FieldValue): string {
   }
 
   if (typeof value === "string") {
-    // Check if it's a date
-    if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
+    // Check if it's an ISO 8601 datetime string (with T separator)
+    if (
+      value.match(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.?\d+)?(Z|[+-]\d{2}:\d{2})?$/
+      )
+    ) {
       try {
-        return new Date(value).toLocaleString();
+        const date = parseISO(value);
+        if (isValid(date)) {
+          return date.toLocaleString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+        }
       } catch {
         return value;
       }
     }
+
+    // Check if it's a space-separated datetime string (YYYY-MM-DD HH:MM:SS)
+    if (value.match(/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/)) {
+      try {
+        const date = parse(value, "yyyy-MM-dd HH:mm:ss", new Date());
+        if (isValid(date)) {
+          return date.toLocaleString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+        }
+      } catch {
+        return value;
+      }
+    }
+
+    // Check if it's a date-only string
+    if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      try {
+        const date = parse(value, "yyyy-MM-dd", new Date());
+        if (isValid(date)) {
+          return date.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+        }
+      } catch {
+        return value;
+      }
+    }
+
     return value;
   }
 

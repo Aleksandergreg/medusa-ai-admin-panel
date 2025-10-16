@@ -8,11 +8,8 @@ import { preloadOpenApiSuggestions } from "./preload";
 import { executeTool, ExecuteOutcome } from "./tool-executor";
 import { HistoryTracker, isMutatingExecuteCall } from "./history-tracker";
 import { planNextAction } from "./planner-driver";
-import {
-  ValidationContinuationHandler,
-  ValidationContinuationPayload,
-  ValidationContinuationResult,
-} from "../lib/validation-types";
+import { ValidationContinuationResult } from "../lib/validation-types";
+import { createValidationGate } from "./validation-flow";
 
 type AskInput = {
   prompt: string;
@@ -29,9 +26,15 @@ type ToolSuccessContext = {
   cacheable: boolean;
 };
 
+const MAX_DUPLICATE_REPLAYS = 3;
+
 export async function askAgent(
   input: AskInput,
-  options: { config: AssistantModuleOptions }
+  options: {
+    config: AssistantModuleOptions;
+    initialToolHistory?: HistoryEntry[];
+    initialStep?: number;
+  }
 ): Promise<AgentResult> {
   const prompt = input.prompt?.trim();
   if (!prompt) {
@@ -48,8 +51,13 @@ export async function askAgent(
     availableTools
   );
 
-  const historyTracker = new HistoryTracker(input.history || []);
+  const seededHistory = [
+    ...(options.initialToolHistory ?? []),
+    ...(input.history ?? []),
+  ];
+  const historyTracker = new HistoryTracker(seededHistory);
   const turnId = metricsStore.startAssistantTurn({ user: prompt });
+  let consecutiveDuplicateHits = 0;
 
   let isCancelled = false;
   if (typeof input.onCancel === "function") {
@@ -172,13 +180,24 @@ export async function askAgent(
     );
 
     if (previousSuccess) {
+      consecutiveDuplicateHits += 1;
       console.log(
-        "   Duplicate tool call detected; reusing prior successful result."
+        "   2uplicate tool call detected; reusing prior successful result."
       );
-      historyTracker.recordDuplicate(toolName);
+      historyTracker.recordDuplicate(toolName, previousSuccess);
+      if (consecutiveDuplicateHits >= MAX_DUPLICATE_REPLAYS) {
+        metricsStore.endAssistantTurn(
+          turnId,
+          "[aborted: duplicate tool loop]"
+        );
+        throw new Error(
+          `Detected ${consecutiveDuplicateHits} consecutive duplicate tool calls for ${toolName}. Aborting to avoid infinite loop.`
+        );
+      }
       return runLoop(step + 1);
     }
 
+    consecutiveDuplicateHits = 0;
     metricsStore.noteToolUsed(turnId, toolName);
 
     const outcome = await executeTool(
@@ -192,61 +211,17 @@ export async function askAgent(
 
     if (outcome.validationRequest) {
       console.log(`    Validation required for operation`);
-
-      const isDelete = outcome.validationRequest.method === "DELETE";
-      const action = isDelete ? "delete" : "create";
-      const validationMessage = `## 🔐 Your Approval is Required\n\nI've prepared everything to ${action} this item, but I need your confirmation before proceeding.\n\nPlease review the details below and click **"Approve & Execute"** if you'd like me to continue, or **"Cancel"** if you've changed your mind.`;
-
-      const continuation: ValidationContinuationHandler = async (
-        payload: ValidationContinuationPayload
-      ) => {
-        if (!payload.approved) {
-          return {
-            answer: validationMessage,
-            data: outcome.validationRequest,
-            history: historyTracker.list,
-          };
-        }
-
-        const argsToExecute =
-          payload.editedData !== undefined
-            ? {
-                ...normalizedArgs,
-                body: payload.editedData,
-              }
-            : normalizedArgs;
-
-        const resumedOutcome = await executeTool(
-          {
-            mcp,
-            toolName,
-            args: argsToExecute as Record<string, unknown>,
-          },
-          { skipValidation: true }
-        );
-
-        if (resumedOutcome.error) {
-          historyTracker.recordError(toolName, argsToExecute, resumedOutcome.error);
-          return runLoop(step + 1);
-        }
-
-        handleSuccessfulExecution({
-          outcome: resumedOutcome,
-          toolName,
-          args: argsToExecute as Record<string, unknown>,
-          cacheable,
-        });
-
-        return runLoop(step + 1);
-      };
-
-      return {
-        answer: validationMessage,
-        data: outcome.validationRequest,
-        history: historyTracker.list,
-        validationRequest: outcome.validationRequest,
-        continuation,
-      };
+      return createValidationGate({
+        request: outcome.validationRequest,
+        mcp,
+        toolName,
+        args: normalizedArgs as Record<string, unknown>,
+        historyTracker,
+        cacheable,
+        handleSuccessfulExecution,
+        runNext: () => runLoop(step + 1),
+        step,
+      });
     }
 
     if (outcome.error) {
@@ -264,5 +239,5 @@ export async function askAgent(
     return runLoop(step + 1);
   };
 
-  return runLoop(0);
+  return runLoop(options.initialStep ?? 0);
 }

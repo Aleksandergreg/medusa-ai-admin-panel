@@ -37,8 +37,9 @@ export async function POST(
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const assistantService =
-      req.scope.resolve<AssistantModuleService>("assistant");
+    const assistantService = req.scope.resolve<AssistantModuleService>(
+      "assistant"
+    );
 
     const result = await assistantService.handleValidationResponse({
       actorId,

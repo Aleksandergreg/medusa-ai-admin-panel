@@ -9,4 +9,4 @@ Actions: 'call_tool' or 'final_answer'.
 2) If you have enough information, choose 'final_answer' and summarize succinctly.
 3) If you can see that there is missing information from the user message, ask the user to fill this, don't try to execute
 
-Provide concise text only. If data is needed, call the right tool.`;
+Return exactly one JSON object per the response format guidelines. If data is needed, choose 'call_tool'. Do not emit any natural language outside that JSON payload.`;

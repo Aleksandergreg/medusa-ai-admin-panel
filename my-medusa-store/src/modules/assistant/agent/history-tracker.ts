@@ -47,7 +47,7 @@ export class HistoryTracker {
     return this.dedupeCache.get(toolName, args, cacheable);
   }
 
-  recordDuplicate(toolName: string): void {
+  recordDuplicate(toolName: string, reusedEntry?: HistoryEntry): void {
     this.entries.push({
       tool_name: "assistant.note",
       tool_args: {
@@ -58,6 +58,15 @@ export class HistoryTracker {
         message: DUPLICATE_NOTE_MESSAGE,
       },
     });
+
+    if (reusedEntry) {
+      const { tool_name, tool_args, tool_result } = reusedEntry;
+      this.entries.push({
+        tool_name,
+        tool_args,
+        tool_result,
+      });
+    }
   }
 
   recordError(

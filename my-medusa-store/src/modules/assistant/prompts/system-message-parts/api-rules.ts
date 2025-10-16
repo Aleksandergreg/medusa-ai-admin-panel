@@ -2,7 +2,7 @@
  * Critical API calling rules and patterns
  */
 export const API_RULES = `CRITICAL API RULES (ENFORCED):
-- ANTI-LOOPING RULE: If the user's request involves multiple items (e.g., 'products A and B', 'orders X, Y, Z'), you MUST use an API endpoint that accepts multiple values for a filter (e.g., an array of IDs or titles). Make ONE single call for all items. DO NOT make separate, sequential calls for each item.
+- ANTI-LOOPING RULE: If the user's request involves multiple items (e.g., 'products A and B', 'orders X, Y, Z'), you MUST use an API endpoint that accepts multiple values for a filter (e.g., an array of IDs or titles). Make ONE single call for all items. DO NOT make separate, sequential calls for each item unless you already fetched the list and still need per-ID detail that the bulk endpoint cannot return (e.g., promotion application_method target rules).
 - Always call in this order: openapi.search → openapi.schema → openapi.execute.
 - Never call execute on a tool, before having inspected its schema.
 - Use ONLY parameter names present in openapi.schema (path/query/header). Do not invent params like 'expand'.
