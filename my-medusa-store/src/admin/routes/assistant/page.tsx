@@ -106,7 +106,7 @@ const AssistantPage = () => {
             {loading && (
               <button
                 onClick={cancel}
-                className="rounded-md px-4 py-2 border bg-ui-bg-base text-ui-fg-base"
+                className="rounded-md px-4 py-2 border border-ui-border-error text-ui-fg-error hover:bg-ui-bg-error-hover"
                 disabled={!loading}
               >
                 Cancel
@@ -114,7 +114,7 @@ const AssistantPage = () => {
             )}
             <button
               onClick={clear}
-              className="rounded-md px-4 py-2 border bg-ui-bg-base text-ui-fg-base"
+              className="rounded-md px-4 py-2 border border-ui-border-error text-ui-fg-error hover:bg-ui-bg-error-hover"
               disabled={loading}
             >
               Clear
