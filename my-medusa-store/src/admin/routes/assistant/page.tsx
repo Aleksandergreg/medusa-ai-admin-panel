@@ -29,6 +29,7 @@ const AssistantPage = () => {
     createConversation,
     switchConversation,
     deleteConversation,
+    renameConversation,
   } = useAssistant();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,6 +55,7 @@ const AssistantPage = () => {
           onSelectConversation={switchConversation}
           onCreateConversation={createConversation}
           onDeleteConversation={deleteConversation}
+          onRenameConversation={renameConversation}
           loading={conversationsLoading}
         />
 

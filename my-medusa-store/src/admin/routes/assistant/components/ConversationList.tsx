@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Text, IconButton } from "@medusajs/ui";
-import { Plus, Trash, EllipsisHorizontal } from "@medusajs/icons";
+import { Plus, Trash, EllipsisHorizontal, PencilSquare } from "@medusajs/icons";
 import type { ConversationSummary } from "../types";
+import { RenameModal, DeleteModal } from "./ConversationModals";
 
 interface ConversationListProps {
   conversations: ConversationSummary[];
@@ -8,6 +10,7 @@ interface ConversationListProps {
   onSelectConversation: (id: string) => void;
   onCreateConversation: () => void;
   onDeleteConversation: (id: string) => void;
+  onRenameConversation: (id: string, newTitle: string) => void;
   loading: boolean;
 }
 
@@ -17,8 +20,13 @@ export function ConversationList({
   onSelectConversation,
   onCreateConversation,
   onDeleteConversation,
+  onRenameConversation,
   loading,
 }: ConversationListProps) {
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedConversation, setSelectedConversation] =
+    useState<ConversationSummary | null>(null);
   return (
     <div className="border-ui-border-base bg-ui-bg-subtle rounded-md border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-ui-border-base">
@@ -76,11 +84,19 @@ export function ConversationList({
                   size="small"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
-                      confirm(`Delete conversation "${conversation.title}"?`)
-                    ) {
-                      onDeleteConversation(conversation.id);
-                    }
+                    setSelectedConversation(conversation);
+                    setRenameModalOpen(true);
+                  }}
+                  className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-base"
+                >
+                  <PencilSquare />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedConversation(conversation);
+                    setDeleteModalOpen(true);
                   }}
                   className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-error"
                 >
@@ -91,6 +107,34 @@ export function ConversationList({
           </div>
         )}
       </div>
+
+      <RenameModal
+        isOpen={renameModalOpen}
+        currentTitle={selectedConversation?.title || ""}
+        onClose={() => {
+          setRenameModalOpen(false);
+          setSelectedConversation(null);
+        }}
+        onConfirm={(newTitle) => {
+          if (selectedConversation) {
+            onRenameConversation(selectedConversation.id, newTitle);
+          }
+        }}
+      />
+
+      <DeleteModal
+        isOpen={deleteModalOpen}
+        conversationTitle={selectedConversation?.title || ""}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setSelectedConversation(null);
+        }}
+        onConfirm={() => {
+          if (selectedConversation) {
+            onDeleteConversation(selectedConversation.id);
+          }
+        }}
+      />
     </div>
   );
 }

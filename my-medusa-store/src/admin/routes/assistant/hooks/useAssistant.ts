@@ -10,6 +10,7 @@ import {
   createConversation,
   deleteConversation,
   fetchConversationById,
+  updateConversationTitle,
 } from "../lib/assistantApi";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 import type { ValidationRequest, ConversationSummary } from "../types";
@@ -250,6 +251,18 @@ export function useAssistant() {
     [currentSessionId, setCurrentSessionId, loadConversations]
   );
 
+  const handleRenameConversation = useCallback(
+    async (sessionId: string, newTitle: string) => {
+      try {
+        await updateConversationTitle(sessionId, newTitle);
+        await loadConversations();
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to rename conversation");
+      }
+    },
+    [loadConversations]
+  );
+
   const clear = useCallback(() => {
     setAnswer(null);
     setError(null);
@@ -291,6 +304,7 @@ export function useAssistant() {
     createConversation: handleCreateConversation,
     switchConversation: handleSwitchConversation,
     deleteConversation: handleDeleteConversation,
+    renameConversation: handleRenameConversation,
     refreshConversations: loadConversations,
   } as const;
 }
