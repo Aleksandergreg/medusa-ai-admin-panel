@@ -1,5 +1,10 @@
 import { MCPResult } from "../lib/utils";
-import { ValidationContinuationHandler, ValidationContinuationPayload, ValidationContinuationResult, ValidationRequest } from "../lib/validation-types";
+import {
+  ValidationContinuationHandler,
+  ValidationContinuationPayload,
+  ValidationContinuationResult,
+  ValidationRequest,
+} from "../lib/validation-types";
 import { HistoryTracker } from "./history-tracker";
 import { ExecuteOutcome, executeTool } from "./tool-executor";
 import { buildValidationSummary } from "../lib/validation-summary";
@@ -18,10 +23,46 @@ type CreateValidationGateParams = {
     cacheable: boolean;
   }) => void;
   runNext: () => Promise<ValidationContinuationResult>;
+  step: number;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const mergeArgsWithEdits = (
+  original: Record<string, unknown>,
+  edits?: Record<string, unknown>
+): Record<string, unknown> => {
+  if (!isPlainObject(edits)) {
+    return { ...original };
+  }
+
+  const mergeRecursive = (
+    base: Record<string, unknown>,
+    patch: Record<string, unknown>
+  ): Record<string, unknown> => {
+    const result: Record<string, unknown> = { ...base };
+
+    for (const [key, value] of Object.entries(patch)) {
+      if (isPlainObject(value) && isPlainObject(result[key])) {
+        result[key] = mergeRecursive(
+          result[key] as Record<string, unknown>,
+          value
+        );
+        continue;
+      }
+
+      result[key] = value;
+    }
+
+    return result;
+  };
+
+  return mergeRecursive(original, edits);
 };
 
 export function createValidationGate(params: CreateValidationGateParams): ValidationContinuationResult {
-  const { request, mcp, toolName, args, historyTracker, cacheable, handleSuccessfulExecution, runNext } = params;
+  const { request, mcp, toolName, args, historyTracker, cacheable, handleSuccessfulExecution, runNext, step } = params;
 
   const validationMessage = buildValidationSummary(request, historyTracker.list);
 
@@ -36,7 +77,10 @@ export function createValidationGate(params: CreateValidationGateParams): Valida
       };
     }
 
-    const argsToExecute = args;
+    const argsToExecute =
+      payload.editedData && isPlainObject(payload.editedData)
+        ? mergeArgsWithEdits(args, payload.editedData)
+        : { ...args };
 
     const resumedOutcome = await executeTool(
       {
@@ -68,6 +112,6 @@ export function createValidationGate(params: CreateValidationGateParams): Valida
     history: historyTracker.list,
     validationRequest: request,
     continuation,
+    nextStep: step + 1,
   };
 }
-
