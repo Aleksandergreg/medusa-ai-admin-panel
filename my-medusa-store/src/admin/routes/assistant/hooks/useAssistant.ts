@@ -108,6 +108,7 @@ export function useAssistant() {
     setLoading(true);
     setAnswer(null);
     setError(null);
+    setPrompt(""); // Clear the input after submitting
 
     try {
       const payload = {
@@ -141,7 +142,7 @@ export function useAssistant() {
       setLoading(false);
       abortController.current = null;
     }
-  }, [canSubmit, prompt, history]);
+  }, [canSubmit, prompt, history, setPrompt]);
 
   const cancel = useCallback(() => {
     if (abortController.current) {
