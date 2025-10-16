@@ -60,7 +60,7 @@ const AssistantPage = () => {
         />
 
         {history.length === 0 && (
-          <div className="max-w-7xl mx-auto w-full">
+          <div className="w-full">
             <Text size="small" className="text-ui-fg-subtle text-center py-8">
               Ask the assistant for help with products, customers, orders,
               promotions, and more.
@@ -68,7 +68,7 @@ const AssistantPage = () => {
           </div>
         )}
 
-        <div className="max-w-7xl mx-auto w-full">
+        <div className="w-full">
           <ConversationMessages
             history={history}
             validationRequest={validationRequest}
@@ -91,7 +91,7 @@ const AssistantPage = () => {
         <div className="sticky bottom-0 bg-ui-bg-base pt-3 pb-2 space-y-3 border-t border-ui-border-base">
           <PromptInput value={prompt} onChange={setPrompt} onSubmit={ask} />
 
-          <div className="flex gap-2 justify-center max-w-7xl mx-auto">
+          <div className="flex gap-2 justify-center">
             <button
               onClick={ask}
               disabled={!canSubmit}
