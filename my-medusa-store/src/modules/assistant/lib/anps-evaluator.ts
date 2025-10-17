@@ -13,6 +13,8 @@ type OperationAnalysis = {
   summaries: string[];
 };
 
+const DEFAULT_EXPECTED_MS = 60_000;
+
 const analyzeOperationHistory = (
   history: HistoryEntry[],
   operationId: string
@@ -70,13 +72,45 @@ const analyzeOperationHistory = (
   };
 };
 
+const normalizeSearchText = (value: string | null | undefined): string =>
+  typeof value === "string" && value.trim().length
+    ? value.trim().toLowerCase().replace(/[_-]+/g, " ")
+    : "";
+
+const includesAny = (target: string, terms: string[]): boolean =>
+  terms.some((term) => target.includes(term));
+
+const getExpectedMs = (operationId: string, taskLabel: string | null): number => {
+  const searchText = [
+    normalizeSearchText(taskLabel),
+    normalizeSearchText(operationId),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (searchText && includesAny(searchText, ["price list", "pricelist"])) {
+    return 240_000;
+  }
+
+  if (searchText && includesAny(searchText, ["promotion", "promo"])) {
+    return 150_000;
+  }
+
+  if (searchText && includesAny(searchText, ["order"])) {
+    return 90_000;
+  }
+
+  return DEFAULT_EXPECTED_MS;
+};
+
 export function evaluateAgentNpsScore(params: {
   operationId: string;
   taskLabel: string | null;
   history: HistoryEntry[];
   durationMs: number;
+  agentComputeMs?: number | null;
 }): AgentNpsEvaluation | null {
-  const { operationId, history, durationMs } = params;
+  const { operationId, history, durationMs, agentComputeMs } = params;
   const analysis = analyzeOperationHistory(history, operationId);
 
   if (analysis.attempts === 0) {
@@ -94,12 +128,22 @@ export function evaluateAgentNpsScore(params: {
     score -= clamp(analysis.errors * 2, 0, 6);
   }
 
-  if (durationMs > 180_000) {
-    score -= 3;
-  } else if (durationMs > 60_000) {
-    score -= 2;
-  } else if (durationMs > 20_000) {
-    score -= 1;
+  const expectedMs = getExpectedMs(operationId, params.taskLabel);
+
+  if (expectedMs > 0) {
+    const effectiveDurationMs =
+      typeof agentComputeMs === "number" && Number.isFinite(agentComputeMs)
+        ? Math.max(0, agentComputeMs)
+        : durationMs;
+    const ratio = expectedMs ? effectiveDurationMs / expectedMs : 0;
+
+    if (ratio > 2.0) {
+      score -= 3;
+    } else if (ratio > 1.25) {
+      score -= 2;
+    } else if (ratio > 1.0) {
+      score -= 1;
+    }
   }
 
   score = clamp(Math.round(score), 0, 10);
@@ -118,6 +162,14 @@ export function evaluateAgentNpsScore(params: {
   }
   if (durationMs) {
     notes.push(`Duration: ${(durationMs / 1000).toFixed(1)}s`);
+  }
+  if (
+    typeof agentComputeMs === "number" &&
+    Number.isFinite(agentComputeMs) &&
+    agentComputeMs >= 0 &&
+    (!durationMs || Math.abs(agentComputeMs - durationMs) > 1_000)
+  ) {
+    notes.push(`Compute: ${(agentComputeMs / 1000).toFixed(1)}s`);
   }
   if (analysis.lastStatusCode !== null) {
     notes.push(`Last status: ${analysis.lastStatusCode}`);
