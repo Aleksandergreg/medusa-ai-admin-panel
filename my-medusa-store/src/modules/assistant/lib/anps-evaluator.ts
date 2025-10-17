@@ -119,7 +119,7 @@ export function evaluateAgentNpsScore(params: {
   if (durationMs) {
     notes.push(`Duration: ${(durationMs / 1000).toFixed(1)}s`);
   }
-  if (analysis.lastStatusCode != null) {
+  if (analysis.lastStatusCode !== null) {
     notes.push(`Last status: ${analysis.lastStatusCode}`);
   }
   if (analysis.summaries.length) {
