@@ -14,6 +14,22 @@ type OperationAnalysis = {
 };
 
 const DEFAULT_EXPECTED_MS = 60_000;
+const normalizeOperationIdentifier = (value: string): string =>
+  value.toLowerCase().replace(/[_-]/g, "");
+
+const extractOperationIdentifier = (
+  args: Record<string, unknown>
+): string | null => {
+  const camel = args.operationId;
+  if (typeof camel === "string" && camel.trim().length) {
+    return camel;
+  }
+  const snake = (args as Record<string, unknown>).operation_id;
+  if (typeof snake === "string" && snake.trim().length) {
+    return snake;
+  }
+  return null;
+};
 
 const analyzeOperationHistory = (
   history: HistoryEntry[],
@@ -31,7 +47,21 @@ const analyzeOperationHistory = (
     }
 
     const args = entry.tool_args as Record<string, unknown>;
-    if (!args || args.operationId !== operationId) {
+    if (!args) {
+      continue;
+    }
+
+    const entryOperationId = extractOperationIdentifier(args);
+    if (!entryOperationId) {
+      continue;
+    }
+
+    const normalizedTarget = normalizeOperationIdentifier(operationId);
+    const normalizedEntry = normalizeOperationIdentifier(entryOperationId);
+    if (
+      entryOperationId !== operationId &&
+      normalizedEntry !== normalizedTarget
+    ) {
       continue;
     }
 
