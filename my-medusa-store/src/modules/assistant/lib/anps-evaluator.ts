@@ -13,6 +13,11 @@ type OperationAnalysis = {
   summaries: string[];
 };
 
+// The default expected duration for an agent operation is set to 60 seconds (60,000 ms).
+// This value reflects the typical time required for most standard agent operations,
+// such as API calls or data processing tasks, balancing responsiveness with the
+// need to allow sufficient time for completion. Longer durations are only assigned
+// to specific operations known to take more time (e.g., price list or promotion updates).
 const DEFAULT_EXPECTED_MS = 60_000;
 const normalizeOperationIdentifier = (value: string): string =>
   value.toLowerCase().replace(/[_-]/g, "");
