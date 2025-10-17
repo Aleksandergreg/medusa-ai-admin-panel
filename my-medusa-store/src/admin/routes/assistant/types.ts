@@ -17,10 +17,19 @@ export interface AssistantResponse {
   answer: string;
   history: ConversationEntry[];
   updatedAt: Date | null;
+  sessionId?: string;
   validationRequest?: ValidationRequest;
 }
 
 export type AssistantConversation = {
   history: ConversationEntry[];
   updatedAt: Date | null;
+};
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  messageCount: number;
 };

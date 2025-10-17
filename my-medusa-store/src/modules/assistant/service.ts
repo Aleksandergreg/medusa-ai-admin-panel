@@ -13,6 +13,7 @@ import type {
 import {
   ConversationEntry,
   ConversationRow,
+  ConversationSummary,
   HistoryEntry,
   MessageRow,
   PromptInput,
@@ -61,7 +62,9 @@ class AssistantModuleService extends MedusaService({}) {
       throw new Error("Missing actor identifier");
     }
 
-    const existing = await this.getConversation(actorId);
+    const existing = input.sessionId
+      ? await this.getConversationBySession(actorId, input.sessionId)
+      : await this.getConversation(actorId);
     const existingHistory = existing?.history ?? [];
 
     const pendingForActor =
@@ -112,7 +115,8 @@ class AssistantModuleService extends MedusaService({}) {
     const persistence = await this.persistConversation(
       actorId,
       finalHistory,
-      updatedAt
+      updatedAt,
+      input.sessionId
     );
 
     if (validationData && agentResult.continuation && persistence) {
@@ -147,6 +151,7 @@ class AssistantModuleService extends MedusaService({}) {
       answer,
       history: finalHistory,
       updatedAt,
+      sessionId: persistence?.sessionId,
       validationRequest: validationData,
     };
   }
@@ -175,7 +180,9 @@ class AssistantModuleService extends MedusaService({}) {
 
     const history: ConversationEntry[] = [];
     for (const message of messages) {
-      history.push({ role: "user", content: message.question });
+      if (message.question) {
+        history.push({ role: "user", content: message.question });
+      }
       if (message.answer) {
         history.push({ role: "assistant", content: message.answer });
       }
@@ -236,6 +243,18 @@ class AssistantModuleService extends MedusaService({}) {
       };
     }
 
+    // Add a user message indicating approval
+    const approvalMessage: ConversationEntry = {
+      role: "user",
+      content: "✓ Approved",
+    };
+    await this.addMessageToConversation(
+      context.sessionId,
+      approvalMessage.role,
+      approvalMessage.content,
+      updatedAt
+    );
+
     if (!context.continuation) {
       throw new Error("No continuation handler registered for validation");
     }
@@ -255,9 +274,10 @@ class AssistantModuleService extends MedusaService({}) {
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
 
-    await this.updateConversationMessage(
+    // Add the assistant's response as a new message instead of updating the old one
+    const newMessageId = await this.addMessageToConversation(
       context.sessionId,
-      context.messageId,
+      "assistant",
       answer,
       updatedAt
     );
@@ -273,7 +293,7 @@ class AssistantModuleService extends MedusaService({}) {
       const nextContext: PendingValidationContext = {
         actorId,
         sessionId: context.sessionId,
-        messageId: context.messageId,
+        messageId: newMessageId,
         continuation: agentResult.continuation,
         history: agentResult.history,
         nextStep: agentResult.nextStep,
@@ -287,6 +307,7 @@ class AssistantModuleService extends MedusaService({}) {
       answer,
       history: conversation?.history ?? [],
       updatedAt,
+      sessionId: context.sessionId,
       validationRequest: nextValidation as ValidationRequest | undefined,
     };
   }
@@ -302,32 +323,61 @@ class AssistantModuleService extends MedusaService({}) {
   private async persistConversation(
     actorId: string,
     history: ConversationEntry[],
-    updatedAt: Date
+    updatedAt: Date,
+    sessionId?: string
   ): Promise<{ sessionId: string; messageId: string } | null> {
     // Get or create session
-    let session = await this.db<ConversationRow>(CONVERSATION_TABLE)
-      .where({ actor_id: actorId })
-      .first();
+    let session: ConversationRow | undefined;
 
-    if (!session) {
-      const sessionId = generateId("sess");
-      await this.db(CONVERSATION_TABLE).insert({
-        id: sessionId,
-        actor_id: actorId,
-        created_at: updatedAt,
-        updated_at: updatedAt,
-      });
-      session = {
-        id: sessionId,
-        actor_id: actorId,
-        created_at: updatedAt,
-        updated_at: updatedAt,
-      };
-    } else {
+    if (sessionId) {
+      session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+        .where({ id: sessionId, actor_id: actorId })
+        .first();
+
+      if (!session) {
+        throw new Error("Session not found");
+      }
+
       // Update session timestamp
       await this.db(CONVERSATION_TABLE)
         .where({ id: session.id })
         .update({ updated_at: updatedAt });
+    } else {
+      // Check for existing session (fallback to old behavior)
+      session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+        .where({ actor_id: actorId })
+        .orderBy("updated_at", "desc")
+        .first();
+
+      if (!session) {
+        const newSessionId = generateId("sess");
+        const firstUserMessage = history.find((h) => h.role === "user");
+        const title = firstUserMessage
+          ? firstUserMessage.content.length > 50
+            ? firstUserMessage.content.substring(0, 50) + "..."
+            : firstUserMessage.content
+          : "New Conversation";
+
+        await this.db(CONVERSATION_TABLE).insert({
+          id: newSessionId,
+          actor_id: actorId,
+          title,
+          created_at: updatedAt,
+          updated_at: updatedAt,
+        });
+        session = {
+          id: newSessionId,
+          actor_id: actorId,
+          title,
+          created_at: updatedAt,
+          updated_at: updatedAt,
+        };
+      } else {
+        // Update session timestamp
+        await this.db(CONVERSATION_TABLE)
+          .where({ id: session.id })
+          .update({ updated_at: updatedAt });
+      }
     }
 
     let result: { sessionId: string; messageId: string } | null = null;
@@ -367,6 +417,150 @@ class AssistantModuleService extends MedusaService({}) {
     await this.db(CONVERSATION_TABLE)
       .where({ id: sessionId })
       .update({ updated_at: updatedAt });
+  }
+
+  private async addMessageToConversation(
+    sessionId: string,
+    role: "user" | "assistant",
+    content: string,
+    timestamp: Date
+  ): Promise<string> {
+    const messageId = generateId("msg");
+
+    // If it's a user message, we need to store it with empty answer for now
+    // If it's an assistant message, we store it as a complete Q&A pair with empty question
+    if (role === "user") {
+      await this.db(MESSAGE_TABLE).insert({
+        id: messageId,
+        session_id: sessionId,
+        question: content,
+        answer: "",
+        created_at: timestamp,
+      });
+    } else {
+      await this.db(MESSAGE_TABLE).insert({
+        id: messageId,
+        session_id: sessionId,
+        question: "",
+        answer: content,
+        created_at: timestamp,
+      });
+    }
+
+    await this.db(CONVERSATION_TABLE)
+      .where({ id: sessionId })
+      .update({ updated_at: timestamp });
+
+    return messageId;
+  }
+
+  async listConversations(actorId: string): Promise<ConversationSummary[]> {
+    const sessions = await this.db<ConversationRow>(CONVERSATION_TABLE)
+      .where({ actor_id: actorId })
+      .orderBy("updated_at", "desc");
+
+    const summaries: ConversationSummary[] = [];
+
+    for (const session of sessions) {
+      const messageCount = await this.db(MESSAGE_TABLE)
+        .where({ session_id: session.id })
+        .count("* as count")
+        .first();
+
+      summaries.push({
+        id: session.id,
+        title: session.title || "New Conversation",
+        createdAt: new Date(session.created_at),
+        updatedAt: new Date(session.updated_at),
+        messageCount: Number(messageCount?.count || 0),
+      });
+    }
+
+    return summaries;
+  }
+
+  async createConversation(
+    actorId: string,
+    title?: string
+  ): Promise<{ id: string; title: string }> {
+    const sessionId = generateId("sess");
+    const now = new Date();
+
+    await this.db(CONVERSATION_TABLE).insert({
+      id: sessionId,
+      actor_id: actorId,
+      title: title || "New Conversation",
+      created_at: now,
+      updated_at: now,
+    });
+
+    return {
+      id: sessionId,
+      title: title || "New Conversation",
+    };
+  }
+
+  async deleteConversation(
+    actorId: string,
+    sessionId: string
+  ): Promise<boolean> {
+    const session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+      .where({ id: sessionId, actor_id: actorId })
+      .first();
+
+    if (!session) {
+      return false;
+    }
+
+    await this.db(CONVERSATION_TABLE).where({ id: sessionId }).delete();
+    return true;
+  }
+
+  async updateConversationTitle(
+    actorId: string,
+    sessionId: string,
+    title: string
+  ): Promise<boolean> {
+    const result = await this.db(CONVERSATION_TABLE)
+      .where({ id: sessionId, actor_id: actorId })
+      .update({ title, updated_at: new Date() });
+
+    return result > 0;
+  }
+
+  async getConversationBySession(
+    actorId: string,
+    sessionId: string
+  ): Promise<{
+    history: ConversationEntry[];
+    updatedAt: Date | null;
+  } | null> {
+    const session = await this.db<ConversationRow>(CONVERSATION_TABLE)
+      .where({ id: sessionId, actor_id: actorId })
+      .first();
+
+    if (!session) {
+      return null;
+    }
+
+    const messages = await this.db<MessageRow>(MESSAGE_TABLE)
+      .where({ session_id: session.id })
+      .orderBy("created_at", "asc");
+
+    const history: ConversationEntry[] = [];
+    for (const message of messages) {
+      if (message.question) {
+        history.push({ role: "user", content: message.question });
+      }
+      if (message.answer) {
+        history.push({ role: "assistant", content: message.answer });
+      }
+    }
+
+    return {
+      history,
+      updatedAt: session.updated_at ? new Date(session.updated_at) : null,
+    };
   }
 }
 
