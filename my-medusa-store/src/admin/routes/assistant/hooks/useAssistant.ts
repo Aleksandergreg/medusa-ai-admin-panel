@@ -84,6 +84,34 @@ export function useAssistant() {
     [prompt, loading]
   );
 
+  const loadConversations = useCallback(async () => {
+    setConversationsLoading(true);
+    try {
+      const convos = await listConversations();
+      setConversations(convos);
+    } catch (e: unknown) {
+      console.error("Failed to load conversations", e);
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, []);
+
+  const handleCreateConversation = useCallback(async () => {
+    try {
+      const newConvo = await createConversation();
+      setCurrentSessionId(newConvo.id);
+      setHistory([]);
+      setAnswer(null);
+      setError(null);
+      setValidationRequest(null);
+      await loadConversations();
+      return newConvo;
+    } catch (e: unknown) {
+      setError((e as Error)?.message ?? "Failed to create conversation");
+      throw e;
+    }
+  }, [setCurrentSessionId, loadConversations]);
+
   const ask = useCallback(async () => {
     if (!canSubmit) return;
 
@@ -111,28 +139,72 @@ export function useAssistant() {
     setPrompt(""); // Clear the input after submitting
 
     try {
+      // Auto-create a conversation if this is the first prompt (no session and no conversations)
+      let sessionIdToUse = currentSessionId;
+      if (!sessionIdToUse && conversations.length === 0) {
+        const newConvo = await handleCreateConversation();
+        sessionIdToUse = newConvo.id;
+      }
+
       const payload = {
         prompt: trimmedPrompt,
-        sessionId: currentSessionId ?? undefined,
+        sessionId: sessionIdToUse ?? undefined,
       };
 
-      const res = await askAssistant(payload, signal);
-      if (signal.aborted) {
-        return;
+      try {
+        const res = await askAssistant(payload, signal);
+        if (signal.aborted) {
+          return;
+        }
+
+        setHistory(res.history);
+        setAnswer(res.answer);
+
+        // Update current session ID if we got one back
+        if (res.sessionId) {
+          setCurrentSessionId(res.sessionId);
+          // Refresh conversations list to include new or updated conversation
+          loadConversations();
+        }
+
+        // Check if response includes validation request
+        setValidationRequest(res.validationRequest ?? null);
+      } catch (askError: unknown) {
+        // If we get "Session not found" error, it means the session ID in localStorage is stale
+        // Auto-create a new conversation and retry
+        const errorMsg = (askError as Error)?.message ?? "";
+        if (
+          errorMsg.includes("Session not found") &&
+          sessionIdToUse &&
+          sessionIdToUse === currentSessionId
+        ) {
+          // Clear the stale session and create a new one
+          setCurrentSessionId(null);
+          const newConvo = await handleCreateConversation();
+          const retryPayload = {
+            prompt: trimmedPrompt,
+            sessionId: newConvo.id,
+          };
+
+          const retryRes = await askAssistant(retryPayload, signal);
+          if (signal.aborted) {
+            return;
+          }
+
+          setHistory(retryRes.history);
+          setAnswer(retryRes.answer);
+
+          if (retryRes.sessionId) {
+            setCurrentSessionId(retryRes.sessionId);
+            loadConversations();
+          }
+
+          setValidationRequest(retryRes.validationRequest ?? null);
+        } else {
+          // Re-throw if it's a different error
+          throw askError;
+        }
       }
-
-      setHistory(res.history);
-      setAnswer(res.answer);
-
-      // Update current session ID if we got one back
-      if (res.sessionId) {
-        setCurrentSessionId(res.sessionId);
-        // Refresh conversations list to include new or updated conversation
-        loadConversations();
-      }
-
-      // Check if response includes validation request
-      setValidationRequest(res.validationRequest ?? null);
     } catch (e: unknown) {
       setHistory(previousHistory);
       if (!(e instanceof Error && e.name === "AbortError")) {
@@ -142,7 +214,17 @@ export function useAssistant() {
       setLoading(false);
       abortController.current = null;
     }
-  }, [canSubmit, prompt, history, setPrompt]);
+  }, [
+    canSubmit,
+    prompt,
+    history,
+    setPrompt,
+    currentSessionId,
+    conversations.length,
+    handleCreateConversation,
+    loadConversations,
+    setCurrentSessionId,
+  ]);
 
   const cancel = useCallback(() => {
     if (abortController.current) {
@@ -182,32 +264,6 @@ export function useAssistant() {
       setLoading(false);
     }
   }, []);
-
-  const loadConversations = useCallback(async () => {
-    setConversationsLoading(true);
-    try {
-      const convos = await listConversations();
-      setConversations(convos);
-    } catch (e: unknown) {
-      console.error("Failed to load conversations", e);
-    } finally {
-      setConversationsLoading(false);
-    }
-  }, []);
-
-  const handleCreateConversation = useCallback(async () => {
-    try {
-      const newConvo = await createConversation();
-      setCurrentSessionId(newConvo.id);
-      setHistory([]);
-      setAnswer(null);
-      setError(null);
-      setValidationRequest(null);
-      await loadConversations();
-    } catch (e: unknown) {
-      setError((e as Error)?.message ?? "Failed to create conversation");
-    }
-  }, [setCurrentSessionId, loadConversations]);
 
   const handleSwitchConversation = useCallback(
     async (sessionId: string) => {
