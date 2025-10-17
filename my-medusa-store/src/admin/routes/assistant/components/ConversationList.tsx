@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { Text, IconButton } from "@medusajs/ui";
-import { Plus, Trash, EllipsisHorizontal, PencilSquare } from "@medusajs/icons";
+import {
+  Plus,
+  Trash,
+  EllipsisHorizontal,
+  PencilSquare,
+  ChevronDown,
+  ChevronRight,
+} from "@medusajs/icons";
 import type { ConversationSummary } from "../types";
 import { RenameModal, DeleteModal } from "./ConversationModals";
 
@@ -27,12 +34,23 @@ export function ConversationList({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] =
     useState<ConversationSummary | null>(null);
+  const [isExpanded, setIsExpanded] = useState(true);
+
   return (
     <div className="border-ui-border-base bg-ui-bg-subtle rounded-md border">
       <div className="flex items-center justify-between px-4 py-3 border-b border-ui-border-base">
-        <Text size="small" weight="plus" className="text-ui-fg-base">
-          Conversations
-        </Text>
+        <div className="flex items-center gap-2">
+          <IconButton
+            size="small"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-ui-fg-subtle hover:text-ui-fg-base"
+          >
+            {isExpanded ? <ChevronDown /> : <ChevronRight />}
+          </IconButton>
+          <Text size="small" weight="plus" className="text-ui-fg-base">
+            Conversations
+          </Text>
+        </div>
         <IconButton
           size="small"
           onClick={onCreateConversation}
@@ -43,70 +61,74 @@ export function ConversationList({
         </IconButton>
       </div>
 
-      <div className="max-h-80 overflow-y-auto">
-        {loading && conversations.length === 0 ? (
-          <div className="px-4 py-8 text-center text-ui-fg-subtle text-sm">
-            Loading conversations...
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="px-4 py-8 text-center text-ui-fg-subtle text-sm">
-            No conversations yet. Create one to get started!
-          </div>
-        ) : (
-          <div className="divide-y divide-ui-border-base">
-            {conversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                  conversation.id === currentSessionId
-                    ? "bg-ui-bg-base-pressed"
-                    : "hover:bg-ui-bg-base-hover"
-                }`}
-                onClick={() => onSelectConversation(conversation.id)}
-              >
-                <EllipsisHorizontal className="flex-shrink-0 text-ui-fg-muted" />
-                <div className="flex-1 min-w-0">
-                  <Text
+      {isExpanded && (
+        <div className="max-h-80 overflow-y-auto">
+          {loading && conversations.length === 0 ? (
+            <div className="px-4 py-8 text-center text-ui-fg-subtle text-sm">
+              Loading conversations...
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="px-4 py-8 text-center text-ui-fg-subtle text-sm">
+              No conversations yet. Create one to get started!
+            </div>
+          ) : (
+            <div className="divide-y divide-ui-border-base">
+              {conversations.map((conversation) => (
+                <div
+                  key={conversation.id}
+                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                    conversation.id === currentSessionId
+                      ? "bg-ui-bg-base-pressed"
+                      : "hover:bg-ui-bg-base-hover"
+                  }`}
+                  onClick={() => onSelectConversation(conversation.id)}
+                >
+                  <EllipsisHorizontal className="flex-shrink-0 text-ui-fg-muted" />
+                  <div className="flex-1 min-w-0">
+                    <Text
+                      size="small"
+                      weight={
+                        conversation.id === currentSessionId
+                          ? "plus"
+                          : "regular"
+                      }
+                      className="truncate text-ui-fg-base"
+                    >
+                      {conversation.title}
+                    </Text>
+                    <Text size="xsmall" className="text-ui-fg-subtle">
+                      {conversation.messageCount} messages •{" "}
+                      {new Date(conversation.updatedAt).toLocaleDateString()}
+                    </Text>
+                  </div>
+                  <IconButton
                     size="small"
-                    weight={
-                      conversation.id === currentSessionId ? "plus" : "regular"
-                    }
-                    className="truncate text-ui-fg-base"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedConversation(conversation);
+                      setRenameModalOpen(true);
+                    }}
+                    className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-base"
                   >
-                    {conversation.title}
-                  </Text>
-                  <Text size="xsmall" className="text-ui-fg-subtle">
-                    {conversation.messageCount} messages •{" "}
-                    {new Date(conversation.updatedAt).toLocaleDateString()}
-                  </Text>
+                    <PencilSquare />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedConversation(conversation);
+                      setDeleteModalOpen(true);
+                    }}
+                    className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-error"
+                  >
+                    <Trash />
+                  </IconButton>
                 </div>
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedConversation(conversation);
-                    setRenameModalOpen(true);
-                  }}
-                  className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-base"
-                >
-                  <PencilSquare />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedConversation(conversation);
-                    setDeleteModalOpen(true);
-                  }}
-                  className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-error"
-                >
-                  <Trash />
-                </IconButton>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <RenameModal
         isOpen={renameModalOpen}

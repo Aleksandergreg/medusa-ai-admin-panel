@@ -73,7 +73,9 @@ export async function askAgent(
     cacheable,
   }: ToolSuccessContext) => {
     const result = outcome.result;
-    console.log(`   Tool Result: ${JSON.stringify(result).substring(0, 200)}...`);
+    console.log(
+      `   Tool Result: ${JSON.stringify(result).substring(0, 200)}...`
+    );
 
     if (outcome.truth) {
       metricsStore.provideGroundTruth(turnId, outcome.truth);
@@ -186,10 +188,7 @@ export async function askAgent(
       );
       historyTracker.recordDuplicate(toolName, previousSuccess);
       if (consecutiveDuplicateHits >= MAX_DUPLICATE_REPLAYS) {
-        metricsStore.endAssistantTurn(
-          turnId,
-          "[aborted: duplicate tool loop]"
-        );
+        metricsStore.endAssistantTurn(turnId, "[aborted: duplicate tool loop]");
         throw new Error(
           `Detected ${consecutiveDuplicateHits} consecutive duplicate tool calls for ${toolName}. Aborting to avoid infinite loop.`
         );
