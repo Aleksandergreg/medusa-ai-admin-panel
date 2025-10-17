@@ -34,7 +34,7 @@ export function ConversationList({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] =
     useState<ConversationSummary | null>(null);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <div className="border-ui-border-base bg-ui-bg-subtle rounded-md border">
