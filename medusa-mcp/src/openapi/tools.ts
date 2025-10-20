@@ -5,6 +5,7 @@ import { createSearchTool } from "./tools/search-tool";
 import { createSchemaTool } from "./tools/schema-tool";
 import { createExecuteTool } from "./tools/execute-tool";
 import { createAuthTool } from "./tools/auth-tool";
+import { createAgentNpsSubmitTool } from "../tools/agent-nps-tool";
 
 export default class OpenApiToolsService {
     private readonly medusa: MedusaClient;
@@ -34,7 +35,8 @@ export default class OpenApiToolsService {
             createSearchTool(this.registry),
             createSchemaTool(this.spec, this.registry),
             createExecuteTool(this.registry, this.medusa),
-            createAuthTool(this.medusa)
+            createAuthTool(this.medusa),
+            createAgentNpsSubmitTool(this.medusa)
         ];
     }
 }

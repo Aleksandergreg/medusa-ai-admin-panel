@@ -35,6 +35,22 @@ const AssistantConversationSchema = z.object({
   updatedAt: z.string().nullish().default(null),
 });
 
+const AssistantNpsMetricsSchema = z.object({
+  last30Days: z.object({
+    responses: z.number().min(0),
+    nps: z.number().nullable(),
+  }),
+  byTask: z
+    .array(
+      z.object({
+        taskLabel: z.string().nullable(),
+        responses: z.number().min(0),
+        nps: z.number().nullable(),
+      })
+    )
+    .default([]),
+});
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -52,6 +68,8 @@ const toAssistantResponse = (json: unknown): AssistantResponse => {
     validationRequest: parsed.data.validationRequest,
   };
 };
+
+export type AssistantNpsMetrics = z.infer<typeof AssistantNpsMetricsSchema>;
 
 export async function askAssistant(
   payload: { prompt: string; sessionId?: string },
@@ -104,6 +122,31 @@ export async function fetchAssistantConversation(
     history: parsed.data.history as ConversationEntry[],
     updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
   };
+}
+
+export async function fetchAssistantNpsMetrics(
+  signal?: AbortSignal
+): Promise<AssistantNpsMetrics> {
+  const res = await fetch("/admin/assistant/anps/metrics", {
+    method: "GET",
+    credentials: "include",
+    signal,
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+
+  const parsed = AssistantNpsMetricsSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error("Invalid ANPS metrics response from server");
+  }
+  return parsed.data;
 }
 
 export async function approveAssistantValidation(

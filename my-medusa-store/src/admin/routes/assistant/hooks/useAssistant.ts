@@ -347,10 +347,10 @@ export function useAssistant() {
     cancel(); // Cancel any ongoing request when clearing
   }, [setPrompt, cancel]);
 
-  // Load conversations on mount
+  // Load conversations on mount only
   useEffect(() => {
     loadConversations();
-  }, [loadConversations]);
+  }, []); // Run only once on mount
 
   return {
     // state
