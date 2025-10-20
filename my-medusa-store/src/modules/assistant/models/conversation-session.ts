@@ -15,6 +15,9 @@ export class ConversationSession {
   @Property({ type: "string" })
   actor_id!: string;
 
+  @Property({ type: "string", nullable: true })
+  title?: string;
+
   @OneToMany(() => ConversationMessage, (message) => message.session)
   messages = new Collection<ConversationMessage>(this);
 
