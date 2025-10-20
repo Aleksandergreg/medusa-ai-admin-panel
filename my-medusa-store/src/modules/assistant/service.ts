@@ -291,6 +291,7 @@ class AssistantModuleService extends MedusaService({}) {
           history: params.history,
           answer: params.answer ?? null,
           config: this.config,
+          relatedOperations: operations,
         });
       } catch (error) {
         console.error(

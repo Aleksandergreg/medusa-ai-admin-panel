@@ -186,35 +186,18 @@ const extractText = (res: unknown): string | null => {
     return responseText;
   }
 
-  const candidates = (response as { candidates?: unknown })?.candidates;
+  const candidates =
+    (response as { candidates?: unknown })?.candidates ??
+    (res as { candidates?: unknown })?.candidates;
   if (Array.isArray(candidates)) {
     for (const candidate of candidates) {
-      const parts =
-        (candidate as { content?: { parts?: unknown }[] })?.content
-          ?.parts ?? [];
+      const parts = (candidate as { content?: { parts?: unknown }[] })?.content
+        ?.parts ?? [];
       if (!Array.isArray(parts)) {
         continue;
       }
       const combined = parts
         .map((part) => read((part as { text?: unknown })?.text))
-        .filter((text): text is string => typeof text === "string")
-        .join("")
-        .trim();
-      if (combined) {
-        return combined;
-      }
-    }
-  }
-
-  if (Array.isArray((res as { candidates?: unknown })?.candidates)) {
-    for (const candidate of (res as { candidates?: any[] })?.candidates ??
-      []) {
-      const parts = candidate?.content?.parts ?? [];
-      if (!Array.isArray(parts)) {
-        continue;
-      }
-      const combined = parts
-        .map((part: any) => read(part?.text))
         .filter((text): text is string => typeof text === "string")
         .join("")
         .trim();
@@ -234,6 +217,7 @@ export async function generateQualitativeFeedback(params: {
   history: HistoryEntry[];
   answer?: string | null;
   config: AssistantModuleOptions;
+  relatedOperations?: { operationId: string; taskLabel: string | null }[];
 }): Promise<QualitativeFeedback | null> {
   const apiKey =
     params.config.geminiApiKey ?? process.env.ASSISTANT_GEMINI_API_KEY;
@@ -297,6 +281,21 @@ export async function generateQualitativeFeedback(params: {
     : "No HTTP tool calls were captured for this operation.";
 
   const answerSnippet = truncate(params.answer, 1500);
+  const otherOperations =
+    params.relatedOperations?.filter(
+      (op) => op.operationId !== params.operationId
+    ) ?? [];
+  const otherOperationsSection = otherOperations.length
+    ? [
+        "Other operations executed in this assistant turn:",
+        otherOperations
+          .map((op, idx) => {
+            const label = op.taskLabel ?? op.operationId;
+            return `${idx + 1}. ${label} (${op.operationId})`;
+          })
+          .join("\n"),
+      ].join("\n")
+    : null;
 
   const promptSections = [
     "You are reviewing a Medusa commerce assistant task execution.",
@@ -306,8 +305,10 @@ export async function generateQualitativeFeedback(params: {
     quantitativeBullets.join("\n"),
     "### HTTP interaction summary",
     statusSection,
+    otherOperationsSection,
     answerSnippet ? `### Assistant reply\n${answerSnippet}` : null,
     "Write a concise qualitative review highlighting what worked well and what should improve. Be specific about API usage or payload clarity when possible.",
+    "Focus your analysis on the target operation above. Other operations are listed only for context; do not assume their HTTP calls should appear in this summary.",
     'Respond as valid JSON using this schema: {"feedback":"<short paragraph>","positives":["..."],"suggestions":["..."]}.',
   ].filter((section): section is string => typeof section === "string");
 
