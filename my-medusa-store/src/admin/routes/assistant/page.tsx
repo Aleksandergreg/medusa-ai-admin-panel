@@ -3,9 +3,9 @@ import { useEffect, useRef } from "react";
 import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { AssistantLoading } from "./components/Loading";
+import { NpsCard } from "./components/NpsCard";
 import { ConversationMessages } from "./components/ConversationMessages";
 import { ConversationList } from "./components/ConversationList";
-import { NpsCard } from "./components/NpsCard";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text } from "@medusajs/ui";
 import { AiAssistent } from "@medusajs/icons";
@@ -62,6 +62,9 @@ const AssistantPage = () => {
           loading={conversationsLoading}
         />
 
+        <NpsCard />
+
+        <PromptInput value={prompt} onChange={setPrompt} onSubmit={ask} />
         {history.length === 0 && (
           <div className="w-full">
             <Text size="small" className="text-ui-fg-subtle text-center py-8">
