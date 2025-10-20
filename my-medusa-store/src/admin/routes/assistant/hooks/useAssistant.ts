@@ -30,6 +30,7 @@ export function useAssistant() {
   const [history, setHistory] = useState<ConversationEntry[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationRequest, setValidationRequest] =
@@ -139,52 +140,42 @@ export function useAssistant() {
     setPrompt(""); // Clear the input after submitting
 
     try {
-      // Auto-create a conversation if this is the first prompt (no session and no conversations)
-      let sessionIdToUse = currentSessionId;
-      if (!sessionIdToUse && conversations.length === 0) {
-        const newConvo = await handleCreateConversation();
-        sessionIdToUse = newConvo.id;
-      }
-
       const payload = {
         prompt: trimmedPrompt,
-        sessionId: sessionIdToUse ?? undefined,
+        sessionId: currentSessionId ?? undefined,
       };
 
-      try {
-        const res = await askAssistant(payload, signal);
-        if (signal.aborted) {
-          return;
-        }
+      const res = await askAssistant(payload, signal);
+      if (signal.aborted) {
+        return;
+      }
 
-        setHistory(res.history);
-        setAnswer(res.answer);
+      setHistory(res.history);
+      setAnswer(res.answer);
 
-        // Update current session ID if we got one back
-        if (res.sessionId) {
-          setCurrentSessionId(res.sessionId);
-          // Refresh conversations list to include new or updated conversation
+      if (res.sessionId) {
+        setCurrentSessionId(res.sessionId);
+        // If the conversation list hasn't been updated with this new session, refresh it
+        if (!conversations.find((c) => c.id === res.sessionId)) {
           loadConversations();
         }
+      }
 
-        // Check if response includes validation request
-        setValidationRequest(res.validationRequest ?? null);
-      } catch (askError: unknown) {
-        // If we get "Session not found" error, it means the session ID in localStorage is stale
-        // Auto-create a new conversation and retry
-        const errorMsg = (askError as Error)?.message ?? "";
-        if (
-          errorMsg.includes("Session not found") &&
-          sessionIdToUse &&
-          sessionIdToUse === currentSessionId
-        ) {
-          // Clear the stale session and create a new one
-          setCurrentSessionId(null);
+      setValidationRequest(res.validationRequest ?? null);
+    } catch (askError: unknown) {
+      const errorMsg = (askError as Error)?.message ?? "";
+      if (errorMsg.includes("Session not found")) {
+        // This is the primary path for creating a new conversation.
+        try {
+          setCurrentSessionId(null); // Ensure we're starting fresh
           const newConvo = await handleCreateConversation();
           const retryPayload = {
             prompt: trimmedPrompt,
             sessionId: newConvo.id,
           };
+
+          // We need to ensure the UI history is correct for the retry
+          setHistory([...previousHistory, { role: "user", content: trimmedPrompt }]);
 
           const retryRes = await askAssistant(retryPayload, signal);
           if (signal.aborted) {
@@ -196,19 +187,20 @@ export function useAssistant() {
 
           if (retryRes.sessionId) {
             setCurrentSessionId(retryRes.sessionId);
-            loadConversations();
+            loadConversations(); // We know we need to reload here
           }
 
           setValidationRequest(retryRes.validationRequest ?? null);
-        } else {
-          // Re-throw if it's a different error
-          throw askError;
+        } catch (retryError: unknown) {
+          setHistory(previousHistory);
+          setError((retryError as Error)?.message ?? "Unknown error");
         }
-      }
-    } catch (e: unknown) {
-      setHistory(previousHistory);
-      if (!(e instanceof Error && e.name === "AbortError")) {
-        setError((e as Error)?.message ?? "Unknown error");
+      } else {
+        // It was a different error, so rollback and show it.
+        setHistory(previousHistory);
+        if (!(askError instanceof Error && askError.name === "AbortError")) {
+          setError((askError as Error)?.message ?? "Unknown error");
+        }
       }
     } finally {
       setLoading(false);
@@ -234,8 +226,14 @@ export function useAssistant() {
 
   const approveValidation = useCallback(
     async (id: string, editedData?: Record<string, unknown>) => {
+      const optimisticHistory: ConversationEntry[] = [
+        ...history,
+        { role: "user", content: "✓ Approved" },
+      ];
+      setHistory(optimisticHistory);
+
       try {
-        setLoading(true);
+        setIsMutating(true);
         const outcome = await approveAssistantValidation(id, editedData);
         setHistory(outcome.history);
         setAnswer(outcome.answer);
@@ -243,27 +241,38 @@ export function useAssistant() {
         setError(null);
       } catch (e: unknown) {
         setError((e as Error)?.message ?? "Failed to approve operation");
+        setHistory(history); // Rollback on error
       } finally {
-        setLoading(false);
+        setIsMutating(false);
       }
     },
-    []
+    [history]
   );
 
-  const rejectValidation = useCallback(async (id: string) => {
-    try {
-      setLoading(true);
-      const outcome = await rejectAssistantValidation(id);
-      setHistory(outcome.history);
-      setAnswer(outcome.answer);
-      setValidationRequest(outcome.validationRequest ?? null);
-      setError(null);
-    } catch (e: unknown) {
-      setError((e as Error)?.message ?? "Failed to reject operation");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const rejectValidation = useCallback(
+    async (id: string) => {
+      const optimisticHistory: ConversationEntry[] = [
+        ...history,
+        { role: "user", content: "✗ Rejected" },
+      ];
+      setHistory(optimisticHistory);
+
+      try {
+        setIsMutating(true);
+        const outcome = await rejectAssistantValidation(id);
+        setHistory(outcome.history);
+        setAnswer(outcome.answer);
+        setValidationRequest(outcome.validationRequest ?? null);
+        setError(null);
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to reject operation");
+        setHistory(history); // Rollback on error
+      } finally {
+        setIsMutating(false);
+      }
+    },
+    [history]
+  );
 
   const handleSwitchConversation = useCallback(
     async (sessionId: string) => {
@@ -346,6 +355,7 @@ export function useAssistant() {
     answer,
     setAnswer,
     loading,
+    isMutating,
     error,
     validationRequest,
 

@@ -51,6 +51,105 @@ const AssistantNpsMetricsSchema = z.object({
     .default([]),
 });
 
+const LlmFeedbackSchema = z.object({
+  summary: z.string(),
+  positives: z.array(z.string()).default([]),
+  suggestions: z.array(z.string()).default([]),
+});
+
+const TurnOperationSchema = z.object({
+  operationId: z.string(),
+  taskLabel: z.string().nullable(),
+  score: z.number().optional(),
+  attempts: z.number().optional(),
+  errors: z.number().optional(),
+  durationMs: z.number().nullable().optional(),
+  errorFlag: z.boolean().optional(),
+  errorSummary: z.string().nullable().optional(),
+  lastStatusCode: z.number().nullable().optional(),
+  lastStatusMessage: z.string().nullable().optional(),
+});
+
+const TurnAggregateSchema = z.object({
+  totalOperations: z.number().optional(),
+  averageScore: z.number().optional(),
+  bestScore: z.number().optional(),
+  lowestScore: z.number().optional(),
+  totalAttempts: z.number().optional(),
+  totalErrors: z.number().optional(),
+  durationMs: z.number().nullable().optional(),
+  agentComputeMs: z.number().nullable().optional(),
+});
+
+type TurnOperationMeta = z.infer<typeof TurnOperationSchema>;
+type TurnAggregateMeta = z.infer<typeof TurnAggregateSchema>;
+
+const AssistantNpsRowSchema = z.object({
+  id: z.string(),
+  created_at: z.string(),
+  agent_id: z.string(),
+  agent_version: z.string().nullable(),
+  session_id: z.string(),
+  user_id: z.string().nullable(),
+  score: z.number(),
+  task_label: z.string().nullable(),
+  operation_id: z.string().nullable(),
+  tools_used: z.array(z.record(z.unknown())).default([]),
+  duration_ms: z.number().nullable(),
+  error_flag: z.boolean(),
+  error_summary: z.string().nullable(),
+  user_permission: z.boolean(),
+  client_metadata: z
+    .record(z.unknown())
+    .optional()
+    .nullable()
+    .transform((value) => {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      const metadata = value as Record<string, unknown>;
+      const feedbackRaw = metadata.llmFeedback;
+      const parsedFeedback = LlmFeedbackSchema.safeParse(feedbackRaw);
+
+      const operations: z.infer<typeof TurnOperationSchema>[] = [];
+      if (Array.isArray(metadata.operations)) {
+        for (const entry of metadata.operations) {
+          const parsed = TurnOperationSchema.safeParse(entry);
+          if (parsed.success) {
+            operations.push(parsed.data);
+          }
+        }
+      }
+
+      let aggregate: z.infer<typeof TurnAggregateSchema> | null = null;
+      if (metadata.aggregate) {
+        const parsedAggregate = TurnAggregateSchema.safeParse(metadata.aggregate);
+        if (parsedAggregate.success) {
+          aggregate = parsedAggregate.data;
+        }
+      }
+
+      return {
+        feedback: typeof metadata.feedback === "string" ? metadata.feedback : null,
+        llmFeedback:
+          parsedFeedback.success
+            ? {
+                summary: parsedFeedback.data.summary,
+                positives: parsedFeedback.data.positives,
+                suggestions: parsedFeedback.data.suggestions,
+              }
+            : null,
+        isTurnFeedback: metadata.isTurnFeedback === true,
+        operations,
+        aggregate,
+      };
+    }),
+});
+
+const AssistantNpsListSchema = z.object({
+  rows: z.array(AssistantNpsRowSchema).default([]),
+});
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -70,6 +169,33 @@ const toAssistantResponse = (json: unknown): AssistantResponse => {
 };
 
 export type AssistantNpsMetrics = z.infer<typeof AssistantNpsMetricsSchema>;
+
+export type AssistantNpsResponseRow = {
+  id: string;
+  createdAt: Date;
+  agentId: string;
+  agentVersion: string | null;
+  sessionId: string;
+  userId: string | null;
+  score: number;
+  taskLabel: string | null;
+  operationId: string | null;
+  toolsUsed: Record<string, unknown>[];
+  durationMs: number | null;
+  errorFlag: boolean;
+  errorSummary: string | null;
+  metadata: {
+    feedback: string | null;
+    llmFeedback: {
+      summary: string;
+      positives: string[];
+      suggestions: string[];
+    } | null;
+    isTurnFeedback: boolean;
+    operations: TurnOperationMeta[];
+    aggregate: TurnAggregateMeta | null;
+  };
+};
 
 export async function askAssistant(
   payload: { prompt: string; sessionId?: string },
@@ -147,6 +273,63 @@ export async function fetchAssistantNpsMetrics(
     throw new Error("Invalid ANPS metrics response from server");
   }
   return parsed.data;
+}
+
+export async function fetchAssistantNpsResponses(
+  limit = 10,
+  signal?: AbortSignal
+): Promise<AssistantNpsResponseRow[]> {
+  const params = new URLSearchParams();
+  if (Number.isFinite(limit) && limit > 0) {
+    params.set("limit", String(Math.floor(limit)));
+  }
+
+  const query = params.toString();
+  const url = query ? `/admin/assistant/anps?${query}` : "/admin/assistant/anps";
+
+  const res = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    signal,
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+
+  const parsed = AssistantNpsListSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error("Invalid ANPS list response from server");
+  }
+
+  return parsed.data.rows.map((row) => ({
+    id: row.id,
+    createdAt: new Date(row.created_at),
+    agentId: row.agent_id,
+    agentVersion: row.agent_version,
+    sessionId: row.session_id,
+    userId: row.user_id,
+    score: row.score,
+    taskLabel: row.task_label,
+    operationId: row.operation_id,
+    toolsUsed: row.tools_used,
+    durationMs: row.duration_ms,
+    errorFlag: row.error_flag,
+    errorSummary: row.error_summary,
+    metadata:
+      row.client_metadata ?? {
+        feedback: null,
+        llmFeedback: null,
+        isTurnFeedback: false,
+        operations: [],
+        aggregate: null,
+      },
+  }));
 }
 
 export async function approveAssistantValidation(

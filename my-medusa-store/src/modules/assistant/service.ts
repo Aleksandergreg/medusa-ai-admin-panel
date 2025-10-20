@@ -35,6 +35,12 @@ import {
   sanitizeToolUsage,
 } from "./lib/anps";
 import { evaluateAgentNpsScore } from "./lib/anps-evaluator";
+import {
+  generateQualitativeFeedback,
+  generateTurnSummaryFeedback,
+  summarizeStatusMessages,
+} from "./lib/anps-feedback";
+import type { QualitativeFeedback } from "./lib/anps-feedback";
 import { extractToolJsonPayload } from "./lib/utils";
 import { getMcp } from "../../lib/mcp/manager";
 
@@ -158,16 +164,19 @@ class AssistantModuleService extends MedusaService({}) {
     };
   }
 
-  private detectMajorOperation(
+  private extractExecutedOperations(
     entries: HistoryEntry[]
-  ): { operationId: string; taskLabel: string | null } | null {
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const entry = entries[i];
-      if (!entry) continue;
-      if (entry.tool_name !== "openapi.execute") {
+  ): { operationId: string; taskLabel: string | null }[] {
+    const operations: { operationId: string; taskLabel: string | null }[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (!entry || entry.tool_name !== "openapi.execute") {
         continue;
       }
-      const args = entry.tool_args as Record<string, unknown>;
+      const args =
+        entry.tool_args && typeof entry.tool_args === "object"
+          ? (entry.tool_args as Record<string, unknown>)
+          : null;
       if (!args) {
         continue;
       }
@@ -177,9 +186,17 @@ class AssistantModuleService extends MedusaService({}) {
       if (!operationId) {
         continue;
       }
-      return { operationId, taskLabel: this.toTaskLabel(operationId) };
+      const key = operationId.trim().toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      operations.push({
+        operationId,
+        taskLabel: this.toTaskLabel(operationId),
+      });
     }
-    return null;
+    return operations;
   }
 
   private toTaskLabel(operationId: string): string | null {
@@ -243,61 +260,218 @@ class AssistantModuleService extends MedusaService({}) {
     history: HistoryEntry[];
     durationMs: number;
     agentComputeMs?: number;
+    answer?: string | null;
   }): Promise<void> {
-    const majorOperation = this.detectMajorOperation(params.history);
-    if (!majorOperation) {
-      return;
-    }
-
-    if (this.hasOperationBeenScored(params.sessionId, majorOperation.operationId)) {
-      return;
-    }
-
-    const evaluation = evaluateAgentNpsScore({
-      operationId: majorOperation.operationId,
-      taskLabel: majorOperation.taskLabel,
-      history: params.history,
-      durationMs: params.durationMs,
-      agentComputeMs: params.agentComputeMs,
-    });
-
-    if (!evaluation) {
+    const operations = this.extractExecutedOperations(params.history);
+    if (!operations.length) {
       return;
     }
 
     const { agentId, agentVersion } = this.getAgentIdentifiers();
-    const toolUsage = sanitizeToolUsage(
-      this.collectToolUsage(params.history)
-    );
-    const metadata = {
-      ...this.buildClientMetadata(),
-      attempts: evaluation.attempts,
-      errors: evaluation.errors,
-      durationMs: evaluation.durationMs ?? null,
-      feedback: evaluation.feedbackNote ?? null,
-      scoredAt: new Date().toISOString(),
-    } as AgentNpsClientMetadata;
+    const toolUsage = sanitizeToolUsage(this.collectToolUsage(params.history));
+    const evaluatedOperations: {
+      operationId: string;
+      taskLabel: string | null;
+      evaluation: AgentNpsEvaluation;
+    }[] = [];
+    let successfulSubmissions = 0;
 
-    const sanitizedMetadata = sanitizeClientMetadata(metadata);
+    for (const operation of operations) {
+      if (this.hasOperationBeenScored(params.sessionId, operation.operationId)) {
+        continue;
+      }
 
-    const submission: AnpsSubmissionPayload = {
-      score: evaluation.score,
-      sessionId: params.sessionId,
-      agentId,
-      agentVersion,
-      userId: params.actorId,
-      taskLabel: majorOperation.taskLabel,
-      operationId: majorOperation.operationId,
-      toolsUsed: toolUsage,
-      durationMs: evaluation.durationMs,
-      errorFlag: evaluation.errorFlag,
-      errorSummary: evaluation.errorSummary ?? undefined,
-      clientMetadata: sanitizedMetadata,
-    };
+      const evaluation = evaluateAgentNpsScore({
+        operationId: operation.operationId,
+        taskLabel: operation.taskLabel,
+        history: params.history,
+        durationMs: params.durationMs,
+        agentComputeMs: params.agentComputeMs,
+      });
 
-    const result = await this.submitAgentNpsRecord(submission);
-    if (result.ok) {
-      this.markOperationScored(params.sessionId, majorOperation.operationId);
+      if (!evaluation) {
+        continue;
+      }
+
+      let qualitativeFeedback = null;
+      try {
+        qualitativeFeedback = await generateQualitativeFeedback({
+          operationId: operation.operationId,
+          taskLabel: operation.taskLabel ?? null,
+          evaluation,
+          history: params.history,
+          answer: params.answer ?? null,
+          config: this.config,
+          relatedOperations: operations,
+        });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "agent_feedback.generate_failed",
+            message: error instanceof Error ? error.message : String(error),
+            operation_id: operation.operationId,
+          })
+        );
+      }
+
+      const metadata = {
+        ...this.buildClientMetadata(),
+        attempts: evaluation.attempts,
+        errors: evaluation.errors,
+        durationMs: evaluation.durationMs ?? null,
+        feedback: evaluation.feedbackNote ?? null,
+        llmFeedback: qualitativeFeedback
+          ? {
+              summary: qualitativeFeedback.summary,
+              positives: qualitativeFeedback.positives,
+              suggestions: qualitativeFeedback.suggestions,
+            }
+          : null,
+        scoredAt: new Date().toISOString(),
+      } as AgentNpsClientMetadata;
+
+      const sanitizedMetadata = sanitizeClientMetadata(metadata);
+
+      const submission: AnpsSubmissionPayload = {
+        score: evaluation.score,
+        sessionId: params.sessionId,
+        agentId,
+        agentVersion,
+        userId: params.actorId,
+        taskLabel: operation.taskLabel,
+        operationId: operation.operationId,
+        toolsUsed: toolUsage,
+        durationMs: evaluation.durationMs,
+        errorFlag: evaluation.errorFlag,
+        errorSummary: evaluation.errorSummary ?? undefined,
+        clientMetadata: sanitizedMetadata,
+      };
+
+      const result = await this.submitAgentNpsRecord(submission);
+      if (result.ok) {
+        this.markOperationScored(params.sessionId, operation.operationId);
+        evaluatedOperations.push({
+          operationId: operation.operationId,
+          taskLabel: operation.taskLabel ?? null,
+          evaluation,
+        });
+        successfulSubmissions += 1;
+      }
+    }
+
+    if (successfulSubmissions > 0 && evaluatedOperations.length) {
+      let turnFeedback: QualitativeFeedback | null = null;
+      try {
+        turnFeedback = await generateTurnSummaryFeedback({
+          operations: evaluatedOperations,
+          history: params.history,
+          answer: params.answer ?? null,
+          config: this.config,
+          durationMs: params.durationMs,
+          agentComputeMs: params.agentComputeMs,
+        });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "agent_feedback.turn_generate_failed",
+            message: error instanceof Error ? error.message : String(error),
+            session_id: params.sessionId,
+          })
+        );
+      }
+
+      if (turnFeedback) {
+        const aggregateScore = Math.round(
+          evaluatedOperations.reduce(
+            (sum, item) => sum + item.evaluation.score,
+            0
+          ) / evaluatedOperations.length
+        );
+        const scores = evaluatedOperations.map((item) => item.evaluation.score);
+        const bestScore = Math.max(...scores);
+        const lowestScore = Math.min(...scores);
+        const totalAttempts = evaluatedOperations.reduce(
+          (sum, item) => sum + item.evaluation.attempts,
+          0
+        );
+        const totalErrors = evaluatedOperations.reduce(
+          (sum, item) => sum + item.evaluation.errors,
+          0
+        );
+        const aggregateErrorFlag = evaluatedOperations.some(
+          (item) => item.evaluation.errorFlag
+        );
+        const aggregateErrorSummary =
+          evaluatedOperations
+            .map((item) => item.evaluation.errorSummary)
+            .filter((value): value is string => typeof value === "string")
+            .slice(-1)[0] ?? null;
+
+        const operationsMetadata = evaluatedOperations.map((item) => {
+          const statuses = summarizeStatusMessages(
+            params.history,
+            item.operationId
+          );
+          const lastStatus =
+            statuses.length > 0 ? statuses[statuses.length - 1] : null;
+          return {
+            operationId: item.operationId,
+            taskLabel: item.taskLabel ?? null,
+            score: item.evaluation.score,
+            attempts: item.evaluation.attempts,
+            errors: item.evaluation.errors,
+            durationMs: item.evaluation.durationMs ?? null,
+            errorFlag: item.evaluation.errorFlag,
+            errorSummary: item.evaluation.errorSummary ?? null,
+            lastStatusCode: lastStatus?.statusCode ?? null,
+            lastStatusMessage: lastStatus?.message ?? null,
+          };
+        });
+
+        const metadata = {
+          ...this.buildClientMetadata(),
+          isTurnFeedback: true,
+          operations: operationsMetadata,
+          aggregate: {
+            totalOperations: evaluatedOperations.length,
+            averageScore: aggregateScore,
+            bestScore,
+            lowestScore,
+            totalAttempts,
+            totalErrors,
+            durationMs: params.durationMs ?? null,
+            agentComputeMs: params.agentComputeMs ?? null,
+          },
+          feedback:
+            evaluatedOperations
+              .map((item) => item.evaluation.feedbackNote)
+              .filter((note): note is string => typeof note === "string")
+              .join(" | ") || null,
+          llmFeedback: {
+            summary: turnFeedback.summary,
+            positives: turnFeedback.positives,
+            suggestions: turnFeedback.suggestions,
+          },
+          scoredAt: new Date().toISOString(),
+        } as AgentNpsClientMetadata;
+
+        const sanitizedMetadata = sanitizeClientMetadata(metadata);
+
+        await this.submitAgentNpsRecord({
+          score: aggregateScore,
+          sessionId: params.sessionId,
+          agentId,
+          agentVersion,
+          userId: params.actorId,
+          taskLabel: "turn-summary",
+          operationId: null,
+          toolsUsed: toolUsage,
+          durationMs: params.durationMs,
+          errorFlag: aggregateErrorFlag,
+          errorSummary: aggregateErrorSummary ?? undefined,
+          clientMetadata: sanitizedMetadata,
+        });
+      }
     }
   }
 
@@ -529,7 +703,8 @@ class AssistantModuleService extends MedusaService({}) {
     const since = subDays(new Date(), 30);
     const rows = await this.db<Record<string, unknown>>(ANPS_TABLE)
       .select(["task_label", "score"])
-      .where("created_at", ">=", since);
+      .where("created_at", ">=", since)
+      .whereNotNull("operation_id");
 
     const globalScores: number[] = [];
     const byTask = new Map<string | null, number[]>();
@@ -695,6 +870,7 @@ class AssistantModuleService extends MedusaService({}) {
         history: agentResult.history,
         durationMs: totalDurationMs,
         agentComputeMs: totalDurationMs,
+        answer,
       });
     }
 
@@ -877,6 +1053,7 @@ class AssistantModuleService extends MedusaService({}) {
         history: agentResult.history,
         durationMs,
         agentComputeMs,
+        answer,
       });
     }
 

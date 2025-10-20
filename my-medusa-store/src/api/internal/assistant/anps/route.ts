@@ -33,6 +33,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       agent_id: row.agent_id,
       agent_version: row.agent_version,
       session_id: row.session_id,
+      user_id: row.user_id,
       score: row.score,
       task_label: row.task_label,
       operation_id: row.operation_id,
@@ -41,6 +42,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       error_flag: row.error_flag,
       error_summary: row.error_summary,
       user_permission: row.user_permission,
+      client_metadata: row.client_metadata,
     })),
   });
 }
