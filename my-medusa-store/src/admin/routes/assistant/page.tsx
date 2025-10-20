@@ -64,7 +64,6 @@ const AssistantPage = () => {
 
         <NpsCard />
 
-        <PromptInput value={prompt} onChange={setPrompt} onSubmit={ask} />
         {history.length === 0 && (
           <div className="w-full">
             <Text size="small" className="text-ui-fg-subtle text-center py-8">
