@@ -1,3 +1,5 @@
+import type { ValidationRequest } from "./validation-types";
+
 export type McpTool = {
   name: string;
   description?: string;
