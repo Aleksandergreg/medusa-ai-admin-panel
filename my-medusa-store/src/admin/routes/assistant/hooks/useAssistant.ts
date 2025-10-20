@@ -140,52 +140,42 @@ export function useAssistant() {
     setPrompt(""); // Clear the input after submitting
 
     try {
-      // Auto-create a conversation if this is the first prompt (no session and no conversations)
-      let sessionIdToUse = currentSessionId;
-      if (!sessionIdToUse && conversations.length === 0) {
-        const newConvo = await handleCreateConversation();
-        sessionIdToUse = newConvo.id;
-      }
-
       const payload = {
         prompt: trimmedPrompt,
-        sessionId: sessionIdToUse ?? undefined,
+        sessionId: currentSessionId ?? undefined,
       };
 
-      try {
-        const res = await askAssistant(payload, signal);
-        if (signal.aborted) {
-          return;
-        }
+      const res = await askAssistant(payload, signal);
+      if (signal.aborted) {
+        return;
+      }
 
-        setHistory(res.history);
-        setAnswer(res.answer);
+      setHistory(res.history);
+      setAnswer(res.answer);
 
-        // Update current session ID if we got one back
-        if (res.sessionId) {
-          setCurrentSessionId(res.sessionId);
-          // Refresh conversations list to include new or updated conversation
+      if (res.sessionId) {
+        setCurrentSessionId(res.sessionId);
+        // If the conversation list hasn't been updated with this new session, refresh it
+        if (!conversations.find((c) => c.id === res.sessionId)) {
           loadConversations();
         }
+      }
 
-        // Check if response includes validation request
-        setValidationRequest(res.validationRequest ?? null);
-      } catch (askError: unknown) {
-        // If we get "Session not found" error, it means the session ID in localStorage is stale
-        // Auto-create a new conversation and retry
-        const errorMsg = (askError as Error)?.message ?? "";
-        if (
-          errorMsg.includes("Session not found") &&
-          sessionIdToUse &&
-          sessionIdToUse === currentSessionId
-        ) {
-          // Clear the stale session and create a new one
-          setCurrentSessionId(null);
+      setValidationRequest(res.validationRequest ?? null);
+    } catch (askError: unknown) {
+      const errorMsg = (askError as Error)?.message ?? "";
+      if (errorMsg.includes("Session not found")) {
+        // This is the primary path for creating a new conversation.
+        try {
+          setCurrentSessionId(null); // Ensure we're starting fresh
           const newConvo = await handleCreateConversation();
           const retryPayload = {
             prompt: trimmedPrompt,
             sessionId: newConvo.id,
           };
+
+          // We need to ensure the UI history is correct for the retry
+          setHistory([...previousHistory, { role: "user", content: trimmedPrompt }]);
 
           const retryRes = await askAssistant(retryPayload, signal);
           if (signal.aborted) {
@@ -197,19 +187,20 @@ export function useAssistant() {
 
           if (retryRes.sessionId) {
             setCurrentSessionId(retryRes.sessionId);
-            loadConversations();
+            loadConversations(); // We know we need to reload here
           }
 
           setValidationRequest(retryRes.validationRequest ?? null);
-        } else {
-          // Re-throw if it's a different error
-          throw askError;
+        } catch (retryError: unknown) {
+          setHistory(previousHistory);
+          setError((retryError as Error)?.message ?? "Unknown error");
         }
-      }
-    } catch (e: unknown) {
-      setHistory(previousHistory);
-      if (!(e instanceof Error && e.name === "AbortError")) {
-        setError((e as Error)?.message ?? "Unknown error");
+      } else {
+        // It was a different error, so rollback and show it.
+        setHistory(previousHistory);
+        if (!(askError instanceof Error && askError.name === "AbortError")) {
+          setError((askError as Error)?.message ?? "Unknown error");
+        }
       }
     } finally {
       setLoading(false);
