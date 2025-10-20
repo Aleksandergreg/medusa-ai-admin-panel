@@ -7,7 +7,7 @@ import {
   PendingValidationContext,
   ValidationRequest,
   ValidationResolution,
-} from "./validation-types";
+} from "./types";
 
 class ValidationManager {
   private pendingValidations = new Map<string, PendingValidation>();
