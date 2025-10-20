@@ -62,7 +62,6 @@ const AssistantPage = () => {
           loading={conversationsLoading}
         />
 
-        <NpsCard />
 
         {history.length === 0 && (
           <div className="w-full">
