@@ -17,7 +17,10 @@ export function AssistantFeedbackSection() {
   const { responses, loading, error } = useAssistantNpsRecent(6);
 
   const feedbackRows = useMemo(
-    () => responses.filter((row) => row.metadata.llmFeedback),
+    () =>
+      responses.filter(
+        (row) => !row.metadata.isTurnFeedback && row.metadata.llmFeedback
+      ),
     [responses]
   );
 

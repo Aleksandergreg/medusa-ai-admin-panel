@@ -57,6 +57,33 @@ const LlmFeedbackSchema = z.object({
   suggestions: z.array(z.string()).default([]),
 });
 
+const TurnOperationSchema = z.object({
+  operationId: z.string(),
+  taskLabel: z.string().nullable(),
+  score: z.number().optional(),
+  attempts: z.number().optional(),
+  errors: z.number().optional(),
+  durationMs: z.number().nullable().optional(),
+  errorFlag: z.boolean().optional(),
+  errorSummary: z.string().nullable().optional(),
+  lastStatusCode: z.number().nullable().optional(),
+  lastStatusMessage: z.string().nullable().optional(),
+});
+
+const TurnAggregateSchema = z.object({
+  totalOperations: z.number().optional(),
+  averageScore: z.number().optional(),
+  bestScore: z.number().optional(),
+  lowestScore: z.number().optional(),
+  totalAttempts: z.number().optional(),
+  totalErrors: z.number().optional(),
+  durationMs: z.number().nullable().optional(),
+  agentComputeMs: z.number().nullable().optional(),
+});
+
+type TurnOperationMeta = z.infer<typeof TurnOperationSchema>;
+type TurnAggregateMeta = z.infer<typeof TurnAggregateSchema>;
+
 const AssistantNpsRowSchema = z.object({
   id: z.string(),
   created_at: z.string(),
@@ -83,6 +110,25 @@ const AssistantNpsRowSchema = z.object({
       const metadata = value as Record<string, unknown>;
       const feedbackRaw = metadata.llmFeedback;
       const parsedFeedback = LlmFeedbackSchema.safeParse(feedbackRaw);
+
+      const operations: z.infer<typeof TurnOperationSchema>[] = [];
+      if (Array.isArray(metadata.operations)) {
+        for (const entry of metadata.operations) {
+          const parsed = TurnOperationSchema.safeParse(entry);
+          if (parsed.success) {
+            operations.push(parsed.data);
+          }
+        }
+      }
+
+      let aggregate: z.infer<typeof TurnAggregateSchema> | null = null;
+      if (metadata.aggregate) {
+        const parsedAggregate = TurnAggregateSchema.safeParse(metadata.aggregate);
+        if (parsedAggregate.success) {
+          aggregate = parsedAggregate.data;
+        }
+      }
+
       return {
         feedback: typeof metadata.feedback === "string" ? metadata.feedback : null,
         llmFeedback:
@@ -93,6 +139,9 @@ const AssistantNpsRowSchema = z.object({
                 suggestions: parsedFeedback.data.suggestions,
               }
             : null,
+        isTurnFeedback: metadata.isTurnFeedback === true,
+        operations,
+        aggregate,
       };
     }),
 });
@@ -142,6 +191,9 @@ export type AssistantNpsResponseRow = {
       positives: string[];
       suggestions: string[];
     } | null;
+    isTurnFeedback: boolean;
+    operations: TurnOperationMeta[];
+    aggregate: TurnAggregateMeta | null;
   };
 };
 
@@ -269,7 +321,14 @@ export async function fetchAssistantNpsResponses(
     durationMs: row.duration_ms,
     errorFlag: row.error_flag,
     errorSummary: row.error_summary,
-    metadata: row.client_metadata ?? { feedback: null, llmFeedback: null },
+    metadata:
+      row.client_metadata ?? {
+        feedback: null,
+        llmFeedback: null,
+        isTurnFeedback: false,
+        operations: [],
+        aggregate: null,
+      },
   }));
 }
 
