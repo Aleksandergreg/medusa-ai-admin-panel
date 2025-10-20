@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { AssistantResponse, AssistantConversation } from "../types";
+import type {
+  AssistantResponse,
+  AssistantConversation,
+  ConversationSummary,
+} from "../types";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 
 const ConversationEntrySchema = z.object({
@@ -22,6 +26,7 @@ const AssistantResponseSchema = z.object({
   response: z.string().default(""),
   history: z.array(ConversationEntrySchema).default([]),
   updatedAt: z.string().nullish().default(null),
+  sessionId: z.string().optional(),
   validationRequest: ValidationRequestSchema.optional(),
 });
 
@@ -59,6 +64,7 @@ const toAssistantResponse = (json: unknown): AssistantResponse => {
     answer: parsed.data.response,
     history: parsed.data.history as ConversationEntry[],
     updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
+    sessionId: parsed.data.sessionId,
     validationRequest: parsed.data.validationRequest,
   };
 };
@@ -66,7 +72,7 @@ const toAssistantResponse = (json: unknown): AssistantResponse => {
 export type AssistantNpsMetrics = z.infer<typeof AssistantNpsMetricsSchema>;
 
 export async function askAssistant(
-  payload: { prompt: string },
+  payload: { prompt: string; sessionId?: string },
   signal?: AbortSignal
 ): Promise<AssistantResponse> {
   const res = await fetch("/admin/assistant", {
@@ -186,4 +192,114 @@ export async function rejectAssistantValidation(
   }
 
   return toAssistantResponse(json);
+}
+
+export async function listConversations(
+  signal?: AbortSignal
+): Promise<ConversationSummary[]> {
+  const res = await fetch("/admin/conversations", {
+    method: "GET",
+    credentials: "include",
+    signal,
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return json.conversations || [];
+}
+
+export async function createConversation(
+  title?: string
+): Promise<{ id: string; title: string }> {
+  const res = await fetch("/admin/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ title }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return json.conversation;
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const res = await fetch(`/admin/conversations/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+}
+
+export async function updateConversationTitle(
+  id: string,
+  title: string
+): Promise<void> {
+  const res = await fetch(`/admin/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ title }),
+  });
+
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+}
+
+export async function fetchConversationById(
+  id: string,
+  signal?: AbortSignal
+): Promise<AssistantConversation> {
+  const res = await fetch(`/admin/conversations/${id}`, {
+    method: "GET",
+    credentials: "include",
+    signal,
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+
+  const parsed = AssistantConversationSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error("Invalid response from server :(");
+  }
+
+  return {
+    history: parsed.data.history as ConversationEntry[],
+    updatedAt: parsed.data.updatedAt ? new Date(parsed.data.updatedAt) : null,
+  };
 }

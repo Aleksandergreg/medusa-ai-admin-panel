@@ -1,9 +1,11 @@
 "use client";
+import { useEffect, useRef } from "react";
 import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
-import { ResponseView } from "./components/ResponseView";
 import { AssistantLoading } from "./components/Loading";
 import { NpsCard } from "./components/NpsCard";
+import { ConversationMessages } from "./components/ConversationMessages";
+import { ConversationList } from "./components/ConversationList";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text } from "@medusajs/ui";
 import { AiAssistent } from "@medusajs/icons";
@@ -12,7 +14,10 @@ const AssistantPage = () => {
   const {
     prompt,
     setPrompt,
-    answer,
+    history,
+    conversations,
+    conversationsLoading,
+    currentSessionId,
     loading,
     error,
     canSubmit,
@@ -22,7 +27,21 @@ const AssistantPage = () => {
     validationRequest,
     approveValidation,
     rejectValidation,
+    createConversation,
+    switchConversation,
+    deleteConversation,
+    renameConversation,
   } = useAssistant();
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [history, loading]);
 
   return (
     <Container className="divide-y p-0">
@@ -31,96 +50,74 @@ const AssistantPage = () => {
       </div>
 
       <div className="px-6 py-4 grid gap-3">
-        <Text size="small">
-          Ask the assistant for help with products, customers, orders,
-          promotions, and more.
-        </Text>
+        <ConversationList
+          conversations={conversations}
+          currentSessionId={currentSessionId}
+          onSelectConversation={switchConversation}
+          onCreateConversation={createConversation}
+          onDeleteConversation={deleteConversation}
+          onRenameConversation={renameConversation}
+          loading={conversationsLoading}
+        />
 
         <NpsCard />
 
         <PromptInput value={prompt} onChange={setPrompt} onSubmit={ask} />
+        {history.length === 0 && (
+          <div className="w-full">
+            <Text size="small" className="text-ui-fg-subtle text-center py-8">
+              Ask the assistant for help with products, customers, orders,
+              promotions, and more.
+            </Text>
+          </div>
+        )}
 
-        <div className="flex gap-2">
-          <button
-            onClick={ask}
-            disabled={!canSubmit}
-            className={`rounded-md px-3 py-1.5 text-white ${
-              canSubmit
-                ? "bg-ui-bg-interactive"
-                : "bg-ui-border-disabled cursor-not-allowed"
-            }`}
-          >
-            {loading ? "Asking…" : "Ask"}
-          </button>
-          {loading && (
-            <button
-              onClick={cancel}
-              className="rounded-md px-3 py-1.5 border bg-ui-bg-base text-ui-fg-base"
-              disabled={!loading}
-            >
-              Cancel
-            </button>
-          )}
-          <button
-            onClick={clear}
-            className="rounded-md px-3 py-1.5 border bg-ui-bg-base text-ui-fg-base"
-            disabled={loading}
-          >
-            Clear
-          </button>
+        <div className="w-full">
+          <ConversationMessages
+            history={history}
+            validationRequest={validationRequest}
+            loading={loading}
+            onApprove={approveValidation}
+            onReject={rejectValidation}
+          />
         </div>
 
-        {error && <div className="text-ui-fg-error">Error: {error}</div>}
         {loading && !validationRequest && (
           <div className="rounded-md border p-3 bg-ui-bg-base">
             <AssistantLoading />
           </div>
         )}
 
-        <ResponseView answer={answer} />
+        {error && <div className="text-ui-fg-error">Error: {error}</div>}
 
-        {validationRequest && (
-          <div className="rounded-md border p-3 bg-ui-bg-base space-y-3">
-            <Text size="small">
-              Review the assistant&apos;s response above and confirm to execute
-              this action. Nothing happens until you click confirm.
-            </Text>
-            {loading ? (
-              <div
-                className="flex items-center gap-2 text-ui-fg-subtle text-sm"
-                role="status"
-                aria-live="polite"
+        <div ref={messagesEndRef} />
+
+        <div className="sticky bottom-0 bg-ui-bg-base pt-3 pb-2 space-y-3 border-t border-ui-border-base">
+          <PromptInput value={prompt} onChange={setPrompt} onSubmit={ask} />
+
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={ask}
+              disabled={!canSubmit}
+              className={`rounded-md px-4 py-2 text-white ${
+                canSubmit
+                  ? "bg-ui-bg-interactive"
+                  : "bg-ui-border-disabled cursor-not-allowed"
+              }`}
+            >
+              {loading ? "Asking…" : "Ask"}
+            </button>
+            {loading && (
+              <button
+                onClick={cancel}
+                className="rounded-md px-4 py-2 border border-ui-border-error text-ui-fg-error hover:bg-ui-bg-error-hover"
+                disabled={!loading}
               >
-                <span
-                  className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ui-border-subtle border-t-ui-bg-interactive"
-                  aria-hidden="true"
-                />
-                <span>The assistant is preparing the next step...</span>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => approveValidation(validationRequest.id)}
-                  disabled={loading}
-                  className={`rounded-md px-3 py-1.5 text-white ${
-                    loading
-                      ? "bg-ui-border-disabled cursor-not-allowed"
-                      : "bg-ui-bg-interactive"
-                  }`}
-                >
-                  Confirm
-                </button>
-                <button
-                  onClick={() => rejectValidation(validationRequest.id)}
-                  className="rounded-md px-3 py-1.5 border bg-ui-bg-base text-ui-fg-base"
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-              </div>
+                Cancel
+              </button>
             )}
           </div>
-        )}
+        </div>
       </div>
     </Container>
   );
