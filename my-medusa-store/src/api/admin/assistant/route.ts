@@ -6,6 +6,7 @@ import AssistantModuleService from "../../../modules/assistant/service";
 
 type AssistantPayload = {
   prompt: string;
+  sessionId?: string;
 };
 
 // Define the expected session structure
@@ -53,7 +54,7 @@ export async function POST(
   res: MedusaResponse
 ) {
   try {
-    const { prompt } = (req.body as AssistantPayload) ?? {};
+    const { prompt, sessionId } = (req.body as AssistantPayload) ?? {};
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing or invalid prompt" });
@@ -70,12 +71,14 @@ export async function POST(
     const result = await assistantService.prompt({
       prompt,
       actorId,
+      sessionId,
     });
 
     return res.json({
       response: result.answer,
       history: result.history,
       updatedAt: result.updatedAt.toISOString(),
+      sessionId: result.sessionId,
       validationRequest: result.validationRequest,
     });
   } catch (e: unknown) {

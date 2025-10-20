@@ -30,30 +30,38 @@ export type InitialOperation = {
 export type PromptInput = {
   prompt: string;
   actorId: string;
+  sessionId?: string;
 };
-
 
 // Re-export the canonical validation types to avoid duplication
 export type { ValidationRequest } from "./validation-types";
-
+import type { ValidationRequest } from "./validation-types";
 
 export type PromptResult = {
   answer: string;
   history: ConversationEntry[];
   updatedAt: Date;
+  sessionId?: string;
   validationRequest?: ValidationRequest;
 };
 
 // Database Row Types
 
-
 export type ConversationRow = {
   id: string;
   actor_id: string;
+  title?: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
 
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  messageCount: number;
+};
 
 export type MessageRow = {
   id: string;
