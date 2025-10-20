@@ -13,6 +13,7 @@ import { AlertsSection } from "./components/AlertsSection";
 import { AssistantSummarySection } from "./components/AssistantSummarySection";
 import { AssistantTurnsSection } from "./components/AssistantTurnsSection";
 import { RecentEventsSection } from "./components/RecentEventsSection";
+import { NpsCard } from "../../assistant/components/NpsCard";
 
 
 const MetricsPage = () => {
@@ -25,6 +26,7 @@ return (
 <Heading level="h1">AI Metrics</Heading>
 </div>
 
+<NpsCard />
 
 <div className="px-6 py-4 grid gap-4">
 <Text size="small">Observability for the assistant: tool calls, rates, errors, alerts — plus assistant turn validations against grounded numbers.</Text>
