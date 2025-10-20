@@ -11,4 +11,4 @@ export const API_CALLING_PATTERN = `API CALLING PATTERN (STRICT):
 - When openapi.schema shows a parameter supports an array (type array or oneOf string/array), include every value in one request using repeated 'param[]=value' entries (for example 'customer_id[]=A&customer_id[]=B').
 - On any 4xx or schema mismatch, re-check openapi.schema and fix the request instead of retrying variants.
 - Prefer GET for retrieval. Non-GET requires explicit user intent.
-- When asked to edit a pending operation (during validation), you MUST reuse the entire pending request payload, apply only the specific field changes requested by the user, and immediately call openapi.execute. Do NOT re-run schema validation or any other tool before executing the modified request.`;
+- When asked to edit a pending operation (during validation), you MUST reuse the entire pending request payload, apply only the specific field changes requested by the user, and immediately call openapi.execute. Do NOT re-run schema validation or any other tool before executing the modified request. After the operation is approved, consider the edit request fulfilled and do not attempt to apply it again.`;
