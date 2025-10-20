@@ -30,6 +30,7 @@ export function useAssistant() {
   const [history, setHistory] = useState<ConversationEntry[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationRequest, setValidationRequest] =
@@ -234,8 +235,14 @@ export function useAssistant() {
 
   const approveValidation = useCallback(
     async (id: string, editedData?: Record<string, unknown>) => {
+      const optimisticHistory: ConversationEntry[] = [
+        ...history,
+        { role: "user", content: "✓ Approved" },
+      ];
+      setHistory(optimisticHistory);
+
       try {
-        setLoading(true);
+        setIsMutating(true);
         const outcome = await approveAssistantValidation(id, editedData);
         setHistory(outcome.history);
         setAnswer(outcome.answer);
@@ -243,27 +250,38 @@ export function useAssistant() {
         setError(null);
       } catch (e: unknown) {
         setError((e as Error)?.message ?? "Failed to approve operation");
+        setHistory(history); // Rollback on error
       } finally {
-        setLoading(false);
+        setIsMutating(false);
       }
     },
-    []
+    [history]
   );
 
-  const rejectValidation = useCallback(async (id: string) => {
-    try {
-      setLoading(true);
-      const outcome = await rejectAssistantValidation(id);
-      setHistory(outcome.history);
-      setAnswer(outcome.answer);
-      setValidationRequest(outcome.validationRequest ?? null);
-      setError(null);
-    } catch (e: unknown) {
-      setError((e as Error)?.message ?? "Failed to reject operation");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const rejectValidation = useCallback(
+    async (id: string) => {
+      const optimisticHistory: ConversationEntry[] = [
+        ...history,
+        { role: "user", content: "✗ Rejected" },
+      ];
+      setHistory(optimisticHistory);
+
+      try {
+        setIsMutating(true);
+        const outcome = await rejectAssistantValidation(id);
+        setHistory(outcome.history);
+        setAnswer(outcome.answer);
+        setValidationRequest(outcome.validationRequest ?? null);
+        setError(null);
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to reject operation");
+        setHistory(history); // Rollback on error
+      } finally {
+        setIsMutating(false);
+      }
+    },
+    [history]
+  );
 
   const handleSwitchConversation = useCallback(
     async (sessionId: string) => {
@@ -346,6 +364,7 @@ export function useAssistant() {
     answer,
     setAnswer,
     loading,
+    isMutating,
     error,
     validationRequest,
 
