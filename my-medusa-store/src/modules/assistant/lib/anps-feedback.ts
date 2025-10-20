@@ -61,7 +61,7 @@ const coerceStatusCode = (value: unknown): number | null => {
   return null;
 };
 
-const summarizeStatusMessages = (
+export const summarizeStatusMessages = (
   history: HistoryEntry[],
   operationId: string
 ): StatusDigest[] => {
@@ -388,6 +388,226 @@ export async function generateQualitativeFeedback(params: {
     console.error(
       JSON.stringify({
         event: "agent_feedback.error",
+        message: error instanceof Error ? error.message : String(error),
+      })
+    );
+    return null;
+  }
+}
+
+export async function generateTurnSummaryFeedback(params: {
+  operations: {
+    operationId: string;
+    taskLabel: string | null;
+    evaluation: AgentNpsEvaluation;
+  }[];
+  history: HistoryEntry[];
+  answer?: string | null;
+  config: AssistantModuleOptions;
+  durationMs: number;
+  agentComputeMs?: number | null;
+}): Promise<QualitativeFeedback | null> {
+  if (!params.operations.length) {
+    return null;
+  }
+
+  const apiKey =
+    params.config.geminiApiKey ?? process.env.ASSISTANT_GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn(
+      JSON.stringify({
+        event: "agent_feedback.turn_skipped",
+        reason: "missing_api_key",
+      })
+    );
+    return null;
+  }
+
+  const model =
+    process.env.ASSISTANT_FEEDBACK_MODEL ??
+    params.config.modelName ??
+    DEFAULT_MODEL;
+
+  const operationsWithStatus = params.operations.map((item) => ({
+    ...item,
+    statuses: summarizeStatusMessages(params.history, item.operationId),
+  }));
+
+  const averageScore =
+    params.operations.reduce((acc, item) => acc + item.evaluation.score, 0) /
+    params.operations.length;
+  const totalAttempts = params.operations.reduce(
+    (acc, item) => acc + item.evaluation.attempts,
+    0
+  );
+  const totalErrors = params.operations.reduce(
+    (acc, item) => acc + item.evaluation.errors,
+    0
+  );
+  const worstScore = Math.min(
+    ...params.operations.map((item) => item.evaluation.score)
+  );
+  const bestScore = Math.max(
+    ...params.operations.map((item) => item.evaluation.score)
+  );
+
+  const durationSeconds =
+    params.durationMs && Number.isFinite(params.durationMs)
+      ? `${(params.durationMs / 1000).toFixed(1)} seconds`
+      : "not recorded";
+  const computeSeconds =
+    params.agentComputeMs &&
+    Number.isFinite(params.agentComputeMs) &&
+    params.agentComputeMs > 0
+      ? `${(params.agentComputeMs / 1000).toFixed(1)} seconds`
+      : null;
+
+  const operationsSummary = operationsWithStatus
+    .map((item, index) => {
+      const evaln = item.evaluation;
+      const label = item.taskLabel ?? item.operationId;
+      const lastStatus =
+        item.statuses.length > 0
+          ? item.statuses[item.statuses.length - 1]
+          : null;
+      const statusText = lastStatus
+        ? `last status ${lastStatus.statusCode ?? "unknown"}`
+        : "status unknown";
+      const durationText =
+        typeof evaln.durationMs === "number" && evaln.durationMs > 0
+          ? `${(evaln.durationMs / 1000).toFixed(1)}s`
+          : "n/a";
+      return `${index + 1}. ${label} — score ${evaln.score}/10, attempts ${
+        evaln.attempts
+      }, errors ${evaln.errors}, duration ${durationText}, ${statusText}`;
+    })
+    .join("\n");
+
+  const statusBreakdown = operationsWithStatus
+    .map((item) => {
+      const label = item.taskLabel ?? item.operationId;
+      if (!item.statuses.length) {
+        return `- ${label}: No HTTP interactions recorded for this operation.`;
+      }
+      const notes = item.statuses
+        .map((status, idx) => {
+          const base = `${idx + 1}. status ${
+            status.statusCode ?? "unknown"
+          } — ${status.operationSummary ?? item.operationId}`;
+          const message =
+            status.message && status.message.trim()
+              ? ` (message: ${status.message.trim()})`
+              : "";
+          return `${base}${message}`;
+        })
+        .join("\n");
+      return `- ${label}:\n${notes}`;
+    })
+    .join("\n");
+
+  const answerSnippet = truncate(params.answer, 2000);
+
+  const aggregateLines = [
+    `Operations executed: ${params.operations.length}`,
+    `Average score: ${averageScore.toFixed(1)}/10`,
+    `Best score: ${bestScore}/10`,
+    `Lowest score: ${worstScore}/10`,
+    `Total attempts: ${totalAttempts}`,
+    `Total errors: ${totalErrors}`,
+    `Turn duration: ${durationSeconds}`,
+  ];
+  if (computeSeconds) {
+    aggregateLines.push(`Agent compute time: ${computeSeconds}`);
+  }
+
+  const promptSections = [
+    "You are reviewing the entire workflow from an AI assistant turn in a Medusa commerce environment.",
+    "Provide insights on the overall plan, tool usage, and risks across the full set of operations. Highlight sequencing issues, missing validations, or redundant calls.",
+    "### Aggregate metrics",
+    aggregateLines.join("\n"),
+    "### Operation summaries",
+    operationsSummary,
+    "### HTTP interaction details",
+    statusBreakdown,
+    answerSnippet ? `### Assistant final reply\n${answerSnippet}` : null,
+    "Respond with JSON matching this schema: {\"feedback\":\"...\",\"positives\":[\"...\"],\"suggestions\":[\"...\"]}. Emphasize improvements that span multiple operations when applicable.",
+  ].filter((section): section is string => typeof section === "string");
+
+  const prompt = promptSections.join("\n\n");
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
+      model,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.4,
+        maxOutputTokens: 512,
+      },
+    });
+
+    const text = extractText(result);
+    if (!text) {
+      console.warn(
+        JSON.stringify({
+          event: "agent_feedback.turn_empty_response",
+        })
+      );
+      return null;
+    }
+
+    const parsed = safeParseJSON<FeedbackPayload>(text.trim());
+    if (!parsed || typeof parsed !== "object") {
+      console.warn(
+        JSON.stringify({
+          event: "agent_feedback.turn_parse_failed",
+          sample: text.trim().slice(0, 120),
+        })
+      );
+      return null;
+    }
+
+    const feedback =
+      typeof parsed.feedback === "string" && parsed.feedback.trim()
+        ? parsed.feedback.trim()
+        : null;
+    if (!feedback) {
+      return null;
+    }
+
+    const positives = Array.isArray(parsed.positives)
+      ? parsed.positives
+          .map((item) =>
+            typeof item === "string" ? item.trim() : ""
+          )
+          .filter((item) => item.length > 0)
+          .slice(0, MAX_POSITIVE_ITEMS)
+      : [];
+
+    const suggestions = Array.isArray(parsed.suggestions)
+      ? parsed.suggestions
+          .map((item) =>
+            typeof item === "string" ? item.trim() : ""
+          )
+          .filter((item) => item.length > 0)
+          .slice(0, MAX_SUGGESTION_ITEMS)
+      : [];
+
+    return {
+      summary: feedback,
+      positives,
+      suggestions,
+    };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "agent_feedback.turn_error",
         message: error instanceof Error ? error.message : String(error),
       })
     );

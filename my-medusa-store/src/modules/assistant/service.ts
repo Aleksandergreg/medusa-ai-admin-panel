@@ -35,7 +35,12 @@ import {
   sanitizeToolUsage,
 } from "./lib/anps";
 import { evaluateAgentNpsScore } from "./lib/anps-evaluator";
-import { generateQualitativeFeedback } from "./lib/anps-feedback";
+import {
+  generateQualitativeFeedback,
+  generateTurnSummaryFeedback,
+  summarizeStatusMessages,
+} from "./lib/anps-feedback";
+import type { QualitativeFeedback } from "./lib/anps-feedback";
 import { extractToolJsonPayload } from "./lib/utils";
 import { getMcp } from "../../lib/mcp/manager";
 
@@ -264,6 +269,12 @@ class AssistantModuleService extends MedusaService({}) {
 
     const { agentId, agentVersion } = this.getAgentIdentifiers();
     const toolUsage = sanitizeToolUsage(this.collectToolUsage(params.history));
+    const evaluatedOperations: {
+      operationId: string;
+      taskLabel: string | null;
+      evaluation: AgentNpsEvaluation;
+    }[] = [];
+    let successfulSubmissions = 0;
 
     for (const operation of operations) {
       if (this.hasOperationBeenScored(params.sessionId, operation.operationId)) {
@@ -339,6 +350,127 @@ class AssistantModuleService extends MedusaService({}) {
       const result = await this.submitAgentNpsRecord(submission);
       if (result.ok) {
         this.markOperationScored(params.sessionId, operation.operationId);
+        evaluatedOperations.push({
+          operationId: operation.operationId,
+          taskLabel: operation.taskLabel ?? null,
+          evaluation,
+        });
+        successfulSubmissions += 1;
+      }
+    }
+
+    if (successfulSubmissions > 0 && evaluatedOperations.length) {
+      let turnFeedback: QualitativeFeedback | null = null;
+      try {
+        turnFeedback = await generateTurnSummaryFeedback({
+          operations: evaluatedOperations,
+          history: params.history,
+          answer: params.answer ?? null,
+          config: this.config,
+          durationMs: params.durationMs,
+          agentComputeMs: params.agentComputeMs,
+        });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "agent_feedback.turn_generate_failed",
+            message: error instanceof Error ? error.message : String(error),
+            session_id: params.sessionId,
+          })
+        );
+      }
+
+      if (turnFeedback) {
+        const aggregateScore = Math.round(
+          evaluatedOperations.reduce(
+            (sum, item) => sum + item.evaluation.score,
+            0
+          ) / evaluatedOperations.length
+        );
+        const scores = evaluatedOperations.map((item) => item.evaluation.score);
+        const bestScore = Math.max(...scores);
+        const lowestScore = Math.min(...scores);
+        const totalAttempts = evaluatedOperations.reduce(
+          (sum, item) => sum + item.evaluation.attempts,
+          0
+        );
+        const totalErrors = evaluatedOperations.reduce(
+          (sum, item) => sum + item.evaluation.errors,
+          0
+        );
+        const aggregateErrorFlag = evaluatedOperations.some(
+          (item) => item.evaluation.errorFlag
+        );
+        const aggregateErrorSummary =
+          evaluatedOperations
+            .map((item) => item.evaluation.errorSummary)
+            .filter((value): value is string => typeof value === "string")
+            .slice(-1)[0] ?? null;
+
+        const operationsMetadata = evaluatedOperations.map((item) => {
+          const statuses = summarizeStatusMessages(
+            params.history,
+            item.operationId
+          );
+          const lastStatus =
+            statuses.length > 0 ? statuses[statuses.length - 1] : null;
+          return {
+            operationId: item.operationId,
+            taskLabel: item.taskLabel ?? null,
+            score: item.evaluation.score,
+            attempts: item.evaluation.attempts,
+            errors: item.evaluation.errors,
+            durationMs: item.evaluation.durationMs ?? null,
+            errorFlag: item.evaluation.errorFlag,
+            errorSummary: item.evaluation.errorSummary ?? null,
+            lastStatusCode: lastStatus?.statusCode ?? null,
+            lastStatusMessage: lastStatus?.message ?? null,
+          };
+        });
+
+        const metadata = {
+          ...this.buildClientMetadata(),
+          isTurnFeedback: true,
+          operations: operationsMetadata,
+          aggregate: {
+            totalOperations: evaluatedOperations.length,
+            averageScore: aggregateScore,
+            bestScore,
+            lowestScore,
+            totalAttempts,
+            totalErrors,
+            durationMs: params.durationMs ?? null,
+            agentComputeMs: params.agentComputeMs ?? null,
+          },
+          feedback:
+            evaluatedOperations
+              .map((item) => item.evaluation.feedbackNote)
+              .filter((note): note is string => typeof note === "string")
+              .join(" | ") || null,
+          llmFeedback: {
+            summary: turnFeedback.summary,
+            positives: turnFeedback.positives,
+            suggestions: turnFeedback.suggestions,
+          },
+          scoredAt: new Date().toISOString(),
+        } as AgentNpsClientMetadata;
+
+        const sanitizedMetadata = sanitizeClientMetadata(metadata);
+
+        await this.submitAgentNpsRecord({
+          score: aggregateScore,
+          sessionId: params.sessionId,
+          agentId,
+          agentVersion,
+          userId: params.actorId,
+          taskLabel: "turn-summary",
+          operationId: null,
+          toolsUsed: toolUsage,
+          durationMs: params.durationMs,
+          errorFlag: aggregateErrorFlag,
+          errorSummary: aggregateErrorSummary ?? undefined,
+          clientMetadata: sanitizedMetadata,
+        });
       }
     }
   }
@@ -571,7 +703,8 @@ class AssistantModuleService extends MedusaService({}) {
     const since = subDays(new Date(), 30);
     const rows = await this.db<Record<string, unknown>>(ANPS_TABLE)
       .select(["task_label", "score"])
-      .where("created_at", ">=", since);
+      .where("created_at", ">=", since)
+      .whereNotNull("operation_id");
 
     const globalScores: number[] = [];
     const byTask = new Map<string | null, number[]>();

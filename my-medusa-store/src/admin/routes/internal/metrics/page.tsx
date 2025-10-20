@@ -14,6 +14,7 @@ import { AssistantSummarySection } from "./components/AssistantSummarySection";
 import { AssistantTurnsSection } from "./components/AssistantTurnsSection";
 import { RecentEventsSection } from "./components/RecentEventsSection";
 import { AssistantFeedbackSection } from "./components/AssistantFeedbackSection";
+import { AssistantTurnFeedbackSection } from "./components/AssistantTurnFeedbackSection";
 import { NpsCard } from "../../assistant/components/NpsCard";
 
 
@@ -28,6 +29,7 @@ return (
 </div>
 
 <NpsCard />
+<AssistantTurnFeedbackSection />
 <AssistantFeedbackSection />
 
 <div className="px-6 py-4 grid gap-4">
