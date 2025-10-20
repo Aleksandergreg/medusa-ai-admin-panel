@@ -2,7 +2,7 @@
 import { useEffect, useRef } from "react";
 import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
-import { AssistantLoading } from "./components/Loading";
+
 import { ConversationMessages } from "./components/ConversationMessages";
 import { ConversationList } from "./components/ConversationList";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
@@ -18,6 +18,7 @@ const AssistantPage = () => {
     conversationsLoading,
     currentSessionId,
     loading,
+    isMutating,
     error,
     canSubmit,
     ask,
@@ -73,16 +74,11 @@ const AssistantPage = () => {
             history={history}
             validationRequest={validationRequest}
             loading={loading}
+            isMutating={isMutating}
             onApprove={approveValidation}
             onReject={rejectValidation}
           />
         </div>
-
-        {loading && !validationRequest && (
-          <div className="rounded-md border p-3 bg-ui-bg-base">
-            <AssistantLoading />
-          </div>
-        )}
 
         {error && <div className="text-ui-fg-error">Error: {error}</div>}
 

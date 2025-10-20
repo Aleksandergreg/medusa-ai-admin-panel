@@ -30,6 +30,7 @@ export function useAssistant() {
   const [history, setHistory] = useState<ConversationEntry[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationRequest, setValidationRequest] =
@@ -239,10 +240,9 @@ export function useAssistant() {
         { role: "user", content: "✓ Approved" },
       ];
       setHistory(optimisticHistory);
-      setValidationRequest(null);
 
       try {
-        setLoading(true);
+        setIsMutating(true);
         const outcome = await approveAssistantValidation(id, editedData);
         setHistory(outcome.history);
         setAnswer(outcome.answer);
@@ -252,7 +252,7 @@ export function useAssistant() {
         setError((e as Error)?.message ?? "Failed to approve operation");
         setHistory(history); // Rollback on error
       } finally {
-        setLoading(false);
+        setIsMutating(false);
       }
     },
     [history]
@@ -265,10 +265,9 @@ export function useAssistant() {
         { role: "user", content: "✗ Rejected" },
       ];
       setHistory(optimisticHistory);
-      setValidationRequest(null);
 
       try {
-        setLoading(true);
+        setIsMutating(true);
         const outcome = await rejectAssistantValidation(id);
         setHistory(outcome.history);
         setAnswer(outcome.answer);
@@ -278,7 +277,7 @@ export function useAssistant() {
         setError((e as Error)?.message ?? "Failed to reject operation");
         setHistory(history); // Rollback on error
       } finally {
-        setLoading(false);
+        setIsMutating(false);
       }
     },
     [history]
@@ -365,6 +364,7 @@ export function useAssistant() {
     answer,
     setAnswer,
     loading,
+    isMutating,
     error,
     validationRequest,
 
