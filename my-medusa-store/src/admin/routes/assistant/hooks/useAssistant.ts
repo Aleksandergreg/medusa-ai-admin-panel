@@ -212,7 +212,7 @@ export function useAssistant() {
     history,
     setPrompt,
     currentSessionId,
-    conversations,
+    conversations.length,
     handleCreateConversation,
     loadConversations,
     setCurrentSessionId,
