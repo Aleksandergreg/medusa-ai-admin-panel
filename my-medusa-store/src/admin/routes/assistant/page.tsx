@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { AssistantLoading } from "./components/Loading";
+import { NpsCard } from "./components/NpsCard";
 import { ConversationMessages } from "./components/ConversationMessages";
 import { ConversationList } from "./components/ConversationList";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
@@ -48,6 +49,7 @@ const AssistantPage = () => {
         <Heading level="h1">Assistant</Heading>
       </div>
 
+
       <div className="px-6 py-4 grid gap-3">
         <ConversationList
           conversations={conversations}
@@ -58,6 +60,7 @@ const AssistantPage = () => {
           onRenameConversation={renameConversation}
           loading={conversationsLoading}
         />
+
 
         {history.length === 0 && (
           <div className="w-full">

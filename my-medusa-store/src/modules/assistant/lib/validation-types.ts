@@ -47,6 +47,8 @@ export type PendingValidationContext = {
   continuation?: ValidationContinuationHandler;
   history?: HistoryEntry[];
   nextStep?: number;
+  anpsStartedAt?: number;
+  userWaitMs?: number;
 };
 
 export type PendingValidation = {

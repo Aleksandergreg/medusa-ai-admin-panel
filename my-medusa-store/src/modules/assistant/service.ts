@@ -3,6 +3,7 @@ import {
   MedusaService,
 } from "@medusajs/framework/utils";
 import type { Knex } from "knex";
+import { subDays } from "date-fns";
 import { askAgent } from "./agent/ask";
 import { AssistantModuleOptions, DEFAULT_ASSISTANT_OPTIONS } from "./config";
 import { validationManager } from "./lib/validation-manager";
@@ -21,9 +22,39 @@ import {
   ValidationRequest,
 } from "./lib/types";
 import { generateId } from "./utils/idGenerator";
+import {
+  AgentNpsInsertInput,
+  AgentNpsMetrics,
+  AgentNpsRow,
+  AgentNpsToolUsage,
+  AgentNpsClientMetadata,
+  ANPS_TABLE,
+  computeNpsScore,
+  normalizeClientMetadata,
+  sanitizeClientMetadata,
+  sanitizeToolUsage,
+} from "./lib/anps";
+import { evaluateAgentNpsScore } from "./lib/anps-evaluator";
+import { extractToolJsonPayload } from "./lib/utils";
+import { getMcp } from "../../lib/mcp/manager";
 
 const CONVERSATION_TABLE = "conversation_session";
 const MESSAGE_TABLE = "conversation_message";
+
+type AnpsSubmissionPayload = {
+  score: number;
+  sessionId: string;
+  agentId: string;
+  agentVersion?: string | null;
+  userId?: string | null;
+  taskLabel?: string | null;
+  operationId?: string | null;
+  toolsUsed: AgentNpsToolUsage[];
+  durationMs?: number | null;
+  errorFlag: boolean;
+  errorSummary?: string | null;
+  clientMetadata?: AgentNpsClientMetadata | null;
+};
 
 const DEFAULT_FAILURE_MESSAGE =
   "Sorry, I could not find an answer to your question.";
@@ -34,6 +65,7 @@ const CANCEL_MESSAGE =
 
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
+  private readonly scoredOperations = new Map<string, Set<string>>();
 
   constructor(
     container: Record<string, unknown>,
@@ -44,11 +76,514 @@ class AssistantModuleService extends MedusaService({}) {
   }
 
   private get db(): Knex {
-    return this.__container__[ContainerRegistrationKeys.PG_CONNECTION] as Knex;
+    return (this as any).__container__[
+      ContainerRegistrationKeys.PG_CONNECTION
+    ] as Knex;
+  }
+
+  private toBoolean(value: unknown): boolean {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true") {
+        return true;
+      }
+      if (normalized === "false") {
+        return false;
+      }
+    }
+    if (typeof value === "number") {
+      return value === 1;
+    }
+    return false;
+  }
+
+  private toOptionalString(value: unknown): string | null {
+    if (value == null) {
+      return null;
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    const asString =
+      typeof value === "string" ? value : value != null ? String(value) : "";
+    const trimmed = asString.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private mapAgentNpsRow(row: Record<string, unknown>): AgentNpsRow {
+    const createdRaw = row.created_at;
+    const createdAt =
+      createdRaw instanceof Date
+        ? createdRaw
+        : new Date(this.toOptionalString(createdRaw) ?? 0);
+    if (Number.isNaN(createdAt.getTime())) {
+      throw new Error("Invalid ANPS row: missing created_at");
+    }
+
+    const id = this.toOptionalString(row.id);
+    const agentId = this.toOptionalString(row.agent_id);
+    const sessionId = this.toOptionalString(row.session_id);
+    const scoreValue = Number(row.score);
+
+    if (!id || !agentId || !sessionId || !Number.isFinite(scoreValue)) {
+      throw new Error("Invalid ANPS row returned from database");
+    }
+
+    const durationRaw = row.duration_ms;
+    let durationMs: number | null = null;
+    if (durationRaw != null) {
+      const parsed = Number(durationRaw);
+      durationMs = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return {
+      id,
+      created_at: createdAt,
+      agent_id: agentId,
+      agent_version: this.toOptionalString(row.agent_version),
+      session_id: sessionId,
+      user_id: this.toOptionalString(row.user_id),
+      score: scoreValue,
+      task_label: this.toOptionalString(row.task_label),
+      operation_id: this.toOptionalString(row.operation_id),
+      tools_used: sanitizeToolUsage(row.tools_used),
+      duration_ms: durationMs,
+      error_flag: this.toBoolean(row.error_flag),
+      error_summary: this.toOptionalString(row.error_summary),
+      user_permission: this.toBoolean(row.user_permission),
+      client_metadata: normalizeClientMetadata(row.client_metadata),
+    };
+  }
+
+  private detectMajorOperation(
+    entries: HistoryEntry[]
+  ): { operationId: string; taskLabel: string | null } | null {
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const entry = entries[i];
+      if (!entry) continue;
+      if (entry.tool_name !== "openapi.execute") {
+        continue;
+      }
+      const args = entry.tool_args as Record<string, unknown>;
+      if (!args) {
+        continue;
+      }
+      const operationId =
+        this.toOptionalString(args?.operationId) ??
+        this.toOptionalString((args as Record<string, unknown>).operation_id);
+      if (!operationId) {
+        continue;
+      }
+      return { operationId, taskLabel: this.toTaskLabel(operationId) };
+    }
+    return null;
+  }
+
+  private toTaskLabel(operationId: string): string | null {
+    const normalized = operationId.toLowerCase().replace(/[_-]/g, "");
+    if (normalized.includes("promotion")) {
+      return "create-promotion";
+    }
+    if (normalized.includes("pricelist")) {
+      return "apply-price-list";
+    }
+    if (normalized.includes("order")) {
+      return "fulfill-order";
+    }
+    const hyphenated = operationId
+      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+      .replace(/[\s_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/[^a-z0-9-]/gi, "")
+      .toLowerCase()
+      .replace(/^-|-$/g, "");
+    return hyphenated.length > 0 ? hyphenated : null;
+  }
+
+  private collectToolUsage(entries: HistoryEntry[]): AgentNpsToolUsage[] {
+    const seen = new Set<string>();
+    const usage: AgentNpsToolUsage[] = [];
+    for (const entry of entries) {
+      const name = this.toOptionalString(entry.tool_name);
+      if (!name) {
+        continue;
+      }
+      if (name.startsWith("assistant.") || name === "conversation") {
+        continue;
+      }
+      if (seen.has(name)) {
+        continue;
+      }
+      seen.add(name);
+      usage.push({ name });
+    }
+    return usage;
+  }
+
+  private hasOperationBeenScored(sessionId: string, operationId: string): boolean {
+    const existing = this.scoredOperations.get(sessionId);
+    return existing ? existing.has(operationId) : false;
+  }
+
+  private markOperationScored(sessionId: string, operationId: string): void {
+    const existing = this.scoredOperations.get(sessionId);
+    if (existing) {
+      existing.add(operationId);
+    } else {
+      this.scoredOperations.set(sessionId, new Set([operationId]));
+    }
+  }
+
+  private async autoSubmitAnpsIfEligible(params: {
+    actorId: string;
+    sessionId: string;
+    history: HistoryEntry[];
+    durationMs: number;
+    agentComputeMs?: number;
+  }): Promise<void> {
+    const majorOperation = this.detectMajorOperation(params.history);
+    if (!majorOperation) {
+      return;
+    }
+
+    if (this.hasOperationBeenScored(params.sessionId, majorOperation.operationId)) {
+      return;
+    }
+
+    const evaluation = evaluateAgentNpsScore({
+      operationId: majorOperation.operationId,
+      taskLabel: majorOperation.taskLabel,
+      history: params.history,
+      durationMs: params.durationMs,
+      agentComputeMs: params.agentComputeMs,
+    });
+
+    if (!evaluation) {
+      return;
+    }
+
+    const { agentId, agentVersion } = this.getAgentIdentifiers();
+    const toolUsage = sanitizeToolUsage(
+      this.collectToolUsage(params.history)
+    );
+    const metadata = {
+      ...this.buildClientMetadata(),
+      attempts: evaluation.attempts,
+      errors: evaluation.errors,
+      durationMs: evaluation.durationMs ?? null,
+      feedback: evaluation.feedbackNote ?? null,
+      scoredAt: new Date().toISOString(),
+    } as AgentNpsClientMetadata;
+
+    const sanitizedMetadata = sanitizeClientMetadata(metadata);
+
+    const submission: AnpsSubmissionPayload = {
+      score: evaluation.score,
+      sessionId: params.sessionId,
+      agentId,
+      agentVersion,
+      userId: params.actorId,
+      taskLabel: majorOperation.taskLabel,
+      operationId: majorOperation.operationId,
+      toolsUsed: toolUsage,
+      durationMs: evaluation.durationMs,
+      errorFlag: evaluation.errorFlag,
+      errorSummary: evaluation.errorSummary ?? undefined,
+      clientMetadata: sanitizedMetadata,
+    };
+
+    const result = await this.submitAgentNpsRecord(submission);
+    if (result.ok) {
+      this.markOperationScored(params.sessionId, majorOperation.operationId);
+    }
+  }
+
+  private getAgentIdentifiers(): {
+    agentId: string;
+    agentVersion: string | null;
+  } {
+    const agentId =
+      process.env.ASSISTANT_AGENT_ID ?? "medusa-assistant";
+    const agentVersion =
+      process.env.ASSISTANT_AGENT_VERSION ??
+      process.env.ASSISTANT_VERSION ??
+      process.env.npm_package_version ??
+      this.config.modelName ??
+      null;
+    return { agentId, agentVersion };
+  }
+
+  private buildClientMetadata(): Record<string, unknown> {
+    return {
+      plannerMode: this.config.plannerMode,
+      modelName: this.config.modelName,
+    };
+  }
+
+  private async submitAgentNpsRecord(
+    payload: AnpsSubmissionPayload
+  ): Promise<{ ok: boolean; id?: string; message?: string }> {
+    try {
+      const mcp = await getMcp();
+      const result = await mcp.callTool("agent_nps.submit", {
+        score: payload.score,
+        sessionId: payload.sessionId,
+        agentId: payload.agentId,
+        agentVersion: payload.agentVersion ?? undefined,
+        userId: payload.userId ?? undefined,
+        taskLabel: payload.taskLabel ?? undefined,
+        operationId: payload.operationId ?? undefined,
+        toolsUsed: payload.toolsUsed,
+        durationMs: payload.durationMs ?? undefined,
+        errorFlag: payload.errorFlag,
+        errorSummary: payload.errorSummary ?? undefined,
+        userPermission: true,
+        clientMetadata: payload.clientMetadata ?? undefined,
+      });
+      const parsed = extractToolJsonPayload(result);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "ok" in parsed &&
+        parsed.ok === true &&
+        typeof parsed.id === "string"
+      ) {
+        console.info(
+          JSON.stringify({
+            event: "agent_nps.submit_success",
+            id: parsed.id,
+            session_id: payload.sessionId,
+            task_label: payload.taskLabel ?? null,
+          })
+        );
+        return { ok: true, id: parsed.id };
+      }
+      const message =
+        parsed && typeof parsed === "object" && "message" in parsed
+          ? this.toOptionalString((parsed as Record<string, unknown>).message) ??
+            "Submission rejected"
+          : "Submission rejected";
+      console.warn(
+        JSON.stringify({
+          event: "agent_nps.submit_failed",
+          message,
+          session_id: payload.sessionId,
+        })
+      );
+      return { ok: false, message };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to submit ANPS";
+      console.error(
+        JSON.stringify({
+          event: "agent_nps.submit_error",
+          message,
+          session_id: payload.sessionId,
+        })
+      );
+      return { ok: false, message };
+    }
   }
 
   public getConfig(): AssistantModuleOptions {
     return this.config;
+  }
+
+  async recordAgentNps(input: AgentNpsInsertInput): Promise<{ id: string }> {
+    const agentId = input.agentId?.trim();
+    const sessionId = input.sessionId?.trim();
+    const score = Number(input.score);
+
+    if (!agentId) {
+      console.warn(
+        JSON.stringify({
+          event: "agent_nps.validation_failed",
+          reason: "missing_agent_id",
+        })
+      );
+      throw new Error("Missing agent identifier");
+    }
+
+    if (!sessionId) {
+      console.warn(
+        JSON.stringify({
+          event: "agent_nps.validation_failed",
+          reason: "missing_session_id",
+        })
+      );
+      throw new Error("Missing session identifier");
+    }
+
+    if (
+      !Number.isInteger(score) ||
+      score < 0 ||
+      score > 10 ||
+      Number.isNaN(score)
+    ) {
+      console.warn(
+        JSON.stringify({
+          event: "agent_nps.validation_failed",
+          reason: "invalid_score",
+          score,
+        })
+      );
+      throw new Error("Score must be an integer between 0 and 10");
+    }
+
+    if (!input.userPermission) {
+      console.warn(
+        JSON.stringify({
+          event: "agent_nps.validation_failed",
+          reason: "user_permission_false",
+        })
+      );
+      throw new Error("User permission is required before recording ANPS");
+    }
+
+    const id = generateId("anps");
+    const toolsUsed = sanitizeToolUsage(input.toolsUsed ?? []);
+    const duration =
+      typeof input.durationMs === "number" && Number.isFinite(input.durationMs)
+        ? Math.max(0, Math.trunc(input.durationMs))
+        : null;
+    const clientMetadata = sanitizeClientMetadata(
+      normalizeClientMetadata(input.clientMetadata ?? null)
+    );
+
+    const knex = this.db;
+
+    const jsonTools = JSON.stringify(toolsUsed);
+    const jsonMetadata = clientMetadata
+      ? JSON.stringify(clientMetadata)
+      : null;
+
+    const insertRecord: Record<string, unknown> = {
+      id,
+      agent_id: agentId,
+      agent_version: input.agentVersion?.trim() || null,
+      session_id: sessionId,
+      user_id: input.userId?.trim() || null,
+      score,
+      task_label: input.taskLabel?.trim() || null,
+      operation_id: input.operationId?.trim() || null,
+      tools_used: knex.raw("?::jsonb", [jsonTools]),
+      duration_ms: duration,
+      error_flag: Boolean(input.errorFlag),
+      error_summary: input.errorSummary?.trim() || null,
+      user_permission: true,
+      client_metadata:
+        jsonMetadata !== null
+          ? knex.raw("?::jsonb", [jsonMetadata])
+          : knex.raw("'{}'::jsonb"),
+    };
+
+    const logRecord = {
+      id,
+      agent_id: agentId,
+      agent_version: input.agentVersion?.trim() || null,
+      session_id: sessionId,
+      user_id: input.userId?.trim() || null,
+      score,
+      task_label: input.taskLabel?.trim() || null,
+      operation_id: input.operationId?.trim() || null,
+      tools_used: toolsUsed,
+      duration_ms: duration,
+      error_flag: Boolean(input.errorFlag),
+      error_summary: input.errorSummary?.trim() || null,
+      user_permission: true,
+      client_metadata: clientMetadata,
+    };
+
+    try {
+      await knex(ANPS_TABLE).insert(insertRecord);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "agent_nps.insert_error",
+          message: error instanceof Error ? error.message : String(error),
+          record: logRecord,
+        })
+      );
+      throw error;
+    }
+
+    console.info(
+      JSON.stringify({
+        event: "agent_nps.inserted",
+        id,
+        score,
+        task_label: logRecord.task_label,
+        operation_id: logRecord.operation_id,
+        tools_used: toolsUsed.length,
+        error_flag: logRecord.error_flag,
+      })
+    );
+
+    return { id };
+  }
+
+  async getAgentNpsMetrics(): Promise<AgentNpsMetrics> {
+    const since = subDays(new Date(), 30);
+    const rows = await this.db<Record<string, unknown>>(ANPS_TABLE)
+      .select(["task_label", "score"])
+      .where("created_at", ">=", since);
+
+    const globalScores: number[] = [];
+    const byTask = new Map<string | null, number[]>();
+
+    for (const row of rows) {
+      const numericScore = Number(row.score);
+      if (!Number.isFinite(numericScore)) {
+        continue;
+      }
+      globalScores.push(numericScore);
+
+      const rawLabel =
+        typeof row.task_label === "string" ? row.task_label.trim() : "";
+      const label = rawLabel.length ? rawLabel : null;
+      const bucket = byTask.get(label) ?? [];
+      bucket.push(numericScore);
+      byTask.set(label, bucket);
+    }
+
+    const taskBreakdown = Array.from(byTask.entries())
+      .map(([label, scores]) => ({
+        taskLabel: label,
+        responses: scores.length,
+        nps: computeNpsScore(scores),
+      }))
+      .sort((a, b) => b.responses - a.responses);
+
+    return {
+      last30Days: {
+        responses: globalScores.length,
+        nps: computeNpsScore(globalScores),
+      },
+      byTask: taskBreakdown,
+    };
+  }
+
+  async listRecentAgentNps(limit = 20): Promise<AgentNpsRow[]> {
+    const rows = await this.db<Record<string, unknown>>(ANPS_TABLE)
+      .orderBy("created_at", "desc")
+      .limit(limit);
+
+    return rows.map((row) => {
+      const parsed = this.mapAgentNpsRow(row);
+      console.debug(
+        JSON.stringify({
+          event: "agent_nps.row_debug",
+          id: parsed.id,
+          score: parsed.score,
+          created_at: parsed.created_at.toISOString(),
+          task_label: parsed.task_label,
+        })
+      );
+      return parsed;
+    });
   }
 
   async prompt(input: PromptInput): Promise<PromptResult> {
@@ -66,6 +601,7 @@ class AssistantModuleService extends MedusaService({}) {
       ? await this.getConversationBySession(actorId, input.sessionId)
       : await this.getConversation(actorId);
     const existingHistory = existing?.history ?? [];
+    const requestStartedAt = Date.now();
 
     const pendingForActor =
       validationManager.getLatestValidationForActor(actorId);
@@ -127,6 +663,8 @@ class AssistantModuleService extends MedusaService({}) {
         continuation: agentResult.continuation,
         history: agentResult.history,
         nextStep: agentResult.nextStep,
+        anpsStartedAt: requestStartedAt,
+        userWaitMs: 0,
       };
       validationManager.attachContext(validationData.id, context);
     } else if (restoredPending) {
@@ -136,6 +674,8 @@ class AssistantModuleService extends MedusaService({}) {
           actorId,
           sessionId: persistence.sessionId,
           messageId: persistence.messageId,
+          anpsStartedAt: restoredPending.context.anpsStartedAt ?? requestStartedAt,
+          userWaitMs: restoredPending.context.userWaitMs ?? 0,
         };
       }
       validationManager.restoreValidation(restoredPending);
@@ -145,6 +685,17 @@ class AssistantModuleService extends MedusaService({}) {
           restoredPending.context
         );
       }
+    }
+
+    if (persistence && !validationData) {
+      const totalDurationMs = Date.now() - requestStartedAt;
+      await this.autoSubmitAnpsIfEligible({
+        actorId,
+        sessionId: persistence.sessionId,
+        history: agentResult.history,
+        durationMs: totalDurationMs,
+        agentComputeMs: totalDurationMs,
+      });
     }
 
     return {
@@ -224,6 +775,16 @@ class AssistantModuleService extends MedusaService({}) {
       throw new Error("Validation does not belong to this actor");
     }
 
+    const timestampValue = pending.request.timestamp;
+    const requestTimestamp =
+      timestampValue instanceof Date
+        ? timestampValue.getTime()
+        : new Date(timestampValue).getTime();
+    const waitMs = Number.isFinite(requestTimestamp)
+      ? Math.max(0, Date.now() - requestTimestamp)
+      : 0;
+    const accumulatedUserWaitMs = (context.userWaitMs ?? 0) + waitMs;
+
     const updatedAt = new Date();
 
     if (!params.approved) {
@@ -297,11 +858,27 @@ class AssistantModuleService extends MedusaService({}) {
         continuation: agentResult.continuation,
         history: agentResult.history,
         nextStep: agentResult.nextStep,
+        anpsStartedAt: context.anpsStartedAt,
+        userWaitMs: accumulatedUserWaitMs,
       };
       validationManager.attachContext(nextValidation.id, nextContext);
     }
 
     const conversation = await this.getConversation(actorId);
+
+    if (!nextValidation) {
+      const durationMs = context.anpsStartedAt
+        ? Math.max(0, Date.now() - context.anpsStartedAt)
+        : 0;
+      const agentComputeMs = Math.max(0, durationMs - accumulatedUserWaitMs);
+      await this.autoSubmitAnpsIfEligible({
+        actorId,
+        sessionId: context.sessionId,
+        history: agentResult.history,
+        durationMs,
+        agentComputeMs,
+      });
+    }
 
     return {
       answer,
