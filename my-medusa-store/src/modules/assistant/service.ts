@@ -35,6 +35,7 @@ import {
   sanitizeToolUsage,
 } from "./lib/anps";
 import { evaluateAgentNpsScore } from "./lib/anps-evaluator";
+import { generateQualitativeFeedback } from "./lib/anps-feedback";
 import { extractToolJsonPayload } from "./lib/utils";
 import { getMcp } from "../../lib/mcp/manager";
 
@@ -243,6 +244,7 @@ class AssistantModuleService extends MedusaService({}) {
     history: HistoryEntry[];
     durationMs: number;
     agentComputeMs?: number;
+    answer?: string | null;
   }): Promise<void> {
     const majorOperation = this.detectMajorOperation(params.history);
     if (!majorOperation) {
@@ -266,6 +268,25 @@ class AssistantModuleService extends MedusaService({}) {
     }
 
     const { agentId, agentVersion } = this.getAgentIdentifiers();
+    let qualitativeFeedback = null;
+    try {
+      qualitativeFeedback = await generateQualitativeFeedback({
+        operationId: majorOperation.operationId,
+        taskLabel: majorOperation.taskLabel ?? null,
+        evaluation,
+        history: params.history,
+        answer: params.answer ?? null,
+        config: this.config,
+      });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "agent_feedback.generate_failed",
+          message: error instanceof Error ? error.message : String(error),
+          operation_id: majorOperation.operationId,
+        })
+      );
+    }
     const toolUsage = sanitizeToolUsage(
       this.collectToolUsage(params.history)
     );
@@ -275,6 +296,13 @@ class AssistantModuleService extends MedusaService({}) {
       errors: evaluation.errors,
       durationMs: evaluation.durationMs ?? null,
       feedback: evaluation.feedbackNote ?? null,
+      llmFeedback: qualitativeFeedback
+        ? {
+            summary: qualitativeFeedback.summary,
+            positives: qualitativeFeedback.positives,
+            suggestions: qualitativeFeedback.suggestions,
+          }
+        : null,
       scoredAt: new Date().toISOString(),
     } as AgentNpsClientMetadata;
 
@@ -695,6 +723,7 @@ class AssistantModuleService extends MedusaService({}) {
         history: agentResult.history,
         durationMs: totalDurationMs,
         agentComputeMs: totalDurationMs,
+        answer,
       });
     }
 
@@ -877,6 +906,7 @@ class AssistantModuleService extends MedusaService({}) {
         history: agentResult.history,
         durationMs,
         agentComputeMs,
+        answer,
       });
     }
 

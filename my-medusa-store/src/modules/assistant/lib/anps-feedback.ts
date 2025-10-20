@@ -1,0 +1,395 @@
+import { GoogleGenAI } from "@google/genai";
+import { AssistantModuleOptions } from "../config";
+import { HistoryEntry } from "./types";
+import {
+  extractToolJsonPayload,
+  isPlainRecord,
+  safeParseJSON,
+} from "./utils";
+import { AgentNpsEvaluation } from "./anps";
+
+type StatusDigest = {
+  statusCode: number | null;
+  message: string | null;
+  operationSummary: string | null;
+};
+
+export type QualitativeFeedback = {
+  summary: string;
+  positives: string[];
+  suggestions: string[];
+};
+
+type FeedbackPayload = {
+  ok?: boolean;
+  feedback?: string;
+  positives?: unknown;
+  suggestions?: unknown;
+};
+
+const DEFAULT_MODEL = "gemini-2.5-flash";
+const MAX_STATUS_ENTRIES = 5;
+const MAX_TEXT_CHARS = 4000;
+const MAX_POSITIVE_ITEMS = 5;
+const MAX_SUGGESTION_ITEMS = 5;
+
+const normalizeOperationIdentifier = (value: string): string =>
+  value.toLowerCase().replace(/[_\s-]+/g, "");
+
+const extractOperationId = (
+  args: Record<string, unknown>
+): string | null => {
+  const camel = args.operationId;
+  if (typeof camel === "string" && camel.trim()) {
+    return camel.trim();
+  }
+  const snake = (args as Record<string, unknown>).operation_id;
+  if (typeof snake === "string" && snake.trim()) {
+    return snake.trim();
+  }
+  return null;
+};
+
+const coerceStatusCode = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+  }
+  return null;
+};
+
+const summarizeStatusMessages = (
+  history: HistoryEntry[],
+  operationId: string
+): StatusDigest[] => {
+  const normalizedTarget = normalizeOperationIdentifier(operationId);
+  const digests: StatusDigest[] = [];
+
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const entry = history[i];
+    if (entry.tool_name !== "openapi.execute") {
+      continue;
+    }
+    const args =
+      entry.tool_args && typeof entry.tool_args === "object"
+        ? (entry.tool_args as Record<string, unknown>)
+        : null;
+    if (!args) {
+      continue;
+    }
+    const entryId = extractOperationId(args);
+    if (!entryId) {
+      continue;
+    }
+    const normalizedEntry = normalizeOperationIdentifier(entryId);
+    if (normalizedEntry !== normalizedTarget) {
+      continue;
+    }
+
+    const payload = extractToolJsonPayload(entry.tool_result);
+    let statusCode: number | null = null;
+    let message: string | null = null;
+
+    if (isPlainRecord(payload)) {
+      statusCode =
+        coerceStatusCode(
+          payload.statusCode ?? payload.status ?? payload.code
+        ) ?? null;
+      if (typeof payload.message === "string" && payload.message.trim()) {
+        message = payload.message.trim();
+      } else if (
+        typeof payload.error === "string" &&
+        payload.error.trim()
+      ) {
+        message = payload.error.trim();
+      } else if (
+        typeof payload.title === "string" &&
+        payload.title.trim()
+      ) {
+        message = payload.title.trim();
+      }
+    } else if (
+      entry.tool_result &&
+      typeof entry.tool_result === "object" &&
+      (entry.tool_result as Record<string, unknown>).error
+    ) {
+      const rawError = (entry.tool_result as Record<string, unknown>).error;
+      message =
+        typeof rawError === "string" && rawError.trim()
+          ? rawError.trim()
+          : null;
+    }
+
+    const summary =
+      typeof args.summary === "string" && args.summary.trim()
+        ? args.summary.trim()
+        : entryId;
+
+    digests.push({
+      statusCode,
+      message,
+      operationSummary: summary,
+    });
+
+    if (digests.length >= MAX_STATUS_ENTRIES) {
+      break;
+    }
+  }
+
+  return digests.reverse();
+};
+
+const truncate = (value: string | null | undefined, max = MAX_TEXT_CHARS) => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
+};
+
+const extractText = (res: unknown): string | null => {
+  const read = (value: unknown): string | null => {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === "function") {
+      try {
+        const output = (value as () => unknown)();
+        return typeof output === "string" && output.trim()
+          ? output.trim()
+          : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const direct = read(
+    (res as { text?: unknown; response?: unknown })?.text
+  );
+  if (direct) {
+    return direct;
+  }
+
+  const response = (res as { response?: unknown })?.response;
+  const responseText = read(
+    (response as { text?: unknown })?.text
+  );
+  if (responseText) {
+    return responseText;
+  }
+
+  const candidates = (response as { candidates?: unknown })?.candidates;
+  if (Array.isArray(candidates)) {
+    for (const candidate of candidates) {
+      const parts =
+        (candidate as { content?: { parts?: unknown }[] })?.content
+          ?.parts ?? [];
+      if (!Array.isArray(parts)) {
+        continue;
+      }
+      const combined = parts
+        .map((part) => read((part as { text?: unknown })?.text))
+        .filter((text): text is string => typeof text === "string")
+        .join("")
+        .trim();
+      if (combined) {
+        return combined;
+      }
+    }
+  }
+
+  if (Array.isArray((res as { candidates?: unknown })?.candidates)) {
+    for (const candidate of (res as { candidates?: any[] })?.candidates ??
+      []) {
+      const parts = candidate?.content?.parts ?? [];
+      if (!Array.isArray(parts)) {
+        continue;
+      }
+      const combined = parts
+        .map((part: any) => read(part?.text))
+        .filter((text): text is string => typeof text === "string")
+        .join("")
+        .trim();
+      if (combined) {
+        return combined;
+      }
+    }
+  }
+
+  return null;
+};
+
+export async function generateQualitativeFeedback(params: {
+  operationId: string;
+  taskLabel: string | null;
+  evaluation: AgentNpsEvaluation;
+  history: HistoryEntry[];
+  answer?: string | null;
+  config: AssistantModuleOptions;
+}): Promise<QualitativeFeedback | null> {
+  const apiKey =
+    params.config.geminiApiKey ?? process.env.ASSISTANT_GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn(
+      JSON.stringify({
+        event: "agent_feedback.skipped",
+        reason: "missing_api_key",
+      })
+    );
+    return null;
+  }
+
+  const model =
+    process.env.ASSISTANT_FEEDBACK_MODEL ??
+    params.config.modelName ??
+    DEFAULT_MODEL;
+
+  const statusMessages = summarizeStatusMessages(
+    params.history,
+    params.operationId
+  );
+
+  const durationSeconds =
+    typeof params.evaluation.durationMs === "number" &&
+    Number.isFinite(params.evaluation.durationMs) &&
+    params.evaluation.durationMs > 0
+      ? `${(params.evaluation.durationMs / 1000).toFixed(1)} seconds`
+      : "not recorded";
+
+  const quantitativeBullets = [
+    `Heuristic score: ${params.evaluation.score}/10`,
+    `Attempts: ${params.evaluation.attempts}`,
+    `Errors: ${params.evaluation.errors}`,
+    `Duration: ${durationSeconds}`,
+    `Error flag: ${params.evaluation.errorFlag ? "true" : "false"}`,
+  ];
+
+  if (params.evaluation.errorSummary) {
+    quantitativeBullets.push(
+      `Error summary: ${params.evaluation.errorSummary}`
+    );
+  }
+
+  if (params.evaluation.feedbackNote) {
+    quantitativeBullets.push(
+      `Heuristic notes: ${params.evaluation.feedbackNote}`
+    );
+  }
+
+  const statusSection = statusMessages.length
+    ? statusMessages
+        .map((item, idx) => {
+          const code =
+            item.statusCode != null ? `status ${item.statusCode}` : "unknown status";
+          const summary = item.operationSummary ?? "Unnamed call";
+          const message = item.message ? ` — ${item.message}` : "";
+          return `${idx + 1}. ${summary} (${code})${message}`;
+        })
+        .join("\n")
+    : "No HTTP tool calls were captured for this operation.";
+
+  const answerSnippet = truncate(params.answer, 1500);
+
+  const promptSections = [
+    "You are reviewing a Medusa commerce assistant task execution.",
+    `Operation ID: ${params.operationId}`,
+    params.taskLabel ? `Task label: ${params.taskLabel}` : null,
+    "### Quantitative observations",
+    quantitativeBullets.join("\n"),
+    "### HTTP interaction summary",
+    statusSection,
+    answerSnippet ? `### Assistant reply\n${answerSnippet}` : null,
+    "Write a concise qualitative review highlighting what worked well and what should improve. Be specific about API usage or payload clarity when possible.",
+    'Respond as valid JSON using this schema: {"feedback":"<short paragraph>","positives":["..."],"suggestions":["..."]}.',
+  ].filter((section): section is string => typeof section === "string");
+
+  const prompt = promptSections.join("\n\n");
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
+      model,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.4,
+        maxOutputTokens: 512,
+      },
+    });
+
+    const text = extractText(result);
+
+    if (!text || !text.trim()) {
+      console.warn(
+        JSON.stringify({
+          event: "agent_feedback.empty_response",
+        })
+      );
+      return null;
+    }
+
+    const parsed = safeParseJSON<FeedbackPayload>(text.trim());
+    if (!parsed || typeof parsed !== "object") {
+      console.warn(
+        JSON.stringify({
+          event: "agent_feedback.parse_failed",
+          sample: text.trim().slice(0, 120),
+        })
+      );
+      return null;
+    }
+
+    const feedback =
+      typeof parsed.feedback === "string" && parsed.feedback.trim()
+        ? parsed.feedback.trim()
+        : null;
+    if (!feedback) {
+      return null;
+    }
+
+    const positives = Array.isArray(parsed.positives)
+      ? parsed.positives
+          .map((item) =>
+            typeof item === "string" ? item.trim() : ""
+          )
+          .filter((item) => item.length > 0)
+          .slice(0, MAX_POSITIVE_ITEMS)
+      : [];
+
+    const suggestions = Array.isArray(parsed.suggestions)
+      ? parsed.suggestions
+          .map((item) =>
+            typeof item === "string" ? item.trim() : ""
+          )
+          .filter((item) => item.length > 0)
+          .slice(0, MAX_SUGGESTION_ITEMS)
+      : [];
+
+    return {
+      summary: feedback,
+      positives,
+      suggestions,
+    };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "agent_feedback.error",
+        message: error instanceof Error ? error.message : String(error),
+      })
+    );
+    return null;
+  }
+}
