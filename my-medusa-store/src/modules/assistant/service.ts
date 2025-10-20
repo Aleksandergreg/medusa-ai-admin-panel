@@ -159,16 +159,19 @@ class AssistantModuleService extends MedusaService({}) {
     };
   }
 
-  private detectMajorOperation(
+  private extractExecutedOperations(
     entries: HistoryEntry[]
-  ): { operationId: string; taskLabel: string | null } | null {
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const entry = entries[i];
-      if (!entry) continue;
-      if (entry.tool_name !== "openapi.execute") {
+  ): { operationId: string; taskLabel: string | null }[] {
+    const operations: { operationId: string; taskLabel: string | null }[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (!entry || entry.tool_name !== "openapi.execute") {
         continue;
       }
-      const args = entry.tool_args as Record<string, unknown>;
+      const args =
+        entry.tool_args && typeof entry.tool_args === "object"
+          ? (entry.tool_args as Record<string, unknown>)
+          : null;
       if (!args) {
         continue;
       }
@@ -178,9 +181,17 @@ class AssistantModuleService extends MedusaService({}) {
       if (!operationId) {
         continue;
       }
-      return { operationId, taskLabel: this.toTaskLabel(operationId) };
+      const key = operationId.trim().toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      operations.push({
+        operationId,
+        taskLabel: this.toTaskLabel(operationId),
+      });
     }
-    return null;
+    return operations;
   }
 
   private toTaskLabel(operationId: string): string | null {
@@ -246,86 +257,88 @@ class AssistantModuleService extends MedusaService({}) {
     agentComputeMs?: number;
     answer?: string | null;
   }): Promise<void> {
-    const majorOperation = this.detectMajorOperation(params.history);
-    if (!majorOperation) {
-      return;
-    }
-
-    if (this.hasOperationBeenScored(params.sessionId, majorOperation.operationId)) {
-      return;
-    }
-
-    const evaluation = evaluateAgentNpsScore({
-      operationId: majorOperation.operationId,
-      taskLabel: majorOperation.taskLabel,
-      history: params.history,
-      durationMs: params.durationMs,
-      agentComputeMs: params.agentComputeMs,
-    });
-
-    if (!evaluation) {
+    const operations = this.extractExecutedOperations(params.history);
+    if (!operations.length) {
       return;
     }
 
     const { agentId, agentVersion } = this.getAgentIdentifiers();
-    let qualitativeFeedback = null;
-    try {
-      qualitativeFeedback = await generateQualitativeFeedback({
-        operationId: majorOperation.operationId,
-        taskLabel: majorOperation.taskLabel ?? null,
-        evaluation,
+    const toolUsage = sanitizeToolUsage(this.collectToolUsage(params.history));
+
+    for (const operation of operations) {
+      if (this.hasOperationBeenScored(params.sessionId, operation.operationId)) {
+        continue;
+      }
+
+      const evaluation = evaluateAgentNpsScore({
+        operationId: operation.operationId,
+        taskLabel: operation.taskLabel,
         history: params.history,
-        answer: params.answer ?? null,
-        config: this.config,
+        durationMs: params.durationMs,
+        agentComputeMs: params.agentComputeMs,
       });
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: "agent_feedback.generate_failed",
-          message: error instanceof Error ? error.message : String(error),
-          operation_id: majorOperation.operationId,
-        })
-      );
-    }
-    const toolUsage = sanitizeToolUsage(
-      this.collectToolUsage(params.history)
-    );
-    const metadata = {
-      ...this.buildClientMetadata(),
-      attempts: evaluation.attempts,
-      errors: evaluation.errors,
-      durationMs: evaluation.durationMs ?? null,
-      feedback: evaluation.feedbackNote ?? null,
-      llmFeedback: qualitativeFeedback
-        ? {
-            summary: qualitativeFeedback.summary,
-            positives: qualitativeFeedback.positives,
-            suggestions: qualitativeFeedback.suggestions,
-          }
-        : null,
-      scoredAt: new Date().toISOString(),
-    } as AgentNpsClientMetadata;
 
-    const sanitizedMetadata = sanitizeClientMetadata(metadata);
+      if (!evaluation) {
+        continue;
+      }
 
-    const submission: AnpsSubmissionPayload = {
-      score: evaluation.score,
-      sessionId: params.sessionId,
-      agentId,
-      agentVersion,
-      userId: params.actorId,
-      taskLabel: majorOperation.taskLabel,
-      operationId: majorOperation.operationId,
-      toolsUsed: toolUsage,
-      durationMs: evaluation.durationMs,
-      errorFlag: evaluation.errorFlag,
-      errorSummary: evaluation.errorSummary ?? undefined,
-      clientMetadata: sanitizedMetadata,
-    };
+      let qualitativeFeedback = null;
+      try {
+        qualitativeFeedback = await generateQualitativeFeedback({
+          operationId: operation.operationId,
+          taskLabel: operation.taskLabel ?? null,
+          evaluation,
+          history: params.history,
+          answer: params.answer ?? null,
+          config: this.config,
+        });
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "agent_feedback.generate_failed",
+            message: error instanceof Error ? error.message : String(error),
+            operation_id: operation.operationId,
+          })
+        );
+      }
 
-    const result = await this.submitAgentNpsRecord(submission);
-    if (result.ok) {
-      this.markOperationScored(params.sessionId, majorOperation.operationId);
+      const metadata = {
+        ...this.buildClientMetadata(),
+        attempts: evaluation.attempts,
+        errors: evaluation.errors,
+        durationMs: evaluation.durationMs ?? null,
+        feedback: evaluation.feedbackNote ?? null,
+        llmFeedback: qualitativeFeedback
+          ? {
+              summary: qualitativeFeedback.summary,
+              positives: qualitativeFeedback.positives,
+              suggestions: qualitativeFeedback.suggestions,
+            }
+          : null,
+        scoredAt: new Date().toISOString(),
+      } as AgentNpsClientMetadata;
+
+      const sanitizedMetadata = sanitizeClientMetadata(metadata);
+
+      const submission: AnpsSubmissionPayload = {
+        score: evaluation.score,
+        sessionId: params.sessionId,
+        agentId,
+        agentVersion,
+        userId: params.actorId,
+        taskLabel: operation.taskLabel,
+        operationId: operation.operationId,
+        toolsUsed: toolUsage,
+        durationMs: evaluation.durationMs,
+        errorFlag: evaluation.errorFlag,
+        errorSummary: evaluation.errorSummary ?? undefined,
+        clientMetadata: sanitizedMetadata,
+      };
+
+      const result = await this.submitAgentNpsRecord(submission);
+      if (result.ok) {
+        this.markOperationScored(params.sessionId, operation.operationId);
+      }
     }
   }
 
