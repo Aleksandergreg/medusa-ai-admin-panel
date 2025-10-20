@@ -629,7 +629,7 @@ class AssistantModuleService extends MedusaService({}) {
       }
     );
 
-    let answer = agentResult.answer?.trim()
+    const answer = agentResult.answer?.trim()
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
     let validationData = agentResult.validationRequest;
