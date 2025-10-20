@@ -234,6 +234,13 @@ export function useAssistant() {
 
   const approveValidation = useCallback(
     async (id: string, editedData?: Record<string, unknown>) => {
+      const optimisticHistory: ConversationEntry[] = [
+        ...history,
+        { role: "user", content: "✓ Approved" },
+      ];
+      setHistory(optimisticHistory);
+      setValidationRequest(null);
+
       try {
         setLoading(true);
         const outcome = await approveAssistantValidation(id, editedData);
@@ -243,27 +250,39 @@ export function useAssistant() {
         setError(null);
       } catch (e: unknown) {
         setError((e as Error)?.message ?? "Failed to approve operation");
+        setHistory(history); // Rollback on error
       } finally {
         setLoading(false);
       }
     },
-    []
+    [history]
   );
 
-  const rejectValidation = useCallback(async (id: string) => {
-    try {
-      setLoading(true);
-      const outcome = await rejectAssistantValidation(id);
-      setHistory(outcome.history);
-      setAnswer(outcome.answer);
-      setValidationRequest(outcome.validationRequest ?? null);
-      setError(null);
-    } catch (e: unknown) {
-      setError((e as Error)?.message ?? "Failed to reject operation");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const rejectValidation = useCallback(
+    async (id: string) => {
+      const optimisticHistory: ConversationEntry[] = [
+        ...history,
+        { role: "user", content: "✗ Rejected" },
+      ];
+      setHistory(optimisticHistory);
+      setValidationRequest(null);
+
+      try {
+        setLoading(true);
+        const outcome = await rejectAssistantValidation(id);
+        setHistory(outcome.history);
+        setAnswer(outcome.answer);
+        setValidationRequest(outcome.validationRequest ?? null);
+        setError(null);
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to reject operation");
+        setHistory(history); // Rollback on error
+      } finally {
+        setLoading(false);
+      }
+    },
+    [history]
+  );
 
   const handleSwitchConversation = useCallback(
     async (sessionId: string) => {
