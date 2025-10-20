@@ -3,6 +3,7 @@ import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { ResponseView } from "./components/ResponseView";
 import { AssistantLoading } from "./components/Loading";
+import { NpsCard } from "./components/NpsCard";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text } from "@medusajs/ui";
 import { AiAssistent } from "@medusajs/icons";
@@ -34,6 +35,8 @@ const AssistantPage = () => {
           Ask the assistant for help with products, customers, orders,
           promotions, and more.
         </Text>
+
+        <NpsCard />
 
         <PromptInput value={prompt} onChange={setPrompt} onSubmit={ask} />
 
