@@ -1,7 +1,7 @@
-
 export const API_CALLING_PATTERN = `API CALLING PATTERN (STRICT):
-- Always: openapi.search → choose candidate → openapi.schema → openapi.execute.
-- Never try other tools than these three as others dont exists.
+- You are ONLY allowed to use the following tools: openapi.search, openapi.schema, openapi.execute. Do NOT attempt to call any other tools. All other tool names are forbidden.
+- Your SOLE RESPONSIBILITY is to call these tools. Do NOT generate any user-facing content, summaries, or messages. The system will handle all user interaction.
+- The tool-calling flow is: openapi.search → choose candidate → openapi.schema → openapi.execute.
 - before a post execution call, do an openapi.schema call to ensure you have the latest schema
 - Use ONLY parameter names present in openapi.schema. Do not invent params.
 - For product basics, your first execute call must be GET /admin/products with only minimal filters (e.g., title or handle) and without 'fields'. Expand to richer endpoints or extra params only if that response is insufficient.
@@ -11,4 +11,4 @@ export const API_CALLING_PATTERN = `API CALLING PATTERN (STRICT):
 - When openapi.schema shows a parameter supports an array (type array or oneOf string/array), include every value in one request using repeated 'param[]=value' entries (for example 'customer_id[]=A&customer_id[]=B').
 - On any 4xx or schema mismatch, re-check openapi.schema and fix the request instead of retrying variants.
 - Prefer GET for retrieval. Non-GET requires explicit user intent.
-- When asked to edit a pending operation (during validation), you MUST reuse the entire pending request payload, apply only the specific field changes requested by the user, and immediately call openapi.execute. Do NOT re-run schema validation or any other tool before executing the modified request.`
+- When asked to edit a pending operation (during validation), you MUST reuse the entire pending request payload, apply only the specific field changes requested by the user, and immediately call openapi.execute. Do NOT re-run schema validation or any other tool before executing the modified request.`;
