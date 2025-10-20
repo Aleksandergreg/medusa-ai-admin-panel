@@ -175,7 +175,7 @@ export function useAssistant() {
           };
 
           // We need to ensure the UI history is correct for the retry
-          setHistory([{ role: "user", content: trimmedPrompt }]);
+          setHistory([...previousHistory, { role: "user", content: trimmedPrompt }]);
 
           const retryRes = await askAssistant(retryPayload, signal);
           if (signal.aborted) {
