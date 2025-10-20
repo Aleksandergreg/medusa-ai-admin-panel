@@ -49,6 +49,8 @@ const AssistantPage = () => {
         <Heading level="h1">Assistant</Heading>
       </div>
 
+      <NpsCard />
+
       <div className="px-6 py-4 grid gap-3">
         <ConversationList
           conversations={conversations}
