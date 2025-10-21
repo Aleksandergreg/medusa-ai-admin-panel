@@ -1,6 +1,12 @@
 import { useMemo } from "react";
-import { Heading, Text, Badge, StatusBadge } from "@medusajs/ui";
+import { Text, StatusBadge } from "@medusajs/ui";
 import { useAssistantNpsRecent } from "../../../assistant/hooks/useAssistantNpsRecent";
+import {
+  CheckCircleSolid,
+  ExclamationCircleSolid,
+  Clock,
+  InformationCircleSolid,
+} from "@medusajs/icons";
 
 const formatDate = (date: Date): string => {
   try {
@@ -11,6 +17,18 @@ const formatDate = (date: Date): string => {
   } catch {
     return date.toISOString();
   }
+};
+
+const getScoreColor = (score: number): string => {
+  if (score >= 7) return "text-green-600";
+  if (score >= 5) return "text-yellow-600";
+  return "text-red-600";
+};
+
+const getScoreBgColor = (score: number): string => {
+  if (score >= 7) return "bg-green-100 border-green-300";
+  if (score >= 5) return "bg-yellow-100 border-yellow-300";
+  return "bg-red-100 border-red-300";
 };
 
 export function AssistantFeedbackSection() {
@@ -24,102 +42,175 @@ export function AssistantFeedbackSection() {
     [responses]
   );
 
-  return (
-    <div className="rounded-md border bg-ui-bg-base p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <Heading level="h2" className="text-base">
-          Assistant qualitative feedback
-        </Heading>
-        <Badge size="small">{feedbackRows.length}</Badge>
+  if (loading) {
+    return (
+      <div className="rounded-lg border bg-ui-bg-subtle p-8 text-center">
+        <Text className="text-ui-fg-subtle">Loading operation details...</Text>
       </div>
+    );
+  }
 
-      <Text size="small" className="text-ui-fg-subtle">
-        Highlights the most recent AI operations with LLM-authored feedback.
-      </Text>
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <Text className="text-red-600">{error}</Text>
+      </div>
+    );
+  }
 
-      {loading && (
-        <Text size="small" className="text-ui-fg-subtle">
-          Loading qualitative feedback…
-        </Text>
-      )}
+  return (
+    <div className="space-y-4">
+      {feedbackRows.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-ui-bg-subtle p-8 text-center">
+          <Text className="text-ui-fg-subtle">
+            No operation-level feedback captured yet.
+          </Text>
+        </div>
+      ) : (
+        feedbackRows.map((row) => {
+          const feedback = row.metadata.llmFeedback!;
+          const heuristicNote = row.metadata.feedback;
+          const score = row.score;
 
-      {error && (
-        <Text size="small" className="text-ui-fg-error">
-          {error}
-        </Text>
-      )}
-
-      {!loading && !error && (
-        <div className="space-y-4">
-          {feedbackRows.length === 0 ? (
-            <Text size="small" className="text-ui-fg-subtle">
-              No qualitative feedback captured yet.
-            </Text>
-          ) : (
-            feedbackRows.map((row) => {
-              const feedback = row.metadata.llmFeedback!;
-              const heuristicNote = row.metadata.feedback;
-              return (
-                <div key={row.id} className="border-t pt-3 first:border-0 first:pt-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="space-y-1">
-                      <Text weight="plus" className="text-sm">
-                        {row.taskLabel ?? "Unlabeled task"}
-                      </Text>
-                      <Text size="small" className="text-ui-fg-subtle">
-                        {formatDate(row.createdAt)} · Score {row.score}/10
-                      </Text>
-                      {row.operationId && (
-                        <Text size="small" className="text-ui-fg-muted">
-                          Operation: {row.operationId}
-                        </Text>
-                      )}
+          return (
+            <div
+              key={row.id}
+              className="rounded-lg border bg-ui-bg-base p-5 shadow-sm hover:shadow-md transition-shadow"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <Text weight="plus" className="text-base mb-2">
+                    {row.taskLabel ?? "Unlabeled Operation"}
+                  </Text>
+                  <div className="flex items-center gap-3 text-ui-fg-subtle">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="text-ui-fg-muted" />
+                      <Text size="small">{formatDate(row.createdAt)}</Text>
                     </div>
-                    {row.errorFlag && (
-                      <StatusBadge color="red">Errors detected</StatusBadge>
+                    {row.operationId && (
+                      <div className="flex items-center gap-1.5">
+                        <InformationCircleSolid className="text-ui-fg-muted" />
+                        <Text size="small" className="font-mono">
+                          {row.operationId}
+                        </Text>
+                      </div>
                     )}
                   </div>
+                </div>
 
-                  <Text className="mt-2 text-sm leading-relaxed">
-                    {feedback.summary}
-                  </Text>
-
-                  {feedback.positives.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      <Text size="small" weight="plus">
-                        What worked
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`rounded-md border px-3 py-1.5 ${getScoreBgColor(
+                      score
+                    )}`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Text
+                        weight="plus"
+                        className={`text-lg ${getScoreColor(score)}`}
+                      >
+                        {score}
                       </Text>
-                      <ul className="list-disc space-y-1 pl-5 text-sm">
-                        {feedback.positives.map((item, index) => (
-                          <li key={`${row.id}-pos-${index}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {feedback.suggestions.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      <Text size="small" weight="plus">
-                        Opportunities
+                      <Text size="small" className="text-ui-fg-subtle">
+                        /10
                       </Text>
-                      <ul className="list-disc space-y-1 pl-5 text-sm">
-                        {feedback.suggestions.map((item, index) => (
-                          <li key={`${row.id}-sug-${index}`}>{item}</li>
-                        ))}
-                      </ul>
                     </div>
-                  )}
-
-                  {heuristicNote && (
-                    <Text size="small" className="mt-2 text-ui-fg-subtle italic">
-                      Heuristic note: {heuristicNote}
-                    </Text>
+                  </div>
+                  {row.errorFlag && (
+                    <StatusBadge color="red">
+                      <ExclamationCircleSolid className="mr-1" />
+                      Errors
+                    </StatusBadge>
                   )}
                 </div>
-              );
-            })
-          )}
-        </div>
+              </div>
+
+              {/* Summary */}
+              <div className="mb-4 rounded-md bg-ui-bg-subtle p-3">
+                <Text className="text-sm leading-relaxed">
+                  {feedback.summary}
+                </Text>
+              </div>
+
+              {/* Feedback Grid */}
+              <div className="grid gap-4 md:grid-cols-2">
+                {feedback.positives.length > 0 && (
+                  <div className="rounded-md border border-green-200 bg-green-50 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircleSolid className="text-green-600" />
+                      <Text
+                        size="small"
+                        weight="plus"
+                        className="text-green-900"
+                      >
+                        What Worked
+                      </Text>
+                    </div>
+                    <ul className="space-y-1.5 text-sm text-green-900">
+                      {feedback.positives.map((item, index) => (
+                        <li
+                          key={`${row.id}-pos-${index}`}
+                          className="flex items-start gap-2"
+                        >
+                          <span className="text-green-600 mt-0.5">✓</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {feedback.suggestions.length > 0 && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ExclamationCircleSolid className="text-blue-600" />
+                      <Text
+                        size="small"
+                        weight="plus"
+                        className="text-blue-900"
+                      >
+                        Opportunities
+                      </Text>
+                    </div>
+                    <ul className="space-y-1.5 text-sm text-blue-900">
+                      {feedback.suggestions.map((item, index) => (
+                        <li
+                          key={`${row.id}-sug-${index}`}
+                          className="flex items-start gap-2"
+                        >
+                          <span className="text-blue-600 mt-0.5">→</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Heuristic Note */}
+              {heuristicNote && (
+                <div className="mt-4 rounded-md border border-purple-200 bg-purple-50 p-3">
+                  <div className="flex items-start gap-2">
+                    <InformationCircleSolid className="text-purple-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <Text
+                        size="small"
+                        weight="plus"
+                        className="text-purple-900 mb-1"
+                      >
+                        Heuristic Analysis
+                      </Text>
+                      <Text size="small" className="text-purple-900">
+                        {heuristicNote}
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })
       )}
     </div>
   );
