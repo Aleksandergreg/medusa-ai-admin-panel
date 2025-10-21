@@ -142,6 +142,10 @@ const AssistantNpsRowSchema = z.object({
         isTurnFeedback: metadata.isTurnFeedback === true,
         operations,
         aggregate,
+        prompt:
+          typeof metadata.userPrompt === "string"
+            ? metadata.userPrompt
+            : null,
       };
     }),
 });
@@ -194,6 +198,7 @@ export type AssistantNpsResponseRow = {
     isTurnFeedback: boolean;
     operations: TurnOperationMeta[];
     aggregate: TurnAggregateMeta | null;
+    prompt: string | null;
   };
 };
 

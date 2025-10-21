@@ -370,6 +370,7 @@ export class AnpsService {
     durationMs: number;
     agentComputeMs?: number;
     answer?: string | null;
+    prompt?: string;
   }): void {
     const operations = this.extractExecutedOperations(params.history).filter(
       (operation) =>
@@ -407,6 +408,7 @@ export class AnpsService {
     durationMs: number;
     agentComputeMs?: number;
     answer?: string | null;
+    prompt?: string;
     operations?: { operationId: string; taskLabel: string | null }[];
   }): Promise<void> {
     const operations =
@@ -532,6 +534,7 @@ export class AnpsService {
         agentId,
         agentVersion,
         toolUsage,
+        prompt: params.prompt ?? null,
       });
     }
   }
@@ -554,6 +557,7 @@ export class AnpsService {
     agentId: string;
     agentVersion: string | null;
     toolUsage: AgentNpsToolUsage[];
+    prompt: string | null;
   }): Promise<void> {
     let turnFeedback: QualitativeFeedback | null = null;
     try {
@@ -656,6 +660,7 @@ export class AnpsService {
         positives: turnFeedback.positives,
         suggestions: turnFeedback.suggestions,
       },
+      prompt: params.prompt ?? undefined,
     });
 
     const sanitizedMetadata = sanitizeClientMetadata(metadata);

@@ -75,6 +75,7 @@ export function AssistantTurnFeedbackSection() {
           const aggregate = row.metadata.aggregate;
           const avgScore = aggregate?.averageScore;
           const hasErrors = aggregate?.totalErrors && aggregate.totalErrors > 0;
+          const userPrompt = row.metadata.prompt?.trim();
 
           return (
             <div
@@ -119,6 +120,20 @@ export function AssistantTurnFeedbackSection() {
                   </StatusBadge>
                 )}
               </div>
+
+              {userPrompt && (
+                <div className="mb-4 rounded-md border border-ui-border-base bg-ui-bg-subtle p-3">
+                  <Text
+                    size="xsmall"
+                    className="text-ui-fg-subtle uppercase tracking-wide mb-1"
+                  >
+                    Prompt
+                  </Text>
+                  <Text className="text-sm leading-relaxed text-ui-fg-base whitespace-pre-line">
+                    {userPrompt}
+                  </Text>
+                </div>
+              )}
 
               {/* Summary */}
               <div className="mb-4 rounded-md bg-ui-bg-subtle p-3">

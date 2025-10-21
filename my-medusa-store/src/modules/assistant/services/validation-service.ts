@@ -128,19 +128,20 @@ export class ValidationService {
     });
 
     const nextValidation = agentResult.validationRequest;
-    if (nextValidation && agentResult.continuation) {
-      const nextContext: PendingValidationContext = {
-        actorId,
-        sessionId: context.sessionId,
-        messageId: newMessageId,
-        continuation: agentResult.continuation,
-        history: agentResult.history,
-        nextStep: agentResult.nextStep,
-        anpsStartedAt: context.anpsStartedAt,
-        userWaitMs: accumulatedUserWaitMs,
-      };
-      validationManager.attachContext(nextValidation.id, nextContext);
-    }
+      if (nextValidation && agentResult.continuation) {
+        const nextContext: PendingValidationContext = {
+          actorId,
+          sessionId: context.sessionId,
+          messageId: newMessageId,
+          continuation: agentResult.continuation,
+          history: agentResult.history,
+          nextStep: agentResult.nextStep,
+          anpsStartedAt: context.anpsStartedAt,
+          userWaitMs: accumulatedUserWaitMs,
+          prompt: context.prompt,
+        };
+        validationManager.attachContext(nextValidation.id, nextContext);
+      }
 
     const conversation = await this.conversationService.getConversation(
       actorId
@@ -158,6 +159,7 @@ export class ValidationService {
         durationMs,
         agentComputeMs,
         answer,
+        prompt: context.prompt,
       });
     }
 
