@@ -52,7 +52,7 @@ export function FeedbackMarkdownText({
             <a
               {...props}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className={`text-ui-fg-interactive underline ${
                 providedClassName ?? ""
               }`.trim()}
