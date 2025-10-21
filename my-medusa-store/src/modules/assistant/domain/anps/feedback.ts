@@ -1,12 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
-import { AssistantModuleOptions } from "../config";
-import { HistoryEntry } from "./types";
+import { AssistantModuleOptions } from "../../config";
+import { HistoryEntry } from "../../lib/types";
 import {
   extractToolJsonPayload,
   isPlainRecord,
   safeParseJSON,
-} from "./utils";
-import { AgentNpsEvaluation } from "./anps";
+} from "../../lib/utils";
+import { AgentNpsEvaluation } from "./types";
 
 type StatusDigest = {
   statusCode: number | null;
@@ -36,9 +36,7 @@ const MAX_SUGGESTION_ITEMS = 5;
 const normalizeOperationIdentifier = (value: string): string =>
   value.toLowerCase().replace(/[_\s-]+/g, "");
 
-const extractOperationId = (
-  args: Record<string, unknown>
-): string | null => {
+const extractOperationId = (args: Record<string, unknown>): string | null => {
   const camel = args.operationId;
   if (typeof camel === "string" && camel.trim()) {
     return camel.trim();
@@ -100,15 +98,9 @@ export const summarizeStatusMessages = (
         ) ?? null;
       if (typeof payload.message === "string" && payload.message.trim()) {
         message = payload.message.trim();
-      } else if (
-        typeof payload.error === "string" &&
-        payload.error.trim()
-      ) {
+      } else if (typeof payload.error === "string" && payload.error.trim()) {
         message = payload.error.trim();
-      } else if (
-        typeof payload.title === "string" &&
-        payload.title.trim()
-      ) {
+      } else if (typeof payload.title === "string" && payload.title.trim()) {
         message = payload.title.trim();
       }
     } else if (
@@ -171,17 +163,13 @@ const extractText = (res: unknown): string | null => {
     return null;
   };
 
-  const direct = read(
-    (res as { text?: unknown; response?: unknown })?.text
-  );
+  const direct = read((res as { text?: unknown; response?: unknown })?.text);
   if (direct) {
     return direct;
   }
 
   const response = (res as { response?: unknown })?.response;
-  const responseText = read(
-    (response as { text?: unknown })?.text
-  );
+  const responseText = read((response as { text?: unknown })?.text);
   if (responseText) {
     return responseText;
   }
@@ -191,8 +179,9 @@ const extractText = (res: unknown): string | null => {
     (res as { candidates?: unknown })?.candidates;
   if (Array.isArray(candidates)) {
     for (const candidate of candidates) {
-      const parts = (candidate as { content?: { parts?: unknown }[] })?.content
-        ?.parts ?? [];
+      const parts =
+        (candidate as { content?: { parts?: unknown }[] })?.content?.parts ??
+        [];
       if (!Array.isArray(parts)) {
         continue;
       }
@@ -272,7 +261,9 @@ export async function generateQualitativeFeedback(params: {
     ? statusMessages
         .map((item, idx) => {
           const code =
-            item.statusCode != null ? `status ${item.statusCode}` : "unknown status";
+            item.statusCode != null
+              ? `status ${item.statusCode}`
+              : "unknown status";
           const summary = item.operationSummary ?? "Unnamed call";
           const message = item.message ? ` — ${item.message}` : "";
           return `${idx + 1}. ${summary} (${code})${message}`;
@@ -363,18 +354,14 @@ export async function generateQualitativeFeedback(params: {
 
     const positives = Array.isArray(parsed.positives)
       ? parsed.positives
-          .map((item) =>
-            typeof item === "string" ? item.trim() : ""
-          )
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
           .filter((item) => item.length > 0)
           .slice(0, MAX_POSITIVE_ITEMS)
       : [];
 
     const suggestions = Array.isArray(parsed.suggestions)
       ? parsed.suggestions
-          .map((item) =>
-            typeof item === "string" ? item.trim() : ""
-          )
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
           .filter((item) => item.length > 0)
           .slice(0, MAX_SUGGESTION_ITEMS)
       : [];
@@ -530,7 +517,7 @@ export async function generateTurnSummaryFeedback(params: {
     "### HTTP interaction details",
     statusBreakdown,
     answerSnippet ? `### Assistant final reply\n${answerSnippet}` : null,
-    "Respond with JSON matching this schema: {\"feedback\":\"...\",\"positives\":[\"...\"],\"suggestions\":[\"...\"]}. Emphasize improvements that span multiple operations when applicable.",
+    'Respond with JSON matching this schema: {"feedback":"...","positives":["..."],"suggestions":["..."]}. Emphasize improvements that span multiple operations when applicable.',
   ].filter((section): section is string => typeof section === "string");
 
   const prompt = promptSections.join("\n\n");
@@ -583,18 +570,14 @@ export async function generateTurnSummaryFeedback(params: {
 
     const positives = Array.isArray(parsed.positives)
       ? parsed.positives
-          .map((item) =>
-            typeof item === "string" ? item.trim() : ""
-          )
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
           .filter((item) => item.length > 0)
           .slice(0, MAX_POSITIVE_ITEMS)
       : [];
 
     const suggestions = Array.isArray(parsed.suggestions)
       ? parsed.suggestions
-          .map((item) =>
-            typeof item === "string" ? item.trim() : ""
-          )
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
           .filter((item) => item.length > 0)
           .slice(0, MAX_SUGGESTION_ITEMS)
       : [];

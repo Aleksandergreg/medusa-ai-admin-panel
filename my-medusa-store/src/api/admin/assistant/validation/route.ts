@@ -3,7 +3,7 @@ import type {
   MedusaResponse,
 } from "@medusajs/framework/http";
 import AssistantModuleService from "../../../../modules/assistant/service";
-import { validationManager } from "../../../../modules/assistant/lib/validation-manager";
+import { validationManager } from "../../../../modules/assistant/domain/validation/manager";
 import { getActorId } from "../../../../modules/assistant/utils/auth-helpers";
 
 type ValidationResponsePayload = {
@@ -37,9 +37,8 @@ export async function POST(
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const assistantService = req.scope.resolve<AssistantModuleService>(
-      "assistant"
-    );
+    const assistantService =
+      req.scope.resolve<AssistantModuleService>("assistant");
 
     const result = await assistantService.handleValidationResponse({
       actorId,

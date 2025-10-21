@@ -1,8 +1,13 @@
 import { withToolLogging } from "../../../lib/metrics/store";
-import { JSONValue, MCPResult, extractToolJsonPayload, isPlainRecord } from "../lib/utils";
+import {
+  JSONValue,
+  MCPResult,
+  extractToolJsonPayload,
+  isPlainRecord,
+} from "../lib/utils";
 import { collectGroundTruthNumbers } from "../analysis/validation";
 import { summarizePayload, AssistantSummary } from "../analysis/aggregators";
-import { validationManager } from "../lib/validation-manager";
+import { validationManager } from "../domain/validation/manager";
 import { isToolExecutionResult } from "../utils/type-guards";
 
 export type ExecuteOutcome = {
@@ -37,7 +42,7 @@ function needsValidation(
   }
 
   // Check if operation starts with destructive method patterns
-const destructivePatterns = [/^Admin(Post|Delete)/i, /^Store(Post|Delete)/i];
+  const destructivePatterns = [/^Admin(Post|Delete)/i, /^Store(Post|Delete)/i];
 
   return destructivePatterns.some((pattern) => pattern.test(operationId));
 }

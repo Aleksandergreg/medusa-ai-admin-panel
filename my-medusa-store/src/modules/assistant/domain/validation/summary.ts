@@ -1,13 +1,13 @@
-import { extractToolJsonPayload, isPlainRecord } from "./utils";
-import { HistoryEntry } from "./types";
-import { ValidationRequest } from "./validation-types";
-import { buildLabelMap, pickLabelFromRecord } from "./label-utils";
+import { extractToolJsonPayload, isPlainRecord } from "../../lib/utils";
+import { HistoryEntry } from "../../lib/types";
+import { ValidationRequest } from "./types";
+import { buildLabelMap, pickLabelFromRecord } from "../../lib/label-utils";
 import {
   extractRecord,
   formatData,
   hasRenderableData,
   normalizeBodyForDisplay,
-} from "./formatters";
+} from "../../lib/formatters";
 
 type PlainRecord = Record<string, unknown>;
 
@@ -138,7 +138,10 @@ const recordDiff = (
   ) {
     const prevRecord = previous as PlainRecord;
     const currRecord = current as PlainRecord;
-    const keys = new Set([...Object.keys(prevRecord), ...Object.keys(currRecord)]);
+    const keys = new Set([
+      ...Object.keys(prevRecord),
+      ...Object.keys(currRecord),
+    ]);
     for (const key of keys) {
       const nextPath = path ? `${path}.${key}` : key;
       recordDiff(nextPath, prevRecord[key], currRecord[key], notes, depth + 1);
@@ -228,7 +231,7 @@ const extractErrorMessage = (result: unknown): string | undefined => {
 
   const candidates: unknown[] = [
     result.message,
-    (result.error && typeof result.error === "string") ? result.error : undefined,
+    result.error && typeof result.error === "string" ? result.error : undefined,
   ];
 
   const data = result.data;
@@ -288,7 +291,10 @@ export function buildValidationSummary(
   const bodyData = normalizeBodyForDisplay(
     (request.args as Record<string, unknown>)["body"]
   );
-  const pathParams = extractRecord(request.args, ["pathParams", "path_parameters"]);
+  const pathParams = extractRecord(request.args, [
+    "pathParams",
+    "path_parameters",
+  ]);
   const queryParams = extractRecord(request.args, ["query", "queryParams"]);
   const headerParams = extractRecord(request.args, ["headers"]);
 
@@ -320,18 +326,16 @@ export function buildValidationSummary(
   const sections: string[] = [];
   const changeNotes: string[] = [];
 
-  const previousAttempt = [...history]
-    .reverse()
-    .find((entry) => {
-      if (entry.tool_name !== "openapi.execute") {
-        return false;
-      }
-      const args = entry.tool_args;
-      if (!isPlainRecord(args)) {
-        return false;
-      }
-      return args.operationId === request.operationId;
-    });
+  const previousAttempt = [...history].reverse().find((entry) => {
+    if (entry.tool_name !== "openapi.execute") {
+      return false;
+    }
+    const args = entry.tool_args;
+    if (!isPlainRecord(args)) {
+      return false;
+    }
+    return args.operationId === request.operationId;
+  });
 
   if (
     previousAttempt &&
@@ -370,7 +374,9 @@ export function buildValidationSummary(
     }
   }
   if (request.path || request.method) {
-    const endpoint = `${method}${request.path ? ` ${request.path}` : ""}`.trim();
+    const endpoint = `${method}${
+      request.path ? ` ${request.path}` : ""
+    }`.trim();
     operationLines.push(`- Endpoint: \`${endpoint}\``);
   }
   if (operationLines.length) {
@@ -378,7 +384,13 @@ export function buildValidationSummary(
   }
 
   if (hasRenderableData(request.resourcePreview)) {
-    sections.push(`**Existing Resource**\n${formatData(request.resourcePreview, 0, labelMap)}`);
+    sections.push(
+      `**Existing Resource**\n${formatData(
+        request.resourcePreview,
+        0,
+        labelMap
+      )}`
+    );
   }
 
   if (hasRenderableData(bodyData)) {
@@ -392,15 +404,21 @@ export function buildValidationSummary(
   }
 
   if (hasRenderableData(pathParams)) {
-    sections.push(`**Path Parameters**\n${formatData(pathParams, 0, labelMap)}`);
+    sections.push(
+      `**Path Parameters**\n${formatData(pathParams, 0, labelMap)}`
+    );
   }
 
   if (hasRenderableData(queryParams)) {
-    sections.push(`**Query Parameters**\n${formatData(queryParams, 0, labelMap)}`);
+    sections.push(
+      `**Query Parameters**\n${formatData(queryParams, 0, labelMap)}`
+    );
   }
 
   if (hasRenderableData(headerParams)) {
-    sections.push(`**Custom Headers**\n${formatData(headerParams, 0, labelMap)}`);
+    sections.push(
+      `**Custom Headers**\n${formatData(headerParams, 0, labelMap)}`
+    );
   }
 
   const details = sections.length
