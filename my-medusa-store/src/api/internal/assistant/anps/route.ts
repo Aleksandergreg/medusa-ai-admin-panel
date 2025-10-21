@@ -4,7 +4,7 @@ import {
   normalizeClientMetadata,
   sanitizeClientMetadata,
   sanitizeToolUsage,
-} from "../../../../modules/assistant/lib/anps";
+} from "../../../../modules/assistant/domain/anps/types";
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const assistantService =
@@ -134,10 +134,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const result = await assistantService.recordAgentNps({
       agentId: typeof agentValue === "string" ? agentValue : "",
       sessionId: typeof sessionValue === "string" ? sessionValue : "",
-      score:
-        typeof scoreValue === "number"
-          ? scoreValue
-          : Number(scoreValue),
+      score: typeof scoreValue === "number" ? scoreValue : Number(scoreValue),
       agentVersion:
         typeof agentVersionRaw === "string" ? agentVersionRaw : undefined,
       userId: typeof userIdRaw === "string" ? userIdRaw : undefined,

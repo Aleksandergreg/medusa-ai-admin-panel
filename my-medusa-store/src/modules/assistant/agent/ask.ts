@@ -8,7 +8,7 @@ import { preloadOpenApiSuggestions } from "./preload";
 import { executeTool, ExecuteOutcome } from "./tool-executor";
 import { HistoryTracker, isMutatingExecuteCall } from "./history-tracker";
 import { planNextAction } from "./planner-driver";
-import { ValidationContinuationResult } from "../lib/validation-types";
+import { ValidationContinuationResult } from "../domain/validation/types";
 import { createValidationGate } from "./validation-flow";
 
 type AskInput = {

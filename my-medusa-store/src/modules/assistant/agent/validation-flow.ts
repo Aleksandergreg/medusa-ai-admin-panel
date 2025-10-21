@@ -4,10 +4,10 @@ import {
   ValidationContinuationPayload,
   ValidationContinuationResult,
   ValidationRequest,
-} from "../lib/validation-types";
+} from "../domain/validation/types";
 import { HistoryTracker } from "./history-tracker";
 import { ExecuteOutcome, executeTool } from "./tool-executor";
-import { buildValidationSummary } from "../lib/validation-summary";
+import { buildValidationSummary } from "../domain/validation/summary";
 
 type CreateValidationGateParams = {
   request: ValidationRequest;
@@ -61,10 +61,25 @@ const mergeArgsWithEdits = (
   return mergeRecursive(original, edits);
 };
 
-export function createValidationGate(params: CreateValidationGateParams): ValidationContinuationResult {
-  const { request, mcp, toolName, args, historyTracker, cacheable, handleSuccessfulExecution, runNext, step } = params;
+export function createValidationGate(
+  params: CreateValidationGateParams
+): ValidationContinuationResult {
+  const {
+    request,
+    mcp,
+    toolName,
+    args,
+    historyTracker,
+    cacheable,
+    handleSuccessfulExecution,
+    runNext,
+    step,
+  } = params;
 
-  const validationMessage = buildValidationSummary(request, historyTracker.list);
+  const validationMessage = buildValidationSummary(
+    request,
+    historyTracker.list
+  );
 
   const continuation: ValidationContinuationHandler = async (
     payload: ValidationContinuationPayload

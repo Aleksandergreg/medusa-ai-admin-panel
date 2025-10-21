@@ -1,6 +1,6 @@
-import { AgentNpsEvaluation } from "./anps";
-import { extractToolJsonPayload, isPlainRecord } from "./utils";
-import type { HistoryEntry } from "./types";
+import { AgentNpsEvaluation } from "./types";
+import { extractToolJsonPayload, isPlainRecord } from "../../lib/utils";
+import type { HistoryEntry } from "../../lib/types";
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -115,7 +115,10 @@ const normalizeSearchText = (value: string | null | undefined): string =>
 const includesAny = (target: string, terms: string[]): boolean =>
   terms.some((term) => target.includes(term));
 
-const getExpectedMs = (operationId: string, taskLabel: string | null): number => {
+const getExpectedMs = (
+  operationId: string,
+  taskLabel: string | null
+): number => {
   const searchText = [
     normalizeSearchText(taskLabel),
     normalizeSearchText(operationId),
@@ -218,7 +221,9 @@ export function evaluateAgentNpsScore(params: {
   return {
     score,
     errorFlag: !analysis.success || analysis.errors > 0,
-    errorSummary: analysis.success ? null : analysis.summaries.slice(-1)[0] ?? null,
+    errorSummary: analysis.success
+      ? null
+      : analysis.summaries.slice(-1)[0] ?? null,
     attempts: analysis.attempts,
     errors: analysis.errors,
     durationMs,

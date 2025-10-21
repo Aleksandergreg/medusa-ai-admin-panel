@@ -2,7 +2,7 @@
  * Types for user validation of destructive operations
  */
 
-import type { HistoryEntry } from "./types";
+import type { HistoryEntry } from "../../lib/types";
 
 export type ValidationRequest = {
   id: string;
