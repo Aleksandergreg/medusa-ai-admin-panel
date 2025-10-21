@@ -33,6 +33,98 @@ const MAX_TEXT_CHARS = 4000;
 const MAX_POSITIVE_ITEMS = 5;
 const MAX_SUGGESTION_ITEMS = 5;
 
+const sanitizeListItem = (text: string): string => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const withoutPrefix = trimmed
+    .replace(/^\s*(?:[-*•●]+|\d+[.)])\s*/, "")
+    .trim();
+  return withoutPrefix;
+};
+
+const normalizeFeedbackItems = (
+  input: unknown,
+  limit: number
+): string[] => {
+  if (!input || limit <= 0) {
+    return [];
+  }
+
+  const items: string[] = [];
+  const seen = new Set<string>();
+
+  const addItem = (raw: string) => {
+    const cleaned = sanitizeListItem(raw);
+    if (!cleaned || seen.has(cleaned)) {
+      return;
+    }
+    seen.add(cleaned);
+    items.push(cleaned);
+  };
+
+  const visit = (value: unknown): void => {
+    if (items.length >= limit || value == null) {
+      return;
+    }
+
+    if (typeof value === "string") {
+      const segments = value.split(/\r?\n+/);
+      if (segments.length > 1) {
+        for (const segment of segments) {
+          if (items.length >= limit) {
+            break;
+          }
+          addItem(segment);
+        }
+      } else {
+        addItem(value);
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (items.length >= limit) {
+          break;
+        }
+        visit(entry);
+      }
+      return;
+    }
+
+    if (isPlainRecord(value)) {
+      const record = value as Record<string, unknown>;
+
+      for (const key of ["text", "value", "content", "message"]) {
+        const candidate = record[key];
+        if (typeof candidate === "string") {
+          visit(candidate);
+        }
+      }
+
+      for (const key of [
+        "items",
+        "values",
+        "entries",
+        "list",
+        "suggestions",
+        "positives",
+      ]) {
+        const candidate = record[key];
+        if (Array.isArray(candidate)) {
+          visit(candidate);
+        }
+      }
+    }
+  };
+
+  visit(input);
+
+  return items.slice(0, limit);
+};
+
 const normalizeOperationIdentifier = (value: string): string =>
   value.toLowerCase().replace(/[_\s-]+/g, "");
 
@@ -352,19 +444,14 @@ export async function generateQualitativeFeedback(params: {
       return null;
     }
 
-    const positives = Array.isArray(parsed.positives)
-      ? parsed.positives
-          .map((item) => (typeof item === "string" ? item.trim() : ""))
-          .filter((item) => item.length > 0)
-          .slice(0, MAX_POSITIVE_ITEMS)
-      : [];
-
-    const suggestions = Array.isArray(parsed.suggestions)
-      ? parsed.suggestions
-          .map((item) => (typeof item === "string" ? item.trim() : ""))
-          .filter((item) => item.length > 0)
-          .slice(0, MAX_SUGGESTION_ITEMS)
-      : [];
+    const positives = normalizeFeedbackItems(
+      parsed.positives,
+      MAX_POSITIVE_ITEMS
+    );
+    const suggestions = normalizeFeedbackItems(
+      parsed.suggestions,
+      MAX_SUGGESTION_ITEMS
+    );
 
     return {
       summary: feedback,
@@ -568,19 +655,14 @@ export async function generateTurnSummaryFeedback(params: {
       return null;
     }
 
-    const positives = Array.isArray(parsed.positives)
-      ? parsed.positives
-          .map((item) => (typeof item === "string" ? item.trim() : ""))
-          .filter((item) => item.length > 0)
-          .slice(0, MAX_POSITIVE_ITEMS)
-      : [];
-
-    const suggestions = Array.isArray(parsed.suggestions)
-      ? parsed.suggestions
-          .map((item) => (typeof item === "string" ? item.trim() : ""))
-          .filter((item) => item.length > 0)
-          .slice(0, MAX_SUGGESTION_ITEMS)
-      : [];
+    const positives = normalizeFeedbackItems(
+      parsed.positives,
+      MAX_POSITIVE_ITEMS
+    );
+    const suggestions = normalizeFeedbackItems(
+      parsed.suggestions,
+      MAX_SUGGESTION_ITEMS
+    );
 
     return {
       summary: feedback,

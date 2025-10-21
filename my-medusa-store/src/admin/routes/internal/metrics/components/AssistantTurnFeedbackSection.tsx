@@ -6,6 +6,7 @@ import {
   ExclamationCircleSolid,
   Clock,
 } from "@medusajs/icons";
+import { FeedbackMarkdownText } from "./FeedbackMarkdownText";
 
 const formatDate = (date: Date): string => {
   try {
@@ -74,6 +75,7 @@ export function AssistantTurnFeedbackSection() {
           const aggregate = row.metadata.aggregate;
           const avgScore = aggregate?.averageScore;
           const hasErrors = aggregate?.totalErrors && aggregate.totalErrors > 0;
+          const userPrompt = row.metadata.prompt?.trim();
 
           return (
             <div
@@ -119,6 +121,20 @@ export function AssistantTurnFeedbackSection() {
                 )}
               </div>
 
+              {userPrompt && (
+                <div className="mb-4 rounded-md border border-ui-border-base bg-ui-bg-subtle p-3">
+                  <Text
+                    size="xsmall"
+                    className="text-ui-fg-subtle uppercase tracking-wide mb-1"
+                  >
+                    Prompt
+                  </Text>
+                  <Text className="text-sm leading-relaxed text-ui-fg-base whitespace-pre-line">
+                    {userPrompt}
+                  </Text>
+                </div>
+              )}
+
               {/* Summary */}
               <div className="mb-4 rounded-md bg-ui-bg-subtle p-3">
                 <Text className="text-sm leading-relaxed">
@@ -147,7 +163,10 @@ export function AssistantTurnFeedbackSection() {
                           className="flex items-start gap-2"
                         >
                           <span className="text-green-600 mt-0.5">•</span>
-                          <span>{item}</span>
+                          <FeedbackMarkdownText
+                            content={item}
+                            className="flex-1 text-sm text-green-900 leading-relaxed"
+                          />
                         </li>
                       ))}
                     </ul>
@@ -173,7 +192,10 @@ export function AssistantTurnFeedbackSection() {
                           className="flex items-start gap-2"
                         >
                           <span className="text-blue-600 mt-0.5">•</span>
-                          <span>{item}</span>
+                          <FeedbackMarkdownText
+                            content={item}
+                            className="flex-1 text-sm text-blue-900 leading-relaxed"
+                          />
                         </li>
                       ))}
                     </ul>
