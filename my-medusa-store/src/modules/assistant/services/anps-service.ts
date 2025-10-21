@@ -268,41 +268,18 @@ export class AnpsService {
       if (!operationId) {
         continue;
       }
-      const key = operationId.trim().toLowerCase();
+      const trimmedOperationId = operationId.trim();
+      const key = trimmedOperationId.toLowerCase();
       if (seen.has(key)) {
         continue;
       }
       seen.add(key);
       operations.push({
         operationId,
-        taskLabel: this.toTaskLabel(operationId),
+        taskLabel: trimmedOperationId.length ? trimmedOperationId : null,
       });
     }
     return operations;
-  }
-
-  /**
-   * Convert operation ID to a human-readable task label.
-   */
-  private toTaskLabel(operationId: string): string | null {
-    const normalized = operationId.toLowerCase().replace(/[_-]/g, "");
-    if (normalized.includes("promotion")) {
-      return "create-promotion";
-    }
-    if (normalized.includes("pricelist")) {
-      return "apply-price-list";
-    }
-    if (normalized.includes("order")) {
-      return "fulfill-order";
-    }
-    const hyphenated = operationId
-      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-      .replace(/[\s_]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/[^a-z0-9-]/gi, "")
-      .toLowerCase()
-      .replace(/^-|-$/g, "");
-    return hyphenated.length > 0 ? hyphenated : null;
   }
 
   /**
