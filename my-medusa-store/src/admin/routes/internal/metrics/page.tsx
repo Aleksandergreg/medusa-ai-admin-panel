@@ -1,28 +1,41 @@
 "use client";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
-import { Container, Heading } from "@medusajs/ui";
+import { Container, Tabs } from "@medusajs/ui";
 import { Beaker } from "@medusajs/icons";
 
 import { AssistantFeedbackSection } from "./components/AssistantFeedbackSection";
 import { AssistantTurnFeedbackSection } from "./components/AssistantTurnFeedbackSection";
-import { NpsCard } from "../../assistant/components/NpsCard";
+import { NpsOverview } from "./components/NpsOverview";
+import { MetricsHeader } from "./components/MetricsHeader";
 
 const MetricsPage = () => {
   return (
     <Container className="divide-y p-0">
-      <div className="flex items-center justify-between px-6 py-4">
-        <Heading level="h1">AI Metrics</Heading>
+      <MetricsHeader />
+
+      <div className="px-6 py-6">
+        <NpsOverview />
       </div>
 
-      <div className="space-y-4 px-6 py-4">
-        <NpsCard />
-        <AssistantTurnFeedbackSection />
-        <AssistantFeedbackSection />
+      <div className="px-6 py-6">
+        <Tabs defaultValue="turns" className="w-full">
+          <Tabs.List className="mb-6">
+            <Tabs.Trigger value="turns">Turn Summaries</Tabs.Trigger>
+            <Tabs.Trigger value="operations">Operation Details</Tabs.Trigger>
+          </Tabs.List>
+
+          <Tabs.Content value="turns">
+            <AssistantTurnFeedbackSection />
+          </Tabs.Content>
+
+          <Tabs.Content value="operations">
+            <AssistantFeedbackSection />
+          </Tabs.Content>
+        </Tabs>
       </div>
     </Container>
   );
 };
-
 
 export const config = defineRouteConfig({ label: "AI Metrics", icon: Beaker });
 export default MetricsPage;
