@@ -168,6 +168,7 @@ class AssistantModuleService extends MedusaService({}) {
         nextStep: agentResult.nextStep,
         anpsStartedAt: requestStartedAt,
         userWaitMs: 0,
+        prompt: trimmedPrompt,
       };
       validationManager.attachContext(validationData.id, context);
     } else if (restoredPending) {
@@ -180,6 +181,7 @@ class AssistantModuleService extends MedusaService({}) {
           anpsStartedAt:
             restoredPending.context.anpsStartedAt ?? requestStartedAt,
           userWaitMs: restoredPending.context.userWaitMs ?? 0,
+          prompt: restoredPending.context.prompt ?? trimmedPrompt,
         };
       }
       validationManager.restoreValidation(restoredPending);
@@ -200,6 +202,7 @@ class AssistantModuleService extends MedusaService({}) {
         durationMs: totalDurationMs,
         agentComputeMs: totalDurationMs,
         answer,
+        prompt: trimmedPrompt,
       });
     }
 

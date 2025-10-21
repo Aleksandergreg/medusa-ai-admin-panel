@@ -142,8 +142,9 @@ export class AnpsMapper {
       positives: string[];
       suggestions: string[];
     };
+    prompt?: string | null;
   }): AgentNpsClientMetadata {
-    return {
+    const metadata: AgentNpsClientMetadata = {
       ...params.baseMetadata,
       isTurnFeedback: true,
       operations: params.operations,
@@ -151,7 +152,14 @@ export class AnpsMapper {
       feedback: params.feedback,
       llmFeedback: params.llmFeedback,
       scoredAt: new Date().toISOString(),
-    } as AgentNpsClientMetadata;
+    };
+
+    const prompt = params.prompt?.toString().trim();
+    if (prompt) {
+      metadata.userPrompt = prompt;
+    }
+
+    return metadata;
   }
 
   /**

@@ -49,6 +49,7 @@ export type PendingValidationContext = {
   nextStep?: number;
   anpsStartedAt?: number;
   userWaitMs?: number;
+  prompt?: string;
 };
 
 export type PendingValidation = {
