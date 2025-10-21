@@ -4,7 +4,7 @@ import {
   fetchAssistantNpsResponses,
 } from "../lib/assistantApi";
 
-export function useAssistantNpsRecent(limit = 6) {
+export function useAssistantNpsRecent(limit = 10) {
   const [responses, setResponses] = useState<AssistantNpsResponseRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
