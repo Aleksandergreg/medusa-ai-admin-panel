@@ -7,6 +7,7 @@ import {
   Clock,
   InformationCircleSolid,
 } from "@medusajs/icons";
+import { FeedbackMarkdownText } from "./FeedbackMarkdownText";
 
 const formatDate = (date: Date): string => {
   try {
@@ -154,7 +155,10 @@ export function AssistantFeedbackSection() {
                           className="flex items-start gap-2"
                         >
                           <span className="text-green-600 mt-0.5">✓</span>
-                          <span>{item}</span>
+                          <FeedbackMarkdownText
+                            content={item}
+                            className="flex-1 text-sm text-green-900 leading-relaxed"
+                          />
                         </li>
                       ))}
                     </ul>
@@ -180,7 +184,10 @@ export function AssistantFeedbackSection() {
                           className="flex items-start gap-2"
                         >
                           <span className="text-blue-600 mt-0.5">→</span>
-                          <span>{item}</span>
+                          <FeedbackMarkdownText
+                            content={item}
+                            className="flex-1 text-sm text-blue-900 leading-relaxed"
+                          />
                         </li>
                       ))}
                     </ul>
