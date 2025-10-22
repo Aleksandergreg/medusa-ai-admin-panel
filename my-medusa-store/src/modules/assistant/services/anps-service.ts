@@ -1,5 +1,8 @@
 import type { Knex } from "knex";
-import { AnpsRepository } from "../repositories/anps-repository";
+import {
+  AnpsRecentFilter,
+  AnpsRepository,
+} from "../repositories/anps-repository";
 import { AnpsMapper } from "../mappers/anps-mapper";
 import {
   AgentNpsInsertInput,
@@ -15,8 +18,8 @@ import { evaluateAgentNpsScore } from "../domain/anps/evaluator";
 import {
   generateQualitativeFeedback,
   generateTurnSummaryFeedback,
-  summarizeStatusMessages,
 } from "../domain/anps/feedback";
+import { summarizeStatusMessages } from "../domain/anps/status-digest";
 import type { QualitativeFeedback } from "../domain/anps/feedback";
 import { AssistantModuleOptions } from "../config";
 import { HistoryEntry } from "../lib/types";
@@ -223,8 +226,11 @@ export class AnpsService {
   /**
    * List recent Agent NPS records.
    */
-  async listRecentAgentNps(limit = 20): Promise<AgentNpsRow[]> {
-    const rows = await this.repository.getRecent(limit);
+  async listRecentAgentNps(
+    limit = 20,
+    filters: AnpsRecentFilter = {}
+  ): Promise<AgentNpsRow[]> {
+    const rows = await this.repository.getRecent(limit, filters);
 
     return rows.map((row) => {
       const parsed = AnpsMapper.mapAgentNpsRow(row);

@@ -23,13 +23,31 @@ export async function GET(
       ? Math.floor(limitParam)
       : 20;
 
-  const rows = await assistantService.listRecentAgentNps(limit);
+  const extractTaskLabel = (value: unknown): string | undefined => {
+    if (Array.isArray(value)) {
+      return value.length ? extractTaskLabel(value[0]) : undefined;
+    }
+    if (typeof value !== "string") {
+      return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : undefined;
+  };
+
+  const taskLabel =
+    extractTaskLabel(req.query?.taskLabel) ??
+    extractTaskLabel((req.query as Record<string, unknown>)?.task_label);
+
+  const rows = await assistantService.listRecentAgentNps(limit, {
+    ...(taskLabel ? { taskLabel } : {}),
+  });
 
   console.info(
     JSON.stringify({
       event: "agent_nps.admin_fetch",
       actor: actorId.slice(0, 4) + "…",
       limit,
+      task_label: taskLabel ?? null,
       returned: rows.length,
     })
   );
@@ -54,4 +72,3 @@ export async function GET(
     })),
   });
 }
-

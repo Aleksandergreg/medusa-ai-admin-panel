@@ -34,9 +34,26 @@ const getScoreColor = (score: number | undefined): string => {
   return "text-red-600";
 };
 
-export function AssistantTurnFeedbackSection() {
-  const { responses, loading, error } = useAssistantNpsRecent(6);
+const formatDuration = (durationMs?: number | null): string => {
+  if (typeof durationMs !== "number" || durationMs <= 0 || Number.isNaN(durationMs)) {
+    return "n/a";
+  }
+  if (durationMs < 1) {
+    return "<1ms";
+  }
+  if (durationMs < 1_000) {
+    return `${Math.max(1, Math.round(durationMs))}ms`;
+  }
+  if (durationMs < 10_000) {
+    return `${(durationMs / 1_000).toFixed(2)}s`;
+  }
+  return `${(durationMs / 1_000).toFixed(1)}s`;
+};
 
+export function AssistantTurnFeedbackSection() {
+  const { responses, loading, error } = useAssistantNpsRecent(6, {
+    taskLabel: "turn-summary",
+  });
   const turnRows = useMemo(
     () =>
       responses.filter(
@@ -105,6 +122,15 @@ export function AssistantTurnFeedbackSection() {
                   <div className="flex items-center gap-2 text-ui-fg-subtle">
                     <Clock className="text-ui-fg-muted" />
                     <Text size="small">{formatDate(row.createdAt)}</Text>
+                    {typeof aggregate?.agentComputeMs === "number" &&
+                      aggregate.agentComputeMs > 0 && (
+                        <>
+                          <span aria-hidden="true">•</span>
+                          <Text size="small">
+                            Total compute {formatDuration(aggregate.agentComputeMs)}
+                          </Text>
+                        </>
+                      )}
                   </div>
                 </div>
                 {hasErrors ? (
@@ -225,10 +251,7 @@ export function AssistantTurnFeedbackSection() {
                   <div className="space-y-2">
                     {row.metadata.operations.map((op, index) => {
                       const label = op.taskLabel ?? op.operationId;
-                      const duration =
-                        typeof op.durationMs === "number" && op.durationMs > 0
-                          ? `${(op.durationMs / 1000).toFixed(1)}s`
-                          : "n/a";
+                      const duration = formatDuration(op.durationMs);
                       const opScore = op.score;
                       return (
                         <div
