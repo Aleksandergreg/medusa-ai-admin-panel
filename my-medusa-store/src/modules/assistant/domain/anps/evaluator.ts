@@ -1,6 +1,10 @@
 import { AgentNpsEvaluation } from "./types";
 import { extractToolJsonPayload, isPlainRecord } from "../../lib/utils";
 import type { HistoryEntry } from "../../lib/types";
+import {
+  extractOperationIdentifier,
+  normalizeOperationIdentifier,
+} from "./operation-utils";
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -19,23 +23,6 @@ type OperationAnalysis = {
 // need to allow sufficient time for completion. Longer durations are only assigned
 // to specific operations known to take more time (e.g., price list or promotion updates).
 const DEFAULT_EXPECTED_MS = 60_000;
-const normalizeOperationIdentifier = (value: string): string =>
-  value.toLowerCase().replace(/[_-]/g, "");
-
-const extractOperationIdentifier = (
-  args: Record<string, unknown>
-): string | null => {
-  const camel = args.operationId;
-  if (typeof camel === "string" && camel.trim().length) {
-    return camel;
-  }
-  const snake = (args as Record<string, unknown>).operation_id;
-  if (typeof snake === "string" && snake.trim().length) {
-    return snake;
-  }
-  return null;
-};
-
 const analyzeOperationHistory = (
   history: HistoryEntry[],
   operationId: string
@@ -45,6 +32,7 @@ const analyzeOperationHistory = (
   let success = false;
   let lastStatusCode: number | null = null;
   const summaries: string[] = [];
+  const normalizedTarget = normalizeOperationIdentifier(operationId);
 
   for (const entry of history) {
     if (entry.tool_name !== "openapi.execute") {
@@ -61,7 +49,6 @@ const analyzeOperationHistory = (
       continue;
     }
 
-    const normalizedTarget = normalizeOperationIdentifier(operationId);
     const normalizedEntry = normalizeOperationIdentifier(entryOperationId);
     if (
       entryOperationId !== operationId &&

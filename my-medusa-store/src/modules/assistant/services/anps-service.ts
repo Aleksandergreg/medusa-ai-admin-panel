@@ -15,8 +15,8 @@ import { evaluateAgentNpsScore } from "../domain/anps/evaluator";
 import {
   generateQualitativeFeedback,
   generateTurnSummaryFeedback,
-  summarizeStatusMessages,
 } from "../domain/anps/feedback";
+import { summarizeStatusMessages } from "../domain/anps/status-digest";
 import type { QualitativeFeedback } from "../domain/anps/feedback";
 import { AssistantModuleOptions } from "../config";
 import { HistoryEntry } from "../lib/types";
