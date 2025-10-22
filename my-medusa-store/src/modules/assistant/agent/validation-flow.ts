@@ -107,7 +107,16 @@ export function createValidationGate(
     );
 
     if (resumedOutcome.error) {
-      historyTracker.recordError(toolName, argsToExecute, resumedOutcome.error);
+      historyTracker.recordError(
+        toolName,
+        argsToExecute,
+        resumedOutcome.error,
+        {
+          durationMs: resumedOutcome.durationMs,
+          startedAtMs: resumedOutcome.startedAtMs,
+          finishedAtMs: resumedOutcome.finishedAtMs,
+        }
+      );
       return runNext();
     }
 
