@@ -199,7 +199,11 @@ export function evaluateAgentNpsScore(params: {
       ? Math.max(0, analysis.windowEndMs - analysis.windowStartMs)
       : null;
   const operationDurationMs =
-    windowSpanMs !== null && windowSpanMs > 0 ? windowSpanMs : aggregatedDurationMs;
+    aggregatedDurationMs !== null && aggregatedDurationMs > 0
+      ? aggregatedDurationMs
+      : windowSpanMs !== null && windowSpanMs > 0
+      ? windowSpanMs
+      : null;
   const fallbackDurationMs =
     Number.isFinite(durationMs) && durationMs >= 0
       ? Math.max(0, Math.trunc(durationMs))
