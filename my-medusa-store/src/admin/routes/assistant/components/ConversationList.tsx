@@ -17,6 +17,7 @@ interface ConversationListProps {
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => void;
   loading: boolean;
+  disabled?: boolean;
 }
 
 export function ConversationList({
@@ -26,6 +27,7 @@ export function ConversationList({
   onDeleteConversation,
   onRenameConversation,
   loading,
+  disabled = false,
 }: ConversationListProps) {
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -65,12 +67,16 @@ export function ConversationList({
               {conversations.map((conversation) => (
                 <div
                   key={conversation.id}
-                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors relative ${
+                  className={`flex items-center gap-3 px-4 py-3 transition-colors relative ${
+                    disabled 
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer"
+                  } ${
                     conversation.id === currentSessionId
                       ? "bg-ui-bg-base-pressed border-l-2 border-ui-fg-interactive"
-                      : "hover:bg-ui-bg-base-hover"
+                      : !disabled && "hover:bg-ui-bg-base-hover"
                   }`}
-                  onClick={() => onSelectConversation(conversation.id)}
+                  onClick={() => !disabled && onSelectConversation(conversation.id)}
                 >
                   <EllipsisHorizontal
                     className={`flex-shrink-0 ${
@@ -100,9 +106,12 @@ export function ConversationList({
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedConversation(conversation);
-                      setRenameModalOpen(true);
+                      if (!disabled) {
+                        setSelectedConversation(conversation);
+                        setRenameModalOpen(true);
+                      }
                     }}
+                    disabled={disabled}
                     className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-base"
                   >
                     <PencilSquare />
@@ -111,9 +120,12 @@ export function ConversationList({
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedConversation(conversation);
-                      setDeleteModalOpen(true);
+                      if (!disabled) {
+                        setSelectedConversation(conversation);
+                        setDeleteModalOpen(true);
+                      }
                     }}
+                    disabled={disabled}
                     className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-error"
                   >
                     <Trash />

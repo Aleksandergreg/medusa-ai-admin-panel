@@ -81,7 +81,7 @@ const AssistantPage = () => {
         <IconButton
           size="small"
           onClick={() => setCreateModalOpen(true)}
-          disabled={conversationsLoading}
+          disabled={conversationsLoading || loading || isMutating}
           className="text-ui-fg-subtle hover:text-ui-fg-base"
         >
           <Plus />
@@ -96,6 +96,7 @@ const AssistantPage = () => {
           onDeleteConversation={deleteConversation}
           onRenameConversation={renameConversation}
           loading={conversationsLoading}
+          disabled={loading || isMutating}
         />
 
         {history.length === 0 && (
