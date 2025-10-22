@@ -10,6 +10,38 @@ export class HistoryTracker {
   private readonly entries: HistoryEntry[];
   private readonly dedupeCache = new ToolDedupeCache();
 
+  private normalizeMeta(meta?: {
+    durationMs?: number | null;
+    startedAtMs?: number | null;
+    finishedAtMs?: number | null;
+  }): HistoryEntry["tool_meta"] | undefined {
+    if (!meta) {
+      return undefined;
+    }
+    const toNumber = (value?: number | null): number | undefined =>
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.max(0, Math.trunc(value))
+        : undefined;
+
+    const duration = toNumber(meta.durationMs);
+    const started = toNumber(meta.startedAtMs);
+    const finished = toNumber(meta.finishedAtMs);
+
+    if (
+      duration === undefined &&
+      started === undefined &&
+      finished === undefined
+    ) {
+      return undefined;
+    }
+
+    return {
+      duration_ms: duration,
+      started_at_ms: started,
+      finished_at_ms: finished,
+    };
+  }
+
   constructor(initialHistory: HistoryEntry[] = []) {
     this.entries = [...initialHistory];
   }
@@ -60,11 +92,12 @@ export class HistoryTracker {
     });
 
     if (reusedEntry) {
-      const { tool_name, tool_args, tool_result } = reusedEntry;
+      const { tool_name, tool_args, tool_result, tool_meta } = reusedEntry;
       this.entries.push({
         tool_name,
         tool_args,
         tool_result,
+        tool_meta: tool_meta ? { ...tool_meta } : undefined,
       });
     }
   }
@@ -72,12 +105,14 @@ export class HistoryTracker {
   recordError(
     toolName: string,
     args: unknown,
-    error: Record<string, unknown>
+    error: Record<string, unknown>,
+    meta?: { durationMs?: number | null; startedAtMs?: number | null; finishedAtMs?: number | null }
   ): void {
     this.entries.push({
       tool_name: toolName,
       tool_args: args,
       tool_result: error,
+      tool_meta: this.normalizeMeta(meta),
     });
   }
 
@@ -85,12 +120,14 @@ export class HistoryTracker {
     toolName: string,
     args: unknown,
     result: unknown,
-    cacheable: boolean
+    cacheable: boolean,
+    meta?: { durationMs?: number | null; startedAtMs?: number | null; finishedAtMs?: number | null }
   ): HistoryEntry {
     const entry: HistoryEntry = {
       tool_name: toolName,
       tool_args: args,
       tool_result: result,
+      tool_meta: this.normalizeMeta(meta),
     };
     this.entries.push(entry);
 

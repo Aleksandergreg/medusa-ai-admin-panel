@@ -10,6 +10,11 @@ export type HistoryEntry = {
   tool_name: string;
   tool_args: any;
   tool_result: any;
+  tool_meta?: {
+    duration_ms?: number;
+    started_at_ms?: number;
+    finished_at_ms?: number;
+  };
 };
 
 export type ConversationEntry = {

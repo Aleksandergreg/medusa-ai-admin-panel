@@ -77,6 +77,11 @@ export async function askAgent(
       `   Tool Result: ${JSON.stringify(result).substring(0, 200)}...`
     );
 
+    const durationMs =
+      typeof outcome.durationMs === "number" && Number.isFinite(outcome.durationMs)
+        ? outcome.durationMs
+        : undefined;
+
     if (outcome.truth) {
       metricsStore.provideGroundTruth(turnId, outcome.truth);
     }
@@ -94,7 +99,11 @@ export async function askAgent(
       }
     }
 
-    historyTracker.recordResult(toolName, args, result, cacheable);
+    historyTracker.recordResult(toolName, args, result, cacheable, {
+      durationMs,
+      startedAtMs: outcome.startedAtMs,
+      finishedAtMs: outcome.finishedAtMs,
+    });
 
     if (outcome.summary) {
       historyTracker.recordSummary(toolName, outcome.summary);
@@ -224,7 +233,11 @@ export async function askAgent(
     }
 
     if (outcome.error) {
-      historyTracker.recordError(toolName, normalizedArgs, outcome.error);
+      historyTracker.recordError(toolName, normalizedArgs, outcome.error, {
+        durationMs: outcome.durationMs,
+        startedAtMs: outcome.startedAtMs,
+        finishedAtMs: outcome.finishedAtMs,
+      });
       return runLoop(step + 1);
     }
 

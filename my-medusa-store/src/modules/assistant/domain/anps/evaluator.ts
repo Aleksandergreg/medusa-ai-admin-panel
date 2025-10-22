@@ -15,6 +15,9 @@ type OperationAnalysis = {
   success: boolean;
   lastStatusCode: number | null;
   summaries: string[];
+  durations: number[];
+  windowStartMs: number | null;
+  windowEndMs: number | null;
 };
 
 // The default expected duration for an agent operation is set to 60 seconds (60,000 ms).
@@ -33,6 +36,9 @@ const analyzeOperationHistory = (
   let lastStatusCode: number | null = null;
   const summaries: string[] = [];
   const normalizedTarget = normalizeOperationIdentifier(operationId);
+  const durations: number[] = [];
+  let windowStartMs: number | null = null;
+  let windowEndMs: number | null = null;
 
   for (const entry of history) {
     if (entry.tool_name !== "openapi.execute") {
@@ -83,6 +89,34 @@ const analyzeOperationHistory = (
     ) {
       errors += 1;
     }
+
+    const meta = entry.tool_meta;
+    const durationMs = meta?.duration_ms;
+    if (
+      typeof durationMs === "number" &&
+      Number.isFinite(durationMs) &&
+      durationMs >= 0
+    ) {
+      durations.push(Math.trunc(durationMs));
+    }
+
+    const startedAt = meta?.started_at_ms;
+    if (typeof startedAt === "number" && Number.isFinite(startedAt)) {
+      const normalizedStart = Math.trunc(startedAt);
+      windowStartMs =
+        windowStartMs === null
+          ? normalizedStart
+          : Math.min(windowStartMs, normalizedStart);
+    }
+
+    const finishedAt = meta?.finished_at_ms;
+    if (typeof finishedAt === "number" && Number.isFinite(finishedAt)) {
+      const normalizedFinish = Math.trunc(finishedAt);
+      windowEndMs =
+        windowEndMs === null
+          ? normalizedFinish
+          : Math.max(windowEndMs, normalizedFinish);
+    }
   }
 
   return {
@@ -91,6 +125,9 @@ const analyzeOperationHistory = (
     success,
     lastStatusCode: Number.isFinite(lastStatusCode) ? lastStatusCode : null,
     summaries,
+    durations,
+    windowStartMs,
+    windowEndMs,
   };
 };
 
@@ -153,21 +190,40 @@ export function evaluateAgentNpsScore(params: {
     score -= clamp(analysis.errors * 2, 0, 6);
   }
 
+  const aggregatedDurationMs =
+    analysis.durations.length > 0
+      ? analysis.durations.reduce((sum, value) => sum + value, 0)
+      : null;
+  const windowSpanMs =
+    analysis.windowStartMs !== null && analysis.windowEndMs !== null
+      ? Math.max(0, analysis.windowEndMs - analysis.windowStartMs)
+      : null;
+  const operationDurationMs =
+    windowSpanMs !== null && windowSpanMs > 0 ? windowSpanMs : aggregatedDurationMs;
+  const fallbackDurationMs =
+    Number.isFinite(durationMs) && durationMs >= 0
+      ? Math.max(0, Math.trunc(durationMs))
+      : null;
+  const computeDurationMs =
+    typeof agentComputeMs === "number" && Number.isFinite(agentComputeMs)
+      ? Math.max(0, Math.trunc(agentComputeMs))
+      : null;
+
   const expectedMs = getExpectedMs(operationId, params.taskLabel);
 
   if (expectedMs > 0) {
     const effectiveDurationMs =
-      typeof agentComputeMs === "number" && Number.isFinite(agentComputeMs)
-        ? Math.max(0, agentComputeMs)
-        : durationMs;
-    const ratio = expectedMs ? effectiveDurationMs / expectedMs : 0;
+      operationDurationMs ?? computeDurationMs ?? fallbackDurationMs;
+    if (typeof effectiveDurationMs === "number" && effectiveDurationMs >= 0) {
+      const ratio = expectedMs ? effectiveDurationMs / expectedMs : 0;
 
-    if (ratio > 2.0) {
-      score -= 3;
-    } else if (ratio > 1.25) {
-      score -= 2;
-    } else if (ratio > 1.0) {
-      score -= 1;
+      if (ratio > 2.0) {
+        score -= 3;
+      } else if (ratio > 1.25) {
+        score -= 2;
+      } else if (ratio > 1.0) {
+        score -= 1;
+      }
     }
   }
 
@@ -185,16 +241,16 @@ export function evaluateAgentNpsScore(params: {
   if (analysis.errors > 0) {
     notes.push(`Errors: ${analysis.errors}`);
   }
-  if (durationMs) {
-    notes.push(`Duration: ${(durationMs / 1000).toFixed(1)}s`);
+  if (typeof operationDurationMs === "number") {
+    notes.push(`Duration: ${(operationDurationMs / 1000).toFixed(1)}s`);
   }
   if (
-    typeof agentComputeMs === "number" &&
-    Number.isFinite(agentComputeMs) &&
-    agentComputeMs >= 0 &&
-    (!durationMs || Math.abs(agentComputeMs - durationMs) > 1_000)
+    operationDurationMs === null &&
+    typeof computeDurationMs === "number" &&
+    typeof fallbackDurationMs === "number" &&
+    Math.abs(computeDurationMs - fallbackDurationMs) > 1_000
   ) {
-    notes.push(`Compute: ${(agentComputeMs / 1000).toFixed(1)}s`);
+    notes.push(`Compute: ${(computeDurationMs / 1000).toFixed(1)}s`);
   }
   if (analysis.lastStatusCode !== null) {
     notes.push(`Last status: ${analysis.lastStatusCode}`);
@@ -213,7 +269,7 @@ export function evaluateAgentNpsScore(params: {
       : analysis.summaries.slice(-1)[0] ?? null,
     attempts: analysis.attempts,
     errors: analysis.errors,
-    durationMs,
+    durationMs: operationDurationMs ?? fallbackDurationMs,
     feedbackNote: notes.join("; "),
   };
 }
