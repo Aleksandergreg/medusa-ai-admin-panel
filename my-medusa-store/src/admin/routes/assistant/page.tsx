@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { ConversationMessages } from "./components/ConversationMessages";
 import { ConversationList } from "./components/ConversationList";
+import { CreateModal } from "./components/ConversationModals";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { Container, Heading, Text, IconButton } from "@medusajs/ui";
 import { AiAssistent, Plus } from "@medusajs/icons";
@@ -32,6 +33,7 @@ const AssistantPage = () => {
     renameConversation,
   } = useAssistant();
 
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -42,13 +44,17 @@ const AssistantPage = () => {
     scrollToBottom();
   }, [history, loading]);
 
+  const handleCreateConversation = (title: string) => {
+    createConversation(title);
+  };
+
   return (
     <Container className="divide-y p-0">
       <div className="sticky top-0 z-10 bg-ui-bg-base flex items-center justify-between px-6 py-4 border-b border-ui-border-base">
         <Heading level="h1">Assistant</Heading>
         <IconButton
           size="small"
-          onClick={createConversation}
+          onClick={() => setCreateModalOpen(true)}
           disabled={conversationsLoading}
           className="text-ui-fg-subtle hover:text-ui-fg-base"
         >
@@ -117,6 +123,12 @@ const AssistantPage = () => {
           </div>
         </div>
       </div>
+
+      <CreateModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onConfirm={handleCreateConversation}
+      />
     </Container>
   );
 };
