@@ -35,8 +35,9 @@ const getScoreColor = (score: number | undefined): string => {
 };
 
 export function AssistantTurnFeedbackSection() {
-  const { responses, loading, error } = useAssistantNpsRecent(6);
-
+  const { responses, loading, error } = useAssistantNpsRecent(6, {
+    taskLabel: "turn-summary",
+  });
   const turnRows = useMemo(
     () =>
       responses.filter(

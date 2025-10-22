@@ -24,6 +24,10 @@ export interface CreateAnpsRecordParams {
  * Repository layer for agent_nps_response table operations.
  * Handles all database queries related to Agent NPS records.
  */
+export type AnpsRecentFilter = {
+  taskLabel?: string | null;
+};
+
 export class AnpsRepository {
   constructor(private readonly db: Knex) {}
 
@@ -57,10 +61,25 @@ export class AnpsRepository {
   /**
    * Get recent ANPS records, ordered by creation date descending.
    */
-  async getRecent(limit: number): Promise<Array<Record<string, unknown>>> {
-    return this.db<Record<string, unknown>>(ANPS_TABLE)
-      .orderBy("created_at", "desc")
-      .limit(limit);
+  async getRecent(
+    limit: number,
+    filters: AnpsRecentFilter = {}
+  ): Promise<Array<Record<string, unknown>>> {
+    const query = this.db<Record<string, unknown>>(ANPS_TABLE).orderBy(
+      "created_at",
+      "desc"
+    );
+
+    if (Object.prototype.hasOwnProperty.call(filters, "taskLabel")) {
+      const taskLabel = filters.taskLabel;
+      if (taskLabel === null) {
+        query.whereNull("task_label");
+      } else {
+        query.where("task_label", taskLabel);
+      }
+    }
+
+    return query.limit(limit);
   }
 
   /**

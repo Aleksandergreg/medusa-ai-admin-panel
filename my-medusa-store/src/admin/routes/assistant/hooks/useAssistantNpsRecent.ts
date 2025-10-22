@@ -1,20 +1,28 @@
 import { useEffect, useState } from "react";
 import {
   AssistantNpsResponseRow,
+  AssistantNpsListParams,
   fetchAssistantNpsResponses,
 } from "../lib/assistantApi";
 
-export function useAssistantNpsRecent(limit = 10) {
+export function useAssistantNpsRecent(
+  limit = 10,
+  options: Omit<AssistantNpsListParams, "limit"> = {}
+) {
   const [responses, setResponses] = useState<AssistantNpsResponseRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const taskLabel = options.taskLabel;
 
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
 
     setLoading(true);
-    fetchAssistantNpsResponses(limit, controller.signal)
+    fetchAssistantNpsResponses(
+      { limit, taskLabel },
+      controller.signal
+    )
       .then((rows) => {
         if (!isMounted) {
           return;
@@ -41,7 +49,7 @@ export function useAssistantNpsRecent(limit = 10) {
       isMounted = false;
       controller.abort();
     };
-  }, [limit]);
+  }, [limit, taskLabel]);
 
   return { responses, loading, error } as const;
 }
