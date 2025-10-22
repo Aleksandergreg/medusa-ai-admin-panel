@@ -65,14 +65,20 @@ export function ConversationList({
               {conversations.map((conversation) => (
                 <div
                   key={conversation.id}
-                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors relative ${
                     conversation.id === currentSessionId
-                      ? "bg-ui-bg-base-pressed"
+                      ? "bg-ui-bg-base-pressed border-l-2 border-ui-fg-interactive"
                       : "hover:bg-ui-bg-base-hover"
                   }`}
                   onClick={() => onSelectConversation(conversation.id)}
                 >
-                  <EllipsisHorizontal className="flex-shrink-0 text-ui-fg-muted" />
+                  <EllipsisHorizontal
+                    className={`flex-shrink-0 ${
+                      conversation.id === currentSessionId
+                        ? "text-ui-fg-interactive"
+                        : "text-ui-fg-muted"
+                    }`}
+                  />
                   <div className="flex-1 min-w-0">
                     <Text
                       size="small"

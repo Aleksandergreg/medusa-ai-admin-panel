@@ -34,6 +34,9 @@ const AssistantPage = () => {
   } = useAssistant();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [displayedConversationTitle, setDisplayedConversationTitle] = useState<
+    string | null
+  >(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -48,10 +51,33 @@ const AssistantPage = () => {
     createConversation(title);
   };
 
+  const currentConversation = conversations.find(
+    (c) => c.id === currentSessionId
+  );
+
+  // Keep the displayed title in sync, but don't clear it immediately
+  useEffect(() => {
+    if (currentConversation?.title) {
+      setDisplayedConversationTitle(currentConversation.title);
+    }
+  }, [currentConversation?.title]);
+
   return (
     <Container className="divide-y p-0">
       <div className="sticky top-0 z-10 bg-ui-bg-base flex items-center justify-between px-6 py-4 border-b border-ui-border-base">
         <Heading level="h1">Assistant</Heading>
+
+        {currentSessionId && displayedConversationTitle && (
+          <div className="flex items-center gap-2 absolute left-1/2 -translate-x-1/2">
+            <Text size="small" className="text-ui-fg-muted">
+              Current Conversation:
+            </Text>
+            <Text size="base" weight="plus" className="text-ui-fg-base italic">
+              {displayedConversationTitle}
+            </Text>
+          </div>
+        )}
+
         <IconButton
           size="small"
           onClick={() => setCreateModalOpen(true)}
