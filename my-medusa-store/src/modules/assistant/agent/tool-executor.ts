@@ -16,6 +16,9 @@ export type ExecuteOutcome = {
   truth?: Record<string, number>;
   summary?: AssistantSummary;
   error?: Record<string, unknown>;
+  durationMs?: number;
+  startedAtMs?: number;
+  finishedAtMs?: number;
   validationRequest?: {
     id: string;
     operationId: string;
@@ -305,10 +308,14 @@ export async function executeTool(
     };
   }
 
+  const callStartedAt = Date.now();
+
   try {
     const result = await withToolLogging(toolName, args, async () => {
       return mcp.callTool(toolName, args);
     });
+    const finishedAt = Date.now();
+    const durationMs = Math.max(0, finishedAt - callStartedAt);
 
     if (isToolExecutionResult(result) && result.isError) {
       const textEntry = result.content?.find(
@@ -326,6 +333,9 @@ export async function executeTool(
           message,
           result,
         },
+        durationMs,
+        startedAtMs: callStartedAt,
+        finishedAtMs: finishedAt,
       };
     }
 
@@ -346,10 +356,20 @@ export async function executeTool(
       }
     }
 
-    return { result, payload, truth, summary };
+    return {
+      result,
+      payload,
+      truth,
+      summary,
+      durationMs,
+      startedAtMs: callStartedAt,
+      finishedAtMs: finishedAt,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`   Tool ${toolName} failed: ${message}`);
+    const finishedAt = Date.now();
+    const durationMs = Math.max(0, finishedAt - callStartedAt);
 
     const toolError: Record<string, unknown> = {
       error: true,
@@ -371,6 +391,11 @@ export async function executeTool(
       toolError.result = maybeResult;
     }
 
-    return { error: toolError };
+    return {
+      error: toolError,
+      durationMs,
+      startedAtMs: callStartedAt,
+      finishedAtMs: finishedAt,
+    };
   }
 }
