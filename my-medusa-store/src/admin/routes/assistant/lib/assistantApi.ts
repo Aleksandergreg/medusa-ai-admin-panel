@@ -84,6 +84,99 @@ const TurnAggregateSchema = z.object({
 type TurnOperationMeta = z.infer<typeof TurnOperationSchema>;
 type TurnAggregateMeta = z.infer<typeof TurnAggregateSchema>;
 
+const sanitizeListItem = (text: string): string => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.replace(/^\s*(?:[-*•●]+|\d+[.)])\s*/, "").trim();
+};
+
+const extractFeedbackItems = (
+  value: unknown,
+  limit = 5
+): string[] => {
+  if (limit <= 0 || value == null) {
+    return [];
+  }
+
+  const items: string[] = [];
+  const seen = new Set<string>();
+
+  const addItem = (candidate: string) => {
+    const cleaned = sanitizeListItem(candidate);
+    if (!cleaned || seen.has(cleaned)) {
+      return;
+    }
+    seen.add(cleaned);
+    items.push(cleaned);
+  };
+
+  const visit = (input: unknown): void => {
+    if (items.length >= limit || input == null) {
+      return;
+    }
+
+    if (typeof input === "string") {
+      const segments = input.split(/\r?\n+/);
+      if (segments.length > 1) {
+        for (const segment of segments) {
+          if (items.length >= limit) {
+            break;
+          }
+          addItem(segment);
+        }
+      } else {
+        addItem(input);
+      }
+      return;
+    }
+
+    if (Array.isArray(input)) {
+      for (const entry of input) {
+        if (items.length >= limit) {
+          break;
+        }
+        visit(entry);
+      }
+      return;
+    }
+
+    if (
+      typeof input === "object" &&
+      input !== null
+    ) {
+      const record = input as Record<string, unknown>;
+      for (const key of [
+        "text",
+        "value",
+        "content",
+        "message",
+      ]) {
+        if (typeof record[key] === "string") {
+          visit(record[key]);
+        }
+      }
+      for (const key of [
+        "items",
+        "values",
+        "entries",
+        "list",
+        "suggestions",
+        "improvements",
+        "positives",
+      ]) {
+        if (Array.isArray(record[key])) {
+          visit(record[key]);
+        }
+      }
+    }
+  };
+
+  visit(value);
+  return items;
+};
+
 const AssistantNpsRowSchema = z.object({
   id: z.string(),
   created_at: z.string(),
@@ -129,16 +222,53 @@ const AssistantNpsRowSchema = z.object({
         }
       }
 
+      const fallbackSuggestions = (() => {
+        if (
+          feedbackRaw &&
+          typeof feedbackRaw === "object" &&
+          feedbackRaw !== null
+        ) {
+          const record = feedbackRaw as Record<string, unknown>;
+          const improvementKeys = [
+            "improvements",
+            "improvement_suggestions",
+            "areasForImprovement",
+            "areas_for_improvement",
+            "improvementPoints",
+          ];
+          for (const key of improvementKeys) {
+            const extracted = extractFeedbackItems(record[key]);
+            if (extracted.length) {
+              return extracted;
+            }
+          }
+        }
+        return [];
+      })();
+
+      let llmFeedback: AssistantNpsResponseRow["metadata"]["llmFeedback"] = null;
+
+      if (parsedFeedback.success) {
+        const positives = extractFeedbackItems(parsedFeedback.data.positives);
+        const normalizedSuggestions = extractFeedbackItems(
+          parsedFeedback.data.suggestions
+        );
+        const suggestions =
+          normalizedSuggestions.length > 0
+            ? normalizedSuggestions
+            : fallbackSuggestions;
+
+        llmFeedback = {
+          summary: parsedFeedback.data.summary,
+          positives,
+          suggestions,
+        };
+      }
+
       return {
         feedback: typeof metadata.feedback === "string" ? metadata.feedback : null,
         llmFeedback:
-          parsedFeedback.success
-            ? {
-                summary: parsedFeedback.data.summary,
-                positives: parsedFeedback.data.positives,
-                suggestions: parsedFeedback.data.suggestions,
-              }
-            : null,
+          llmFeedback,
         isTurnFeedback: metadata.isTurnFeedback === true,
         operations,
         aggregate,

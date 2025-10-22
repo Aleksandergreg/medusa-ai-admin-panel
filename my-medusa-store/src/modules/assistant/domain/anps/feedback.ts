@@ -25,6 +25,7 @@ type FeedbackPayload = {
   feedback?: string;
   positives?: unknown;
   suggestions?: unknown;
+  improvements?: unknown;
 };
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -110,6 +111,7 @@ const normalizeFeedbackItems = (
         "entries",
         "list",
         "suggestions",
+        "improvements",
         "positives",
       ]) {
         const candidate = record[key];
@@ -448,10 +450,16 @@ export async function generateQualitativeFeedback(params: {
       parsed.positives,
       MAX_POSITIVE_ITEMS
     );
-    const suggestions = normalizeFeedbackItems(
+    let suggestions = normalizeFeedbackItems(
       parsed.suggestions,
       MAX_SUGGESTION_ITEMS
     );
+    if (!suggestions.length) {
+      suggestions = normalizeFeedbackItems(
+        parsed.improvements,
+        MAX_SUGGESTION_ITEMS
+      );
+    }
 
     return {
       summary: feedback,
@@ -659,10 +667,16 @@ export async function generateTurnSummaryFeedback(params: {
       parsed.positives,
       MAX_POSITIVE_ITEMS
     );
-    const suggestions = normalizeFeedbackItems(
+    let suggestions = normalizeFeedbackItems(
       parsed.suggestions,
       MAX_SUGGESTION_ITEMS
     );
+    if (!suggestions.length) {
+      suggestions = normalizeFeedbackItems(
+        parsed.improvements,
+        MAX_SUGGESTION_ITEMS
+      );
+    }
 
     return {
       summary: feedback,
