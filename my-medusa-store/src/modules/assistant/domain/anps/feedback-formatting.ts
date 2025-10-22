@@ -1,12 +1,20 @@
+const LIST_PREFIX_PATTERN = /^\s*(?:[-*•●]+(?=\s)|\d+[.)](?=\s))/;
+
 const sanitizeListItem = (text: string): string => {
   const trimmed = text.trim();
   if (!trimmed) {
     return "";
   }
-  const withoutPrefix = trimmed
-    .replace(/^\s*(?:[-*•●]+|\d+[.)])\s*/, "")
-    .trim();
-  return withoutPrefix;
+
+  if (/^[-*•●]+$/.test(trimmed)) {
+    return "";
+  }
+
+  if (LIST_PREFIX_PATTERN.test(trimmed)) {
+    return trimmed.replace(LIST_PREFIX_PATTERN, "").trimStart();
+  }
+
+  return trimmed;
 };
 
 export const normalizeFeedbackItems = (
