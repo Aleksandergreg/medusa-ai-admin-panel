@@ -68,7 +68,7 @@ export function ConversationList({
                 <div
                   key={conversation.id}
                   className={`flex items-center gap-3 px-4 py-3 transition-colors relative ${
-                    disabled 
+                    disabled
                       ? "cursor-not-allowed opacity-50"
                       : "cursor-pointer"
                   } ${
@@ -76,7 +76,9 @@ export function ConversationList({
                       ? "bg-ui-bg-base-pressed border-l-2 border-ui-fg-interactive"
                       : !disabled && "hover:bg-ui-bg-base-hover"
                   }`}
-                  onClick={() => !disabled && onSelectConversation(conversation.id)}
+                  onClick={() =>
+                    !disabled && onSelectConversation(conversation.id)
+                  }
                 >
                   <EllipsisHorizontal
                     className={`flex-shrink-0 ${
