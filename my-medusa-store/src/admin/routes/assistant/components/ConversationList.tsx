@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Text, IconButton } from "@medusajs/ui";
 import {
-  Plus,
   Trash,
   EllipsisHorizontal,
   PencilSquare,
@@ -15,7 +14,6 @@ interface ConversationListProps {
   conversations: ConversationSummary[];
   currentSessionId: string | null;
   onSelectConversation: (id: string) => void;
-  onCreateConversation: () => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => void;
   loading: boolean;
@@ -25,7 +23,6 @@ export function ConversationList({
   conversations,
   currentSessionId,
   onSelectConversation,
-  onCreateConversation,
   onDeleteConversation,
   onRenameConversation,
   loading,
@@ -51,14 +48,6 @@ export function ConversationList({
             Conversations
           </Text>
         </div>
-        <IconButton
-          size="small"
-          onClick={onCreateConversation}
-          disabled={loading}
-          className="text-ui-fg-subtle hover:text-ui-fg-base"
-        >
-          <Plus />
-        </IconButton>
       </div>
 
       {isExpanded && (

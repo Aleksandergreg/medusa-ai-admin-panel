@@ -5,8 +5,8 @@ import { PromptInput } from "./components/PromptInput";
 import { ConversationMessages } from "./components/ConversationMessages";
 import { ConversationList } from "./components/ConversationList";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
-import { Container, Heading, Text } from "@medusajs/ui";
-import { AiAssistent } from "@medusajs/icons";
+import { Container, Heading, Text, IconButton } from "@medusajs/ui";
+import { AiAssistent, Plus } from "@medusajs/icons";
 
 const AssistantPage = () => {
   const {
@@ -44,22 +44,27 @@ const AssistantPage = () => {
 
   return (
     <Container className="divide-y p-0">
-      <div className="flex items-center justify-between px-6 py-4">
+      <div className="sticky top-0 z-10 bg-ui-bg-base flex items-center justify-between px-6 py-4 border-b border-ui-border-base">
         <Heading level="h1">Assistant</Heading>
+        <IconButton
+          size="small"
+          onClick={createConversation}
+          disabled={conversationsLoading}
+          className="text-ui-fg-subtle hover:text-ui-fg-base"
+        >
+          <Plus />
+        </IconButton>
       </div>
-
 
       <div className="px-6 py-4 grid gap-3">
         <ConversationList
           conversations={conversations}
           currentSessionId={currentSessionId}
           onSelectConversation={switchConversation}
-          onCreateConversation={createConversation}
           onDeleteConversation={deleteConversation}
           onRenameConversation={renameConversation}
           loading={conversationsLoading}
         />
-
 
         {history.length === 0 && (
           <div className="w-full">
