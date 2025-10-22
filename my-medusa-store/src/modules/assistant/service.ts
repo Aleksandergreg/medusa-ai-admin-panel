@@ -22,6 +22,7 @@ import {
 import { ConversationService } from "./services/conversation-service";
 import { ConversationMapper } from "./mappers/conversation-mapper";
 import { AnpsService } from "./services/anps-service";
+import type { AnpsRecentFilter } from "./repositories/anps-repository";
 import { ValidationService } from "./services/validation-service";
 
 const DEFAULT_FAILURE_MESSAGE =
@@ -85,8 +86,11 @@ class AssistantModuleService extends MedusaService({}) {
     return this.getAnpsService().getAgentNpsMetrics();
   }
 
-  async listRecentAgentNps(limit = 20): Promise<AgentNpsRow[]> {
-    return this.getAnpsService().listRecentAgentNps(limit);
+  async listRecentAgentNps(
+    limit = 20,
+    filters: AnpsRecentFilter = {}
+  ): Promise<AgentNpsRow[]> {
+    return this.getAnpsService().listRecentAgentNps(limit, filters);
   }
 
   async prompt(input: PromptInput): Promise<PromptResult> {

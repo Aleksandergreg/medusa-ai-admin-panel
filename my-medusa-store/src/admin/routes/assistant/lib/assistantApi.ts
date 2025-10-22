@@ -410,16 +410,24 @@ export async function fetchAssistantNpsMetrics(
   return parsed.data;
 }
 
+export type AssistantNpsListParams = {
+  limit?: number;
+  taskLabel?: string;
+};
+
 export async function fetchAssistantNpsResponses(
-  limit = 10,
+  params: AssistantNpsListParams = {},
   signal?: AbortSignal
 ): Promise<AssistantNpsResponseRow[]> {
-  const params = new URLSearchParams();
-  if (Number.isFinite(limit) && limit > 0) {
-    params.set("limit", String(Math.floor(limit)));
+  const searchParams = new URLSearchParams();
+  if (Number.isFinite(params.limit) && (params.limit ?? 0) > 0) {
+    searchParams.set("limit", String(Math.floor(params.limit!)));
+  }
+  if (params.taskLabel && params.taskLabel.trim()) {
+    searchParams.set("taskLabel", params.taskLabel.trim());
   }
 
-  const query = params.toString();
+  const query = searchParams.toString();
   const url = query ? `/admin/assistant/anps?${query}` : "/admin/assistant/anps";
 
   const res = await fetch(url, {
