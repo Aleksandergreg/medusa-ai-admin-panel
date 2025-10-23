@@ -28,14 +28,13 @@ import { ValidationService } from "./services/validation-service";
 const DEFAULT_FAILURE_MESSAGE =
   "Sorry, I could not find an answer to your question.";
 
-// Simple in-memory map to track active AbortControllers
-const activeRequests = new Map<string, AbortController>();
-
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
   private conversationService: ConversationService | null = null;
   private anpsService: AnpsService | null = null;
   private validationService: ValidationService | null = null;
+  // Track active requests for cancellation
+  private activeRequests = new Map<string, AbortController>();
 
   constructor(
     container: Record<string, unknown>,
@@ -137,7 +136,7 @@ class AssistantModuleService extends MedusaService({}) {
       : actorId;
 
     // Store the AbortController so it can be cancelled
-    activeRequests.set(requestKey, abortController);
+    this.activeRequests.set(requestKey, abortController);
 
     const agentResult = await askAgent(
       {
@@ -152,7 +151,7 @@ class AssistantModuleService extends MedusaService({}) {
       }
     ).finally(() => {
       // Remove from active requests when done
-      activeRequests.delete(requestKey);
+      this.activeRequests.delete(requestKey);
     });
     const answer = agentResult.answer?.trim()
       ? agentResult.answer
@@ -345,11 +344,11 @@ class AssistantModuleService extends MedusaService({}) {
    */
   cancelRequest(actorId: string, sessionId?: string): boolean {
     const requestKey = sessionId ? `${actorId}:${sessionId}` : actorId;
-    const controller = activeRequests.get(requestKey);
+    const controller = this.activeRequests.get(requestKey);
 
     if (controller) {
       controller.abort();
-      activeRequests.delete(requestKey);
+      this.activeRequests.delete(requestKey);
       return true;
     }
 

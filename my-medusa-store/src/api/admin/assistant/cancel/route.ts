@@ -40,12 +40,9 @@ function getActorId(req: AuthenticatedMedusaRequest): string | null {
     return sessionActor;
   }
 
-  const legacyUserId = (req as unknown as Record<string, unknown>)?.user as
-    | Record<string, unknown>
-    | undefined;
-  const userId = legacyUserId?.id;
-  if (userId && typeof userId === "string" && userId.trim()) {
-    return userId;
+  const legacyUserId = (req as any)?.user?.id;
+  if (legacyUserId && typeof legacyUserId === "string" && legacyUserId.trim()) {
+    return legacyUserId;
   }
 
   return null;
