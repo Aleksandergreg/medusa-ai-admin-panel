@@ -454,13 +454,11 @@ export function evaluateSchemaAdherence(params: {
   );
 
   const unknownQueryParams = queryKeys.raw
-    .filter((key) => !allowedQuery.has(normalizeKey(key)))
-    .slice(0);
+    .filter((key) => !allowedQuery.has(normalizeKey(key)));
   const unknownHeaders = headerKeys.raw
     .filter(
       (key) => !allowedHeaders.has(normalizeKey(key).toLowerCase())
-    )
-    .slice(0);
+    );
 
   const requiredBodyFields = sanitizeStringList(schema.requiredBodyFields);
   const missingBodyFields = requiredBodyFields.filter(
