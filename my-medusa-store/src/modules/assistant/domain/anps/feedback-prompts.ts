@@ -1,4 +1,4 @@
-import { AgentNpsEvaluation } from "./types";
+import type { AgentNpsEvaluation, SchemaAdherenceReport } from "./types";
 import { StatusDigest } from "./status-digest";
 import { truncateText } from "./feedback-formatting";
 
@@ -78,6 +78,76 @@ const buildQuantitativeSection = (evaluation: AgentNpsEvaluation): string => {
   return bullets.join("\n");
 };
 
+const MAX_SCHEMA_ITEMS = 4;
+
+const formatValue = (value: unknown): string => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 40 ? `${trimmed.slice(0, 37)}…` : trimmed;
+  }
+  return JSON.stringify(value);
+};
+
+const formatSchemaSection = (
+  schema: SchemaAdherenceReport | null | undefined
+): string | null => {
+  if (!schema) {
+    return null;
+  }
+
+  const lines: string[] = [];
+
+  lines.push(
+    `Penalty applied: ${schema.penalty > 0 ? `-${schema.penalty}` : "none"}`
+  );
+
+  const appendList = (label: string, values: string[]): void => {
+    if (!values.length) {
+      return;
+    }
+    const trimmed = values.slice(0, MAX_SCHEMA_ITEMS);
+    const suffix = values.length > MAX_SCHEMA_ITEMS ? "…" : "";
+    lines.push(`${label}: ${trimmed.join(", ")}${suffix}`);
+  };
+
+  appendList("Missing path params", schema.missingPathParams);
+  appendList("Missing query params", schema.missingQueryParams);
+  appendList("Missing headers", schema.missingHeaders);
+  appendList("Missing body fields", schema.missingBodyFields);
+  appendList("Read-only fields set", schema.readOnlyViolations);
+  appendList(
+    "Unknown query params",
+    schema.unknownQueryParams.map((item) => item)
+  );
+  appendList(
+    "Unknown headers",
+    schema.unknownHeaders.map((item) => item)
+  );
+
+  if (schema.enumViolations.length) {
+    const enumNotes = schema.enumViolations.map((violation) => {
+      const received = violation.received
+        .slice(0, MAX_SCHEMA_ITEMS)
+        .map((value) => formatValue(value))
+        .join(", ");
+      return `${violation.field} (${received || "invalid value"})`;
+    });
+    appendList("Enum violations", enumNotes);
+  }
+
+  if (lines.length === 1) {
+    lines.push("All provided params match the schema.");
+  }
+
+  if (schema.exampleUrl) {
+    lines.push(`Example request: ${schema.exampleUrl}`);
+  } else if (schema.path) {
+    lines.push(`Operation path: ${schema.path}`);
+  }
+
+  return ["### Schema adherence", ...lines].join("\n");
+};
+
 export const buildOperationFeedbackPrompt = (params: {
   operationId: string;
   taskLabel: string | null;
@@ -85,6 +155,7 @@ export const buildOperationFeedbackPrompt = (params: {
   statusMessages: StatusDigest[];
   answer?: string | null;
   relatedOperations?: OperationDescriptor[];
+  schema: SchemaAdherenceReport | null;
 }): string => {
   const statusSection = formatStatusSection(params.statusMessages);
 
@@ -105,6 +176,7 @@ export const buildOperationFeedbackPrompt = (params: {
     buildQuantitativeSection(params.evaluation),
     "### HTTP interaction summary",
     statusSection,
+    formatSchemaSection(params.schema),
     otherOperationsSection,
     answerSnippet ? `### Assistant reply\n${answerSnippet}` : null,
     "Write a concise qualitative review highlighting what worked well and what should improve. Be specific about API usage or payload clarity when possible.",

@@ -21,6 +21,11 @@ import {
 } from "../domain/anps/feedback";
 import { summarizeStatusMessages } from "../domain/anps/status-digest";
 import type { QualitativeFeedback } from "../domain/anps/feedback";
+import {
+  evaluateSchemaAdherence,
+  findLastExecutionArgs,
+  toSchemaToolSummary,
+} from "../domain/anps/schema-adherence";
 import { AssistantModuleOptions } from "../config";
 import { HistoryEntry } from "../lib/types";
 import { generateId } from "../utils/idGenerator";
@@ -425,6 +430,19 @@ export class AnpsService {
       return;
     }
 
+    let mcpClient: Awaited<ReturnType<typeof getMcp>> | null = null;
+    const schemaCache = new Map<string, SchemaToolSummary>();
+    try {
+      mcpClient = await getMcp();
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: "agent_feedback.schema_client_unavailable",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+
     const { agentId, agentVersion } = this.getAgentIdentifiers();
     const toolUsage = sanitizeToolUsage(this.collectToolUsage(params.history));
     const evaluatedOperations: {
@@ -454,6 +472,65 @@ export class AnpsService {
           continue;
         }
 
+        let schemaReport: ReturnType<typeof evaluateSchemaAdherence> | null = null;
+        if (mcpClient) {
+          try {
+            let schemaSummary = schemaCache.get(operation.operationId);
+            if (!schemaSummary) {
+              const schemaResult = await mcpClient.callTool("openapi.schema", {
+                operationId: operation.operationId,
+              });
+              const schemaPayload = extractToolJsonPayload(schemaResult);
+              const parsed = toSchemaToolSummary(schemaPayload);
+              if (parsed) {
+                schemaCache.set(operation.operationId, parsed);
+                schemaSummary = parsed;
+              }
+            }
+
+            if (schemaSummary) {
+              const argsSnapshot = findLastExecutionArgs(
+                params.history,
+                operation.operationId
+              );
+              schemaReport = evaluateSchemaAdherence({
+                operationId: operation.operationId,
+                schema: schemaSummary,
+                args: argsSnapshot,
+              });
+            }
+          } catch (error) {
+            console.warn(
+              JSON.stringify({
+                event: "agent_feedback.schema_inspect_failed",
+                message: error instanceof Error ? error.message : String(error),
+                operation_id: operation.operationId,
+              })
+            );
+          }
+        }
+
+        if (schemaReport) {
+          evaluation.schemaPenalty = schemaReport.penalty;
+          evaluation.schemaAdherence = schemaReport;
+          if (schemaReport.penalty > 0) {
+            evaluation.score = Math.max(
+              0,
+              Math.min(10, evaluation.score - schemaReport.penalty)
+            );
+          }
+          if (schemaReport.notes.length) {
+            const highlight = schemaReport.notes.slice(0, 2).join("; ");
+            const schemaNote =
+              schemaReport.penalty > 0
+                ? `Schema adherence penalty ${schemaReport.penalty}: ${highlight}`
+                : highlight;
+            evaluation.feedbackNote = evaluation.feedbackNote
+              ? `${evaluation.feedbackNote}; ${schemaNote}`
+              : schemaNote;
+          }
+        }
+
         let qualitativeFeedback: QualitativeFeedback | null = null;
         try {
           qualitativeFeedback = await generateQualitativeFeedback({
@@ -464,6 +541,7 @@ export class AnpsService {
             answer: params.answer ?? null,
             config: this.config,
             relatedOperations: operations,
+            schemaAdherence: schemaReport ?? undefined,
           });
         } catch (error) {
           console.error(
@@ -493,6 +571,7 @@ export class AnpsService {
                 suggestions: qualitativeFeedback.suggestions,
               }
             : null,
+          schemaAdherence: schemaReport ?? undefined,
         });
 
         const sanitizedMetadata = sanitizeClientMetadata(metadata);
@@ -635,6 +714,11 @@ export class AnpsService {
         errorSummary: item.evaluation.errorSummary ?? null,
         lastStatusCode: lastStatus?.statusCode ?? null,
         lastStatusMessage: lastStatus?.message ?? null,
+        schemaAdherence: item.evaluation.schemaAdherence ?? null,
+        schemaPenalty:
+          typeof item.evaluation.schemaPenalty === "number"
+            ? item.evaluation.schemaPenalty
+            : item.evaluation.schemaAdherence?.penalty ?? null,
       };
     });
 
