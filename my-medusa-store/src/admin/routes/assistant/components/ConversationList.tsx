@@ -108,10 +108,6 @@ export function ConversationList({
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!disabled) {
-                        setSelectedConversation(conversation);
-                        setRenameModalOpen(true);
-                      }
                     }}
                     disabled={disabled}
                     className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-base"
@@ -122,10 +118,6 @@ export function ConversationList({
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!disabled) {
-                        setSelectedConversation(conversation);
-                        setDeleteModalOpen(true);
-                      }
                     }}
                     disabled={disabled}
                     className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-error"
