@@ -33,6 +33,8 @@ class AssistantModuleService extends MedusaService({}) {
   private conversationService: ConversationService | null = null;
   private anpsService: AnpsService | null = null;
   private validationService: ValidationService | null = null;
+  // Track active requests for cancellation
+  private activeRequests = new Map<string, AbortController>();
 
   constructor(
     container: Record<string, unknown>,
@@ -127,18 +129,30 @@ class AssistantModuleService extends MedusaService({}) {
     const workingHistory = [...existingHistory, userTurn];
     const conversationHistoryForAgent = this.toAgentHistory(workingHistory);
 
+    // Create an AbortController for this request
+    const abortController = new AbortController();
+    const requestKey = input.sessionId
+      ? `${actorId}:${input.sessionId}`
+      : actorId;
+
+    // Store the AbortController so it can be cancelled
+    this.activeRequests.set(requestKey, abortController);
+
     const agentResult = await askAgent(
       {
         prompt: trimmedPrompt,
         history: conversationHistoryForAgent,
+        abortSignal: abortController.signal,
       },
       {
         config: this.config,
         initialToolHistory: resumeHistory.length ? resumeHistory : undefined,
         initialStep: resumeStep,
       }
-    );
-
+    ).finally(() => {
+      // Remove from active requests when done
+      this.activeRequests.delete(requestKey);
+    });
     const answer = agentResult.answer?.trim()
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
@@ -322,6 +336,23 @@ class AssistantModuleService extends MedusaService({}) {
       actorId,
       sessionId
     );
+  }
+
+  /**
+   * Cancel an ongoing assistant request
+   * @returns true if a request was cancelled, false if no active request was found
+   */
+  cancelRequest(actorId: string, sessionId?: string): boolean {
+    const requestKey = sessionId ? `${actorId}:${sessionId}` : actorId;
+    const controller = this.activeRequests.get(requestKey);
+
+    if (controller) {
+      controller.abort();
+      this.activeRequests.delete(requestKey);
+      return true;
+    }
+
+    return false;
   }
 }
 
