@@ -536,7 +536,7 @@ export async function cancelAssistantRequest(
     console.warn("Failed to parse cancel response JSON:", parseError);
     return {};
   });
-  
+
   if (!res.ok) {
     const msg =
       json && isRecord(json) && json.error
