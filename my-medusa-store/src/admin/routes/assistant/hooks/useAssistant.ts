@@ -230,7 +230,6 @@ export function useAssistant() {
     cancelAssistantRequest(currentSessionId ?? undefined).catch((e) => {
       console.error("Failed to cancel backend request:", e);
     });
-    
     // Then abort the frontend HTTP request
     if (abortController.current) {
       abortController.current.abort();
