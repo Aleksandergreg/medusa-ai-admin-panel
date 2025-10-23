@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Text, IconButton } from "@medusajs/ui";
 import {
-  Plus,
   Trash,
   EllipsisHorizontal,
   PencilSquare,
@@ -15,20 +14,20 @@ interface ConversationListProps {
   conversations: ConversationSummary[];
   currentSessionId: string | null;
   onSelectConversation: (id: string) => void;
-  onCreateConversation: () => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => void;
   loading: boolean;
+  disabled?: boolean;
 }
 
 export function ConversationList({
   conversations,
   currentSessionId,
   onSelectConversation,
-  onCreateConversation,
   onDeleteConversation,
   onRenameConversation,
   loading,
+  disabled = false,
 }: ConversationListProps) {
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -51,14 +50,6 @@ export function ConversationList({
             Conversations
           </Text>
         </div>
-        <IconButton
-          size="small"
-          onClick={onCreateConversation}
-          disabled={loading}
-          className="text-ui-fg-subtle hover:text-ui-fg-base"
-        >
-          <Plus />
-        </IconButton>
       </div>
 
       {isExpanded && (
@@ -76,14 +67,26 @@ export function ConversationList({
               {conversations.map((conversation) => (
                 <div
                   key={conversation.id}
-                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                  className={`flex items-center gap-3 px-4 py-3 transition-colors relative ${
+                    disabled
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer"
+                  } ${
                     conversation.id === currentSessionId
-                      ? "bg-ui-bg-base-pressed"
-                      : "hover:bg-ui-bg-base-hover"
+                      ? "bg-ui-bg-base-pressed border-l-2 border-ui-fg-interactive"
+                      : !disabled && "hover:bg-ui-bg-base-hover"
                   }`}
-                  onClick={() => onSelectConversation(conversation.id)}
+                  onClick={() =>
+                    !disabled && onSelectConversation(conversation.id)
+                  }
                 >
-                  <EllipsisHorizontal className="flex-shrink-0 text-ui-fg-muted" />
+                  <EllipsisHorizontal
+                    className={`flex-shrink-0 ${
+                      conversation.id === currentSessionId
+                        ? "text-ui-fg-interactive"
+                        : "text-ui-fg-muted"
+                    }`}
+                  />
                   <div className="flex-1 min-w-0">
                     <Text
                       size="small"
@@ -105,9 +108,8 @@ export function ConversationList({
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedConversation(conversation);
-                      setRenameModalOpen(true);
                     }}
+                    disabled={disabled}
                     className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-base"
                   >
                     <PencilSquare />
@@ -116,9 +118,8 @@ export function ConversationList({
                     size="small"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedConversation(conversation);
-                      setDeleteModalOpen(true);
                     }}
+                    disabled={disabled}
                     className="flex-shrink-0 text-ui-fg-subtle hover:text-ui-fg-error"
                   >
                     <Trash />
