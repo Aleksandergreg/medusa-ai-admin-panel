@@ -1,12 +1,13 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAssistant } from "./hooks/useAssistant";
 import { PromptInput } from "./components/PromptInput";
 import { ConversationMessages } from "./components/ConversationMessages";
 import { ConversationList } from "./components/ConversationList";
+import { CreateModal } from "./components/ConversationModals";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
-import { Container, Heading, Text } from "@medusajs/ui";
-import { AiAssistent } from "@medusajs/icons";
+import { Container, Heading, Text, IconButton } from "@medusajs/ui";
+import { AiAssistent, Plus } from "@medusajs/icons";
 
 const AssistantPage = () => {
   const {
@@ -32,6 +33,10 @@ const AssistantPage = () => {
     renameConversation,
   } = useAssistant();
 
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [displayedConversationTitle, setDisplayedConversationTitle] = useState<
+    string | null
+  >(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -42,24 +47,53 @@ const AssistantPage = () => {
     scrollToBottom();
   }, [history, loading]);
 
+  const currentConversation = conversations.find(
+    (c) => c.id === currentSessionId
+  );
+
+  // Keep the displayed title in sync, but don't clear it immediately
+  useEffect(() => {
+    if (currentConversation?.title) {
+      setDisplayedConversationTitle(currentConversation.title);
+    }
+  }, [currentConversation?.title]);
+
   return (
     <Container className="divide-y p-0">
-      <div className="flex items-center justify-between px-6 py-4">
+      <div className="sticky top-0 z-10 bg-ui-bg-base flex items-center justify-between px-6 py-4 border-b border-ui-border-base">
         <Heading level="h1">Assistant</Heading>
-      </div>
 
+        {currentSessionId && displayedConversationTitle && (
+          <div className="flex items-center gap-2 absolute left-1/2 -translate-x-1/2">
+            <Text size="small" className="text-ui-fg-muted">
+              Current Conversation:
+            </Text>
+            <Text size="base" weight="plus" className="text-ui-fg-base italic">
+              {displayedConversationTitle}
+            </Text>
+          </div>
+        )}
+
+        <IconButton
+          size="small"
+          onClick={() => setCreateModalOpen(true)}
+          disabled={conversationsLoading || loading || isMutating}
+          className="text-ui-fg-subtle hover:text-ui-fg-base"
+        >
+          <Plus />
+        </IconButton>
+      </div>
 
       <div className="px-6 py-4 grid gap-3">
         <ConversationList
           conversations={conversations}
           currentSessionId={currentSessionId}
           onSelectConversation={switchConversation}
-          onCreateConversation={createConversation}
           onDeleteConversation={deleteConversation}
           onRenameConversation={renameConversation}
           loading={conversationsLoading}
+          disabled={loading || isMutating}
         />
-
 
         {history.length === 0 && (
           <div className="w-full">
@@ -112,6 +146,12 @@ const AssistantPage = () => {
           </div>
         </div>
       </div>
+
+      <CreateModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onConfirm={createConversation}
+      />
     </Container>
   );
 };

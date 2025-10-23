@@ -60,28 +60,67 @@ export const summarizeStatusMessages = (
     let statusCode: number | null = null;
     let message: string | null = null;
 
+    const candidateRecords: Record<string, unknown>[] = [];
+
     if (isPlainRecord(payload)) {
-      statusCode =
-        coerceStatusCode(
-          payload.statusCode ?? payload.status ?? payload.code
-        ) ?? null;
-      if (typeof payload.message === "string" && payload.message.trim()) {
-        message = payload.message.trim();
-      } else if (typeof payload.error === "string" && payload.error.trim()) {
-        message = payload.error.trim();
-      } else if (typeof payload.title === "string" && payload.title.trim()) {
-        message = payload.title.trim();
+      candidateRecords.push(payload);
+    }
+
+    const resultRecord = isPlainRecord(entry.tool_result)
+      ? (entry.tool_result as Record<string, unknown>)
+      : null;
+    if (resultRecord) {
+      candidateRecords.push(resultRecord);
+      const nestedResult = resultRecord.result;
+      if (isPlainRecord(nestedResult)) {
+        candidateRecords.push(nestedResult);
       }
-    } else if (
-      entry.tool_result &&
-      typeof entry.tool_result === "object" &&
-      (entry.tool_result as Record<string, unknown>).error
-    ) {
-      const rawError = (entry.tool_result as Record<string, unknown>).error;
-      message =
-        typeof rawError === "string" && rawError.trim()
-          ? rawError.trim()
-          : null;
+      const nestedPayload = extractToolJsonPayload(resultRecord.result);
+      if (isPlainRecord(nestedPayload)) {
+        candidateRecords.push(nestedPayload);
+      }
+    }
+
+    const tryReadMessage = (value: unknown): string | null =>
+      typeof value === "string" && value.trim().length
+        ? value.trim()
+        : null;
+
+    for (const record of candidateRecords) {
+      if (statusCode === null) {
+        const rawStatus =
+          record["statusCode"] ??
+          record["status"] ??
+          record["code"] ??
+          record["status_code"];
+        const coerced = coerceStatusCode(rawStatus);
+        if (coerced !== null) {
+          statusCode = coerced;
+        }
+      }
+
+      if (!message) {
+        const errorField = record["error"];
+        const candidates: unknown[] = [
+          errorField,
+          record["message"],
+          record["statusText"],
+          record["reason"],
+          record["title"],
+        ];
+
+        for (const candidate of candidates) {
+          const normalized = tryReadMessage(candidate);
+          if (normalized) {
+            message = normalized;
+            break;
+          }
+        }
+      }
+
+      if (statusCode !== null && message) {
+        break;
+      }
     }
 
     const summary =

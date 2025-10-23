@@ -376,6 +376,22 @@ export async function executeTool(
       message,
     };
 
+    const maybeStatus = (error as { status?: unknown })?.status;
+    if (typeof maybeStatus === "number" && Number.isFinite(maybeStatus)) {
+      toolError.statusCode = Math.trunc(maybeStatus);
+    } else if (
+      typeof maybeStatus === "string" &&
+      maybeStatus.trim().length &&
+      Number.isFinite(Number(maybeStatus.trim()))
+    ) {
+      toolError.statusCode = Math.trunc(Number(maybeStatus.trim()));
+    }
+
+    const maybeStatusText = (error as { statusText?: unknown })?.statusText;
+    if (typeof maybeStatusText === "string" && maybeStatusText.trim().length) {
+      toolError.statusText = maybeStatusText.trim();
+    }
+
     const maybeCode = (error as { code?: unknown })?.code;
     if (typeof maybeCode === "number" || typeof maybeCode === "string") {
       toolError.code = maybeCode;

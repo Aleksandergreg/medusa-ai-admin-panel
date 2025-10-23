@@ -11,6 +11,7 @@ import {
   deleteConversation,
   fetchConversationById,
   updateConversationTitle,
+  cancelAssistantRequest,
 } from "../lib/assistantApi";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 import type { ValidationRequest, ConversationSummary } from "../types";
@@ -97,21 +98,24 @@ export function useAssistant() {
     }
   }, []);
 
-  const handleCreateConversation = useCallback(async () => {
-    try {
-      const newConvo = await createConversation();
-      setCurrentSessionId(newConvo.id);
-      setHistory([]);
-      setAnswer(null);
-      setError(null);
-      setValidationRequest(null);
-      await loadConversations();
-      return newConvo;
-    } catch (e: unknown) {
-      setError((e as Error)?.message ?? "Failed to create conversation");
-      throw e;
-    }
-  }, [setCurrentSessionId, loadConversations]);
+  const handleCreateConversation = useCallback(
+    async (title?: string) => {
+      try {
+        const newConvo = await createConversation(title);
+        setCurrentSessionId(newConvo.id);
+        setHistory([]);
+        setAnswer(null);
+        setError(null);
+        setValidationRequest(null);
+        await loadConversations();
+        return newConvo;
+      } catch (e: unknown) {
+        setError((e as Error)?.message ?? "Failed to create conversation");
+        throw e;
+      }
+    },
+    [setCurrentSessionId, loadConversations]
+  );
 
   const ask = useCallback(async () => {
     if (!canSubmit) return;
@@ -175,7 +179,10 @@ export function useAssistant() {
           };
 
           // We need to ensure the UI history is correct for the retry
-          setHistory([...previousHistory, { role: "user", content: trimmedPrompt }]);
+          setHistory([
+            ...previousHistory,
+            { role: "user", content: trimmedPrompt },
+          ]);
 
           const retryRes = await askAssistant(retryPayload, signal);
           if (signal.aborted) {
@@ -218,11 +225,20 @@ export function useAssistant() {
     setCurrentSessionId,
   ]);
 
-  const cancel = useCallback(() => {
-    if (abortController.current) {
-      abortController.current.abort();
+  const cancel = useCallback(async () => {
+    try {
+      // Wait for the backend to acknowledge the cancellation first
+      await cancelAssistantRequest(currentSessionId ?? undefined);
+    } catch (e) {
+      // Log the error, but proceed to abort the frontend anyway
+      console.error("Failed to cancel backend request:", e);
+    } finally {
+      // Now, abort the frontend HTTP request
+      if (abortController.current) {
+        abortController.current.abort();
+      }
     }
-  }, []);
+  }, [currentSessionId]);
 
   const approveValidation = useCallback(
     async (id: string, editedData?: Record<string, unknown>) => {

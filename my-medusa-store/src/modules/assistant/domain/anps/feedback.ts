@@ -14,7 +14,7 @@ import type {
   QualitativeFeedback,
   FeedbackPayload,
 } from "./feedback-models";
-import { AgentNpsEvaluation } from "./types";
+import type { AgentNpsEvaluation, SchemaAdherenceReport } from "./types";
 
 export type { QualitativeFeedback } from "./feedback-models";
 
@@ -84,6 +84,7 @@ const buildOperationPrompt = (params: {
   statusMessages: StatusDigest[];
   answer?: string | null;
   relatedOperations?: OperationReference[];
+  schema?: SchemaAdherenceReport | null;
 }) =>
   buildOperationFeedbackPrompt({
     operationId: params.operationId,
@@ -92,6 +93,7 @@ const buildOperationPrompt = (params: {
     statusMessages: params.statusMessages,
     answer: params.answer,
     relatedOperations: params.relatedOperations,
+    schema: params.schema ?? null,
   });
 
 const buildTurnPrompt = (params: {
@@ -120,6 +122,7 @@ export async function generateQualitativeFeedback(params: {
   answer?: string | null;
   config: AssistantModuleOptions;
   relatedOperations?: OperationReference[];
+  schemaAdherence?: SchemaAdherenceReport | null;
 }): Promise<QualitativeFeedback | null> {
   const options = resolveClientOptions(params.config);
   if (!options) {
@@ -149,6 +152,7 @@ export async function generateQualitativeFeedback(params: {
           statusMessages,
           answer: params.answer,
           relatedOperations: params.relatedOperations,
+          schema: params.schemaAdherence ?? null,
         }),
       parseFeedbackPayload,
       "agent_feedback.empty_response",
