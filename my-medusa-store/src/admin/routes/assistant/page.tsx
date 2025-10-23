@@ -47,10 +47,6 @@ const AssistantPage = () => {
     scrollToBottom();
   }, [history, loading]);
 
-  const handleCreateConversation = (title: string) => {
-    createConversation(title);
-  };
-
   const currentConversation = conversations.find(
     (c) => c.id === currentSessionId
   );
@@ -154,7 +150,7 @@ const AssistantPage = () => {
       <CreateModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
-        onConfirm={handleCreateConversation}
+        onConfirm={createConversation}
       />
     </Container>
   );
