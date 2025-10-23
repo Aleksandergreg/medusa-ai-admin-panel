@@ -117,11 +117,11 @@ const formatSchemaSection = (
   appendList("Read-only fields set", schema.readOnlyViolations);
   appendList(
     "Unknown query params",
-    schema.unknownQueryParams.map((item) => item)
+    schema.unknownQueryParams
   );
   appendList(
     "Unknown headers",
-    schema.unknownHeaders.map((item) => item)
+    schema.unknownHeaders
   );
 
   if (schema.enumViolations.length) {
