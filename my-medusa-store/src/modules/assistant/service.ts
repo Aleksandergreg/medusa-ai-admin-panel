@@ -28,6 +28,9 @@ import { ValidationService } from "./services/validation-service";
 const DEFAULT_FAILURE_MESSAGE =
   "Sorry, I could not find an answer to your question.";
 
+// Simple in-memory map to track active AbortControllers
+const activeRequests = new Map<string, AbortController>();
+
 class AssistantModuleService extends MedusaService({}) {
   private readonly config: AssistantModuleOptions;
   private conversationService: ConversationService | null = null;
@@ -127,18 +130,30 @@ class AssistantModuleService extends MedusaService({}) {
     const workingHistory = [...existingHistory, userTurn];
     const conversationHistoryForAgent = this.toAgentHistory(workingHistory);
 
+    // Create an AbortController for this request
+    const abortController = new AbortController();
+    const requestKey = input.sessionId
+      ? `${actorId}:${input.sessionId}`
+      : actorId;
+
+    // Store the AbortController so it can be cancelled
+    activeRequests.set(requestKey, abortController);
+
     const agentResult = await askAgent(
       {
         prompt: trimmedPrompt,
         history: conversationHistoryForAgent,
+        abortSignal: abortController.signal,
       },
       {
         config: this.config,
         initialToolHistory: resumeHistory.length ? resumeHistory : undefined,
         initialStep: resumeStep,
       }
-    );
-
+    ).finally(() => {
+      // Remove from active requests when done
+      activeRequests.delete(requestKey);
+    });
     const answer = agentResult.answer?.trim()
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
@@ -322,6 +337,23 @@ class AssistantModuleService extends MedusaService({}) {
       actorId,
       sessionId
     );
+  }
+
+  /**
+   * Cancel an ongoing assistant request
+   * @returns true if a request was cancelled, false if no active request was found
+   */
+  cancelRequest(actorId: string, sessionId?: string): boolean {
+    const requestKey = sessionId ? `${actorId}:${sessionId}` : actorId;
+    const controller = activeRequests.get(requestKey);
+
+    if (controller) {
+      controller.abort();
+      activeRequests.delete(requestKey);
+      return true;
+    }
+
+    return false;
   }
 }
 

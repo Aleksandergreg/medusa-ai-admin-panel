@@ -14,7 +14,7 @@ import { createValidationGate } from "./validation-flow";
 type AskInput = {
   prompt: string;
   history?: HistoryEntry[];
-  onCancel?: (cancel: () => void) => void;
+  abortSignal?: AbortSignal;
 };
 
 type AgentResult = ValidationContinuationResult;
@@ -59,12 +59,12 @@ export async function askAgent(
   const turnId = metricsStore.startAssistantTurn({ user: prompt });
   let consecutiveDuplicateHits = 0;
 
-  let isCancelled = false;
-  if (typeof input.onCancel === "function") {
-    input.onCancel(() => {
-      isCancelled = true;
-    });
-  }
+  // Helper to check if request was cancelled
+  const checkCancellation = () => {
+    if (input.abortSignal?.aborted) {
+      throw new Error("Request was cancelled by the client.");
+    }
+  };
 
   const handleSuccessfulExecution = ({
     outcome,
@@ -78,7 +78,8 @@ export async function askAgent(
     );
 
     const durationMs =
-      typeof outcome.durationMs === "number" && Number.isFinite(outcome.durationMs)
+      typeof outcome.durationMs === "number" &&
+      Number.isFinite(outcome.durationMs)
         ? outcome.durationMs
         : undefined;
 
@@ -111,9 +112,7 @@ export async function askAgent(
   };
 
   const runLoop = async (step: number): Promise<AgentResult> => {
-    if (isCancelled) {
-      throw new Error("Request was cancelled by the client.");
-    }
+    checkCancellation();
 
     if (step >= options.config.maxSteps) {
       metricsStore.endAssistantTurn(turnId, "[aborted: max steps exceeded]");
@@ -132,6 +131,9 @@ export async function askAgent(
       initialOperations,
       config: options.config,
     });
+
+    // Check cancellation after planning completes
+    checkCancellation();
 
     if (!plan) {
       console.warn("Planner returned an unrecognized plan", rawPlan);
@@ -207,6 +209,9 @@ export async function askAgent(
 
     consecutiveDuplicateHits = 0;
     metricsStore.noteToolUsed(turnId, toolName);
+
+    // Check for cancellation before executing the tool
+    checkCancellation();
 
     const outcome = await executeTool(
       {

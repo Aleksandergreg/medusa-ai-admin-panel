@@ -11,6 +11,7 @@ import {
   deleteConversation,
   fetchConversationById,
   updateConversationTitle,
+  cancelAssistantRequest,
 } from "../lib/assistantApi";
 import type { ConversationEntry } from "../../../../modules/assistant/lib/types";
 import type { ValidationRequest, ConversationSummary } from "../types";
@@ -228,7 +229,11 @@ export function useAssistant() {
     if (abortController.current) {
       abortController.current.abort();
     }
-  }, []);
+    // Also cancel on the backend
+    cancelAssistantRequest(currentSessionId ?? undefined).catch((e) => {
+      console.error("Failed to cancel backend request:", e);
+    });
+  }, [currentSessionId]);
 
   const approveValidation = useCallback(
     async (id: string, editedData?: Record<string, unknown>) => {
