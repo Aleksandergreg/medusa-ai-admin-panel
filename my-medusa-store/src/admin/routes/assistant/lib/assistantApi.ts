@@ -532,12 +532,16 @@ export async function cancelAssistantRequest(
     body: JSON.stringify({ sessionId }),
   });
 
-  const json = await res.json().catch(() => ({}));
+  const json = await res.json().catch((parseError) => {
+    console.warn("Failed to parse cancel response JSON:", parseError);
+    return {};
+  });
+  
   if (!res.ok) {
     const msg =
       json && isRecord(json) && json.error
         ? String(json.error)
-        : `Request failed with ${res.status}`;
+        : `Cancellation request failed with ${res.status}`;
     throw new Error(msg);
   }
 
