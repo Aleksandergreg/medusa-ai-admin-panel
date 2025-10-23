@@ -225,14 +225,18 @@ export function useAssistant() {
     setCurrentSessionId,
   ]);
 
-  const cancel = useCallback(() => {
-    // Cancel backend first to stop the AI loop
-    cancelAssistantRequest(currentSessionId ?? undefined).catch((e) => {
+  const cancel = useCallback(async () => {
+    try {
+      // Wait for the backend to acknowledge the cancellation first
+      await cancelAssistantRequest(currentSessionId ?? undefined);
+    } catch (e) {
+      // Log the error, but proceed to abort the frontend anyway
       console.error("Failed to cancel backend request:", e);
-    });
-    // Then abort the frontend HTTP request
-    if (abortController.current) {
-      abortController.current.abort();
+    } finally {
+      // Now, abort the frontend HTTP request
+      if (abortController.current) {
+        abortController.current.abort();
+      }
     }
   }, [currentSessionId]);
 
