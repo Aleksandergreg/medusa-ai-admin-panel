@@ -48,7 +48,6 @@ const AssistantPage = () => {
         <Heading level="h1">Assistant</Heading>
       </div>
 
-
       <div className="px-6 py-4 grid gap-3">
         <ConversationList
           conversations={conversations}
@@ -59,7 +58,6 @@ const AssistantPage = () => {
           onRenameConversation={renameConversation}
           loading={conversationsLoading}
         />
-
 
         {history.length === 0 && (
           <div className="w-full">
