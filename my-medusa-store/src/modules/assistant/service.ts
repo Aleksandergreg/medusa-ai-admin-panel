@@ -112,6 +112,8 @@ class AssistantModuleService extends MedusaService({}) {
 
     const pendingForActor =
       validationManager.getLatestValidationForActor(actorId);
+    const sessionPrompt =
+      pendingForActor?.context?.prompt?.trim() ?? trimmedPrompt;
     const resumeHistory: HistoryEntry[] =
       pendingForActor?.context?.history?.map((entry) => ({ ...entry })) ?? [];
     const resumeStep = pendingForActor?.context?.nextStep;
@@ -172,7 +174,7 @@ class AssistantModuleService extends MedusaService({}) {
         nextStep: agentResult.nextStep,
         anpsStartedAt: requestStartedAt,
         userWaitMs: 0,
-        prompt: trimmedPrompt,
+        prompt: sessionPrompt,
       };
       validationManager.attachContext(validationData.id, context);
     } else if (restoredPending) {
@@ -185,7 +187,7 @@ class AssistantModuleService extends MedusaService({}) {
           anpsStartedAt:
             restoredPending.context.anpsStartedAt ?? requestStartedAt,
           userWaitMs: restoredPending.context.userWaitMs ?? 0,
-          prompt: restoredPending.context.prompt ?? trimmedPrompt,
+          prompt: restoredPending.context.prompt ?? sessionPrompt,
         };
       }
       validationManager.restoreValidation(restoredPending);
@@ -206,7 +208,7 @@ class AssistantModuleService extends MedusaService({}) {
         durationMs: totalDurationMs,
         agentComputeMs: totalDurationMs,
         answer,
-        prompt: trimmedPrompt,
+        prompt: sessionPrompt,
       });
     }
 
