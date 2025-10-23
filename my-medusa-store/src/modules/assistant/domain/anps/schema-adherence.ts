@@ -1,9 +1,6 @@
 import { HistoryEntry } from "../../lib/types";
 import { isPlainRecord } from "../../lib/utils";
-import {
-  SchemaAdherenceEnumViolation,
-  SchemaAdherenceReport,
-} from "./types";
+import { SchemaAdherenceEnumViolation, SchemaAdherenceReport } from "./types";
 import {
   extractOperationIdentifier,
   normalizeOperationIdentifier,
@@ -25,7 +22,6 @@ export type SchemaToolSummary = {
   headerParams?: ParameterSummary[];
   requiredBodyFields?: string[];
   bodyFieldEnums?: Record<string, unknown[]>;
-  bodyFieldReadOnly?: string[];
 };
 
 export type ExecutionArgsSnapshot = {
@@ -43,7 +39,10 @@ const toRecord = (value: unknown): Record<string, unknown> | undefined => {
 };
 
 const normalizeKey = (key: string): string =>
-  key.replace(/\[\d+\]/g, "").replace(/\[[^\]]*]/g, "").replace(/\[]$/, "");
+  key
+    .replace(/\[\d+\]/g, "")
+    .replace(/\[[^\]]*]/g, "")
+    .replace(/\[]$/, "");
 
 const hasPresentValue = (value: unknown): boolean => {
   if (value === null || value === undefined) {
@@ -82,15 +81,19 @@ export function findLastExecutionArgs(
     }
 
     const pathParams =
-      toRecord(args.pathParams) ?? toRecord((args as Record<string, unknown>).path_parameters);
+      toRecord(args.pathParams) ??
+      toRecord((args as Record<string, unknown>).path_parameters);
     const query =
-      toRecord(args.query) ?? toRecord((args as Record<string, unknown>).queryParams);
+      toRecord(args.query) ??
+      toRecord((args as Record<string, unknown>).queryParams);
     const headers =
-      toRecord(args.headers) ?? toRecord((args as Record<string, unknown>).headerParams);
+      toRecord(args.headers) ??
+      toRecord((args as Record<string, unknown>).headerParams);
     const body =
-      (args.body ??
-        (args as Record<string, unknown>).data ??
-        (args as Record<string, unknown>).payload) ?? undefined;
+      args.body ??
+      (args as Record<string, unknown>).data ??
+      (args as Record<string, unknown>).payload ??
+      undefined;
 
     return {
       pathParams,
@@ -120,7 +123,11 @@ const toParameterArray = (value: unknown): ParameterSummary[] => {
           ? entry.in.trim()
           : "query";
       const required =
-        entry.required === true ? true : entry.required === false ? false : undefined;
+        entry.required === true
+          ? true
+          : entry.required === false
+          ? false
+          : undefined;
       return {
         name,
         in: location,
@@ -137,9 +144,7 @@ const sanitizeStringList = (value: unknown): string[] =>
         .filter((item) => item.length > 0)
     : [];
 
-const toEnumMap = (
-  value: unknown
-): Record<string, unknown[]> | undefined => {
+const toEnumMap = (value: unknown): Record<string, unknown[]> | undefined => {
   if (!isPlainRecord(value)) {
     return undefined;
   }
@@ -188,21 +193,14 @@ export function toSchemaToolSummary(raw: unknown): SchemaToolSummary | null {
     path,
     exampleUrl,
     pathParams: toParameterArray((raw as Record<string, unknown>).pathParams),
-    queryParams: toParameterArray(
-      (raw as Record<string, unknown>).queryParams
-    ),
+    queryParams: toParameterArray((raw as Record<string, unknown>).queryParams),
     headerParams: toParameterArray(
       (raw as Record<string, unknown>).headerParams
     ),
     requiredBodyFields: sanitizeStringList(
       (raw as Record<string, unknown>).requiredBodyFields
     ),
-    bodyFieldReadOnly: sanitizeStringList(
-      (raw as Record<string, unknown>).bodyFieldReadOnly
-    ),
-    bodyFieldEnums: toEnumMap(
-      (raw as Record<string, unknown>).bodyFieldEnums
-    ),
+    bodyFieldEnums: toEnumMap((raw as Record<string, unknown>).bodyFieldEnums),
   };
 
   return summary;
@@ -255,7 +253,11 @@ const getNestedValue = (value: unknown, path: string[]): unknown[] => {
     return getNestedValue(next, tail);
   }
 
-  const target = key ? (isPlainRecord(value) ? (value as Record<string, unknown>)[key] : undefined) : value;
+  const target = key
+    ? isPlainRecord(value)
+      ? (value as Record<string, unknown>)[key]
+      : undefined
+    : value;
   if (!Array.isArray(target) || target.length === 0) {
     return [];
   }
@@ -291,7 +293,9 @@ const collectEnumViolations = (
     }
     const invalid = values.filter(
       (value) =>
-        !allowedValues.some((allowed) => JSON.stringify(allowed) === JSON.stringify(value))
+        !allowedValues.some(
+          (allowed) => JSON.stringify(allowed) === JSON.stringify(value)
+        )
     );
     if (!invalid.length) {
       continue;
@@ -310,7 +314,6 @@ const summarizeNotes = (data: {
   missingQueryParams: string[];
   missingHeaders: string[];
   missingBodyFields: string[];
-  readOnlyViolations: string[];
   enumViolations: SchemaAdherenceEnumViolation[];
   unknownQueryParams: string[];
   unknownHeaders: string[];
@@ -318,9 +321,7 @@ const summarizeNotes = (data: {
   const notes: string[] = [];
 
   if (data.missingPathParams.length) {
-    notes.push(
-      `Missing path params: ${data.missingPathParams.join(", ")}`
-    );
+    notes.push(`Missing path params: ${data.missingPathParams.join(", ")}`);
   }
   if (data.missingQueryParams.length) {
     notes.push(
@@ -328,18 +329,11 @@ const summarizeNotes = (data: {
     );
   }
   if (data.missingHeaders.length) {
-    notes.push(
-      `Missing required headers: ${data.missingHeaders.join(", ")}`
-    );
+    notes.push(`Missing required headers: ${data.missingHeaders.join(", ")}`);
   }
   if (data.missingBodyFields.length) {
     notes.push(
       `Missing required body fields: ${data.missingBodyFields.join(", ")}`
-    );
-  }
-  if (data.readOnlyViolations.length) {
-    notes.push(
-      `Read-only fields present in body: ${data.readOnlyViolations.join(", ")}`
     );
   }
   if (data.enumViolations.length) {
@@ -347,14 +341,10 @@ const summarizeNotes = (data: {
     notes.push(`Enum violations: ${fields.join(", ")}`);
   }
   if (data.unknownQueryParams.length) {
-    notes.push(
-      `Unknown query params: ${data.unknownQueryParams.join(", ")}`
-    );
+    notes.push(`Unknown query params: ${data.unknownQueryParams.join(", ")}`);
   }
   if (data.unknownHeaders.length) {
-    notes.push(
-      `Unknown headers: ${data.unknownHeaders.join(", ")}`
-    );
+    notes.push(`Unknown headers: ${data.unknownHeaders.join(", ")}`);
   }
 
   if (!notes.length) {
@@ -370,7 +360,6 @@ const clamp = (value: number, min: number, max: number): number =>
 const calculatePenalty = (data: {
   missingPathParams: string[];
   missingBodyFields: string[];
-  readOnlyViolations: string[];
   enumViolations: SchemaAdherenceEnumViolation[];
   unknownQueryParams: string[];
   unknownHeaders: string[];
@@ -385,7 +374,6 @@ const calculatePenalty = (data: {
   const penalties = [
     Math.min(data.missingPathParams.length * 2, 4),
     Math.min(data.missingBodyFields.length * 2, 4),
-    Math.min(data.readOnlyViolations.length * 2, 4),
     Math.min(enumCount, 3),
     Math.min(data.unknownQueryParams.length, 2),
     Math.min(data.unknownHeaders.length, 2),
@@ -453,21 +441,16 @@ export function evaluateSchemaAdherence(params: {
       .map((param) => param.name.trim().toLowerCase())
   );
 
-  const unknownQueryParams = queryKeys.raw
-    .filter((key) => !allowedQuery.has(normalizeKey(key)));
-  const unknownHeaders = headerKeys.raw
-    .filter(
-      (key) => !allowedHeaders.has(normalizeKey(key).toLowerCase())
-    );
+  const unknownQueryParams = queryKeys.raw.filter(
+    (key) => !allowedQuery.has(normalizeKey(key))
+  );
+  const unknownHeaders = headerKeys.raw.filter(
+    (key) => !allowedHeaders.has(normalizeKey(key).toLowerCase())
+  );
 
   const requiredBodyFields = sanitizeStringList(schema.requiredBodyFields);
   const missingBodyFields = requiredBodyFields.filter(
     (field) => !hasPathValue(body, field)
-  );
-
-  const readOnlyFields = sanitizeStringList(schema.bodyFieldReadOnly);
-  const readOnlyViolations = readOnlyFields.filter((field) =>
-    hasPathValue(body, field)
   );
 
   const enumViolations = schema.bodyFieldEnums
@@ -477,7 +460,6 @@ export function evaluateSchemaAdherence(params: {
   const penalty = calculatePenalty({
     missingPathParams,
     missingBodyFields,
-    readOnlyViolations,
     enumViolations,
     unknownQueryParams,
     unknownHeaders,
@@ -490,7 +472,6 @@ export function evaluateSchemaAdherence(params: {
     missingQueryParams,
     missingHeaders,
     missingBodyFields,
-    readOnlyViolations,
     enumViolations,
     unknownQueryParams,
     unknownHeaders,
@@ -505,7 +486,6 @@ export function evaluateSchemaAdherence(params: {
     missingQueryParams,
     missingHeaders,
     missingBodyFields,
-    readOnlyViolations,
     enumViolations,
     unknownQueryParams,
     unknownHeaders,

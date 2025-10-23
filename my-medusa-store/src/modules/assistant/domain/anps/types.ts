@@ -18,7 +18,6 @@ export interface SchemaAdherenceReport {
   missingQueryParams: string[];
   missingHeaders: string[];
   missingBodyFields: string[];
-  readOnlyViolations: string[];
   enumViolations: SchemaAdherenceEnumViolation[];
   unknownQueryParams: string[];
   unknownHeaders: string[];

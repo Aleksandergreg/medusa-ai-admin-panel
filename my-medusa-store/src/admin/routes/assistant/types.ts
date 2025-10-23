@@ -9,7 +9,6 @@ export type ValidationRequest = {
   path: string;
   args: Record<string, unknown>;
   bodyFieldEnums?: Record<string, string[]>;
-  bodyFieldReadOnly?: string[];
   resourcePreview?: Record<string, unknown>;
 };
 

@@ -8,7 +8,6 @@ type DetailsSectionProps = {
   isEditing: boolean;
   onChange?: (path: string[], value: unknown) => void;
   bodyFieldEnums?: Record<string, string[]>;
-  bodyFieldReadOnly?: string[];
 };
 
 export function DetailsSection({
@@ -17,7 +16,6 @@ export function DetailsSection({
   isEditing,
   onChange,
   bodyFieldEnums,
-  bodyFieldReadOnly,
 }: DetailsSectionProps) {
   const entries = Object.entries(data).filter(([, value]) => {
     return value !== undefined && value !== null;
@@ -43,7 +41,6 @@ export function DetailsSection({
     <ValidationProvider
       value={{
         bodyFieldEnums,
-        bodyFieldReadOnly,
         isEditing,
         onChange,
       }}
@@ -80,8 +77,8 @@ export function DetailsSection({
                       ([subKey, subValue]) => (
                         <div
                           key={subKey}
-                            className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2"
-                          >
+                          className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2"
+                        >
                           <Text
                             size="small"
                             className="text-ui-fg-subtle font-medium min-w-[160px]"

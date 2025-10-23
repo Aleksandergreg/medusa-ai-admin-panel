@@ -19,5 +19,6 @@ CRITICAL TIMESTAMP FORMAT RULE:
 OTHER INSTRUCTIONS:
 - Find products by batch operation with tool, don't just return product IDs
 - Try basic endpoints first: /admin/products?title=Product%20Name (without fields parameter)
+- If no results, try the opposite case than the input given from the user so (a becomes A) and (A becomes a). example : admin/products?title=medusa%20sweatpants becomes admin/products?title=Medusa%20Sweatpants
 - Prices in normal format: 10 dollars = 10.00 (not 1000 cents)`;
 }
