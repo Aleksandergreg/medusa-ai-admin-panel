@@ -26,8 +26,8 @@ export type ExecuteOutcome = {
     path: string;
     args: Record<string, unknown>;
     bodyFieldEnums?: Record<string, string[]>;
-    bodyFieldReadOnly?: string[];
     resourcePreview?: Record<string, unknown>;
+    timestamp: Date;
   };
 };
 
@@ -251,9 +251,8 @@ export async function executeTool(
     let operationMethod = details.method;
     let operationPath = details.path;
 
-    // Fetch schema information including enums and readOnly fields
+    // Fetch schema information including enums
     let bodyFieldEnums: Record<string, string[]> | undefined;
-    let bodyFieldReadOnly: string[] | undefined;
     try {
       const schemaResult = await mcp.callTool("openapi.schema", {
         operationId: details.operationId,
@@ -262,7 +261,6 @@ export async function executeTool(
       if (schemaResult?.content?.[0]?.text) {
         const schemaData = JSON.parse(schemaResult.content[0].text);
         bodyFieldEnums = schemaData.bodyFieldEnums || {};
-        bodyFieldReadOnly = schemaData.bodyFieldReadOnly || [];
         if (typeof schemaData.method === "string" && schemaData.method.length) {
           operationMethod = schemaData.method.toUpperCase();
         }
@@ -289,7 +287,6 @@ export async function executeTool(
       operationPath,
       args,
       bodyFieldEnums,
-      bodyFieldReadOnly,
       resourcePreview
     );
 
@@ -302,8 +299,8 @@ export async function executeTool(
         path: request.path,
         args: request.args,
         bodyFieldEnums: request.bodyFieldEnums,
-        bodyFieldReadOnly: request.bodyFieldReadOnly,
         resourcePreview: request.resourcePreview,
+        timestamp: request.timestamp,
       },
     };
   }

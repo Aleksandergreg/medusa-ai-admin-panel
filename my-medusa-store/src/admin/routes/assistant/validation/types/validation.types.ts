@@ -1,6 +1,5 @@
 export interface ValidationContext {
   bodyFieldEnums?: Record<string, string[]>;
-  bodyFieldReadOnly?: string[];
   isEditing: boolean;
   onChange?: (path: string[], value: unknown) => void;
 }
@@ -12,7 +11,6 @@ export interface ValidationRequestData {
   path: string;
   args: Record<string, unknown>;
   bodyFieldEnums?: Record<string, string[]>;
-  bodyFieldReadOnly?: string[];
 }
 
 export type ValidationState = {

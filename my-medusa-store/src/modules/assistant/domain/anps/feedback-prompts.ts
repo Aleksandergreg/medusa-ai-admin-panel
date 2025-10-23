@@ -31,7 +31,9 @@ const formatStatusSection = (statusMessages: StatusDigest[]): string => {
   return statusMessages
     .map((item, idx) => {
       const code =
-        item.statusCode != null ? `status ${item.statusCode}` : "unknown status";
+        item.statusCode != null
+          ? `status ${item.statusCode}`
+          : "unknown status";
       const summary = item.operationSummary ?? "Unnamed call";
       const message = item.message ? ` — ${item.message}` : "";
       return `${idx + 1}. ${summary} (${code})${message}`;
@@ -53,7 +55,9 @@ const formatOtherOperations = (
     })
     .join("\n");
 
-  return ["Other operations executed in this assistant turn:", lines].join("\n");
+  return ["Other operations executed in this assistant turn:", lines].join(
+    "\n"
+  );
 };
 
 const buildQuantitativeSection = (evaluation: AgentNpsEvaluation): string => {
@@ -114,15 +118,8 @@ const formatSchemaSection = (
   appendList("Missing query params", schema.missingQueryParams);
   appendList("Missing headers", schema.missingHeaders);
   appendList("Missing body fields", schema.missingBodyFields);
-  appendList("Read-only fields set", schema.readOnlyViolations);
-  appendList(
-    "Unknown query params",
-    schema.unknownQueryParams
-  );
-  appendList(
-    "Unknown headers",
-    schema.unknownHeaders
-  );
+  appendList("Unknown query params", schema.unknownQueryParams);
+  appendList("Unknown headers", schema.unknownHeaders);
 
   if (schema.enumViolations.length) {
     const enumNotes = schema.enumViolations.map((violation) => {
@@ -204,7 +201,9 @@ const formatOperationSummary = (
     typeof evaln.durationMs === "number" && evaln.durationMs > 0
       ? `${(evaln.durationMs / 1000).toFixed(1)}s`
       : "n/a";
-  return `${index + 1}. ${label} — score ${evaln.score}/10, attempts ${evaln.attempts}, errors ${evaln.errors}, duration ${durationText}, ${statusText}`;
+  return `${index + 1}. ${label} — score ${evaln.score}/10, attempts ${
+    evaln.attempts
+  }, errors ${evaln.errors}, duration ${durationText}, ${statusText}`;
 };
 
 const formatStatusBreakdown = (operations: StatusAwareOperation[]): string => {
@@ -215,9 +214,9 @@ const formatStatusBreakdown = (operations: StatusAwareOperation[]): string => {
     }
     const notes = operation.statuses
       .map((status, idx) => {
-        const base = `${idx + 1}. status ${
-          status.statusCode ?? "unknown"
-        } — ${status.operationSummary ?? operation.operationId}`;
+        const base = `${idx + 1}. status ${status.statusCode ?? "unknown"} — ${
+          status.operationSummary ?? operation.operationId
+        }`;
         const message =
           status.message && status.message.trim()
             ? ` (message: ${status.message.trim()})`

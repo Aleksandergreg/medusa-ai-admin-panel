@@ -84,7 +84,6 @@ export function createSchemaTool(spec: OpenAPISpec, registry: OpenApiRegistry) {
         bodyFieldExamples: bodyMeta.examples,
         bodyFieldEnums: bodyMeta.enums,
         requiredBodyFields: bodyMeta.required,
-        bodyFieldReadOnly: bodyMeta.readOnlyFields,
       };
     },
   }));

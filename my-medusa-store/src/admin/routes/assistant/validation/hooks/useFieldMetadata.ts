@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { useValidationContext } from "../context/ValidationContext";
-import { useReadOnlyCheck } from "./useReadOnlyCheck";
 import { FieldMetadata, FieldPath, FieldValue } from "../types/field.types";
 import { getFieldType } from "../utils/typeCheckers";
 
@@ -12,7 +11,6 @@ export function useFieldMetadata(
   value: FieldValue
 ): FieldMetadata {
   const { bodyFieldEnums } = useValidationContext();
-  const isReadOnly = useReadOnlyCheck(path);
 
   return useMemo(() => {
     const fullPath = path.join(".");
@@ -28,9 +26,9 @@ export function useFieldMetadata(
       fullPath,
       fieldName,
       type: enumOptions && enumOptions.length > 0 ? "enum" : type,
-      isReadOnly,
+      isReadOnly: false,
       isRequired: false, // Could be enhanced to check required fields
       enumOptions,
     };
-  }, [path, value, bodyFieldEnums, isReadOnly]);
+  }, [path, value, bodyFieldEnums]);
 }
