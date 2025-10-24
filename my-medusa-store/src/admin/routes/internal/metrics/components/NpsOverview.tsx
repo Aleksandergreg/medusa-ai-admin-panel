@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { Link } from "react-router-dom";
 import { Heading, Text, Badge } from "@medusajs/ui";
 import { useAssistantNpsMetrics } from "../../../assistant/hooks/useAssistantNpsMetrics";
 import {
@@ -155,14 +156,17 @@ export function NpsOverview() {
               {taskBreakdown.map((row, index) => {
                 const taskNps = row.nps;
                 const TaskIcon = getNpsIcon(taskNps);
-                return (
-                  <div
-                    key={`${row.taskLabel ?? "unknown"}-${index}`}
-                    className="rounded-lg border bg-ui-bg-base p-4 shadow-sm transition-shadow hover:shadow-md"
-                  >
+                const label = row.taskLabel?.trim();
+                const canNavigate = Boolean(label);
+                const href = label
+                  ? `operations/${encodeURIComponent(label)}`
+                  : undefined;
+
+                const cardContent = (
+                  <>
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <Text weight="plus" className="text-sm flex-1">
-                        {row.taskLabel ?? "Unlabeled Task"}
+                        {label ?? "Unlabeled Task"}
                       </Text>
                       <TaskIcon
                         className={`${getNpsColor(taskNps)} flex-shrink-0`}
@@ -197,7 +201,29 @@ export function NpsOverview() {
                         </Text>
                       </div>
                     </div>
-                  </div>
+                  </>
+                );
+
+                if (!canNavigate) {
+                  return (
+                    <div
+                      key={`${row.taskLabel ?? "unknown"}-${index}`}
+                      className="rounded-lg border bg-ui-bg-base p-4 shadow-sm"
+                    >
+                      {cardContent}
+                    </div>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={`${row.taskLabel ?? "unknown"}-${index}`}
+                    to={href!}
+                    className="rounded-lg border bg-ui-bg-base p-4 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-fg-interactive focus-visible:ring-offset-2 focus-visible:ring-offset-ui-bg-base"
+                    aria-label={`View operation details for ${label}`}
+                  >
+                    {cardContent}
+                  </Link>
                 );
               })}
             </div>
