@@ -3,6 +3,7 @@ import {
   AgentNpsClientMetadata,
   normalizeClientMetadata,
   sanitizeToolUsage,
+  SchemaAdherenceReport,
 } from "../domain/anps/types";
 
 /**
@@ -125,6 +126,8 @@ export class AnpsMapper {
       errorSummary: string | null;
       lastStatusCode: number | null;
       lastStatusMessage: string | null;
+      schemaAdherence?: SchemaAdherenceReport | null;
+      schemaPenalty?: number | null;
     }>;
     aggregateStats: {
       totalOperations: number;
@@ -176,8 +179,9 @@ export class AnpsMapper {
       positives: string[];
       suggestions: string[];
     } | null;
+    schemaAdherence?: SchemaAdherenceReport | null;
   }): AgentNpsClientMetadata {
-    return {
+    const metadata: AgentNpsClientMetadata = {
       ...params.baseMetadata,
       attempts: params.attempts,
       errors: params.errors,
@@ -185,6 +189,12 @@ export class AnpsMapper {
       feedback: params.feedback,
       llmFeedback: params.llmFeedback,
       scoredAt: new Date().toISOString(),
-    } as AgentNpsClientMetadata;
+    };
+
+    if (params.schemaAdherence) {
+      metadata.schemaAdherence = params.schemaAdherence;
+    }
+
+    return metadata;
   }
 }

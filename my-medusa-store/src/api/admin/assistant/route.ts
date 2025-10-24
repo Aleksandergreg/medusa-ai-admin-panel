@@ -82,6 +82,17 @@ export async function POST(
       validationRequest: result.validationRequest,
     });
   } catch (e: unknown) {
+    // Check if this was a user-initiated cancellation
+    if (
+      e instanceof Error &&
+      e.message === "Request was cancelled by the client."
+    ) {
+      return res.status(200).json({
+        cancelled: true,
+        message: "Request cancelled by user",
+      });
+    }
+
     console.error("\n--- Assistant Route Error ---\n", e);
     return res
       .status(500)

@@ -35,15 +35,6 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     ...(taskLabel ? { taskLabel } : {}),
   });
 
-  console.info(
-    JSON.stringify({
-      event: "agent_nps.raw_fetch",
-      limit,
-      task_label: taskLabel ?? null,
-      returned: rows.length,
-    })
-  );
-
   return res.json({
     rows: rows.map((row) => ({
       id: row.id,

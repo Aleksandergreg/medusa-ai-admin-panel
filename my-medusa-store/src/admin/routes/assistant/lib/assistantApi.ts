@@ -18,7 +18,6 @@ const ValidationRequestSchema = z.object({
   path: z.string(),
   args: z.record(z.unknown()),
   bodyFieldEnums: z.record(z.array(z.string())).optional(),
-  bodyFieldReadOnly: z.array(z.string()).optional(),
   resourcePreview: z.record(z.unknown()).optional(),
 });
 
@@ -103,10 +102,7 @@ const sanitizeListItem = (text: string): string => {
   return trimmed;
 };
 
-export const extractFeedbackItems = (
-  value: unknown,
-  limit = 5
-): string[] => {
+export const extractFeedbackItems = (value: unknown, limit = 5): string[] => {
   if (limit <= 0 || value == null) {
     return [];
   }
@@ -153,17 +149,9 @@ export const extractFeedbackItems = (
       return;
     }
 
-    if (
-      typeof input === "object" &&
-      input !== null
-    ) {
+    if (typeof input === "object" && input !== null) {
       const record = input as Record<string, unknown>;
-      for (const key of [
-        "text",
-        "value",
-        "content",
-        "message",
-      ]) {
+      for (const key of ["text", "value", "content", "message"]) {
         if (typeof record[key] === "string") {
           visit(record[key]);
         }
@@ -227,7 +215,9 @@ const AssistantNpsRowSchema = z.object({
 
       let aggregate: z.infer<typeof TurnAggregateSchema> | null = null;
       if (metadata.aggregate) {
-        const parsedAggregate = TurnAggregateSchema.safeParse(metadata.aggregate);
+        const parsedAggregate = TurnAggregateSchema.safeParse(
+          metadata.aggregate
+        );
         if (parsedAggregate.success) {
           aggregate = parsedAggregate.data;
         }
@@ -257,7 +247,8 @@ const AssistantNpsRowSchema = z.object({
         return [];
       })();
 
-      let llmFeedback: AssistantNpsResponseRow["metadata"]["llmFeedback"] = null;
+      let llmFeedback: AssistantNpsResponseRow["metadata"]["llmFeedback"] =
+        null;
 
       if (parsedFeedback.success) {
         const positives = extractFeedbackItems(parsedFeedback.data.positives);
@@ -277,16 +268,14 @@ const AssistantNpsRowSchema = z.object({
       }
 
       return {
-        feedback: typeof metadata.feedback === "string" ? metadata.feedback : null,
-        llmFeedback:
-          llmFeedback,
+        feedback:
+          typeof metadata.feedback === "string" ? metadata.feedback : null,
+        llmFeedback: llmFeedback,
         isTurnFeedback: metadata.isTurnFeedback === true,
         operations,
         aggregate,
         prompt:
-          typeof metadata.userPrompt === "string"
-            ? metadata.userPrompt
-            : null,
+          typeof metadata.userPrompt === "string" ? metadata.userPrompt : null,
       };
     }),
 });
@@ -439,7 +428,9 @@ export async function fetchAssistantNpsResponses(
   }
 
   const query = searchParams.toString();
-  const url = query ? `/admin/assistant/anps?${query}` : "/admin/assistant/anps";
+  const url = query
+    ? `/admin/assistant/anps?${query}`
+    : "/admin/assistant/anps";
 
   const res = await fetch(url, {
     method: "GET",
@@ -475,14 +466,13 @@ export async function fetchAssistantNpsResponses(
     durationMs: row.duration_ms,
     errorFlag: row.error_flag,
     errorSummary: row.error_summary,
-    metadata:
-      row.client_metadata ?? {
-        feedback: null,
-        llmFeedback: null,
-        isTurnFeedback: false,
-        operations: [],
-        aggregate: null,
-      },
+    metadata: row.client_metadata ?? {
+      feedback: null,
+      llmFeedback: null,
+      isTurnFeedback: false,
+      operations: [],
+      aggregate: null,
+    },
   }));
 }
 
@@ -529,6 +519,35 @@ export async function rejectAssistantValidation(
   }
 
   return toAssistantResponse(json);
+}
+
+export async function cancelAssistantRequest(
+  sessionId?: string
+): Promise<{ cancelled: boolean; message: string }> {
+  const res = await fetch("/admin/assistant/cancel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ sessionId }),
+  });
+
+  const json = await res.json().catch((parseError) => {
+    console.warn("Failed to parse cancel response JSON:", parseError);
+    return {};
+  });
+
+  if (!res.ok) {
+    const msg =
+      json && isRecord(json) && json.error
+        ? String(json.error)
+        : `Cancellation request failed with ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return {
+    cancelled: json.cancelled === true,
+    message: json.message || "Request processed",
+  };
 }
 
 export async function listConversations(

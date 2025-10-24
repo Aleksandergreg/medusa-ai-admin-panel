@@ -33,6 +33,8 @@ class AssistantModuleService extends MedusaService({}) {
   private conversationService: ConversationService | null = null;
   private anpsService: AnpsService | null = null;
   private validationService: ValidationService | null = null;
+  // Track active requests for cancellation
+  private activeRequests = new Map<string, AbortController>();
 
   constructor(
     container: Record<string, unknown>,
@@ -112,6 +114,8 @@ class AssistantModuleService extends MedusaService({}) {
 
     const pendingForActor =
       validationManager.getLatestValidationForActor(actorId);
+    const sessionPrompt =
+      pendingForActor?.context?.prompt?.trim() ?? trimmedPrompt;
     const resumeHistory: HistoryEntry[] =
       pendingForActor?.context?.history?.map((entry) => ({ ...entry })) ?? [];
     const resumeStep = pendingForActor?.context?.nextStep;
@@ -127,18 +131,30 @@ class AssistantModuleService extends MedusaService({}) {
     const workingHistory = [...existingHistory, userTurn];
     const conversationHistoryForAgent = this.toAgentHistory(workingHistory);
 
+    // Create an AbortController for this request
+    const abortController = new AbortController();
+    const requestKey = input.sessionId
+      ? `${actorId}:${input.sessionId}`
+      : actorId;
+
+    // Store the AbortController so it can be cancelled
+    this.activeRequests.set(requestKey, abortController);
+
     const agentResult = await askAgent(
       {
         prompt: trimmedPrompt,
         history: conversationHistoryForAgent,
+        abortSignal: abortController.signal,
       },
       {
         config: this.config,
         initialToolHistory: resumeHistory.length ? resumeHistory : undefined,
         initialStep: resumeStep,
       }
-    );
-
+    ).finally(() => {
+      // Remove from active requests when done
+      this.activeRequests.delete(requestKey);
+    });
     const answer = agentResult.answer?.trim()
       ? agentResult.answer
       : DEFAULT_FAILURE_MESSAGE;
@@ -172,7 +188,7 @@ class AssistantModuleService extends MedusaService({}) {
         nextStep: agentResult.nextStep,
         anpsStartedAt: requestStartedAt,
         userWaitMs: 0,
-        prompt: trimmedPrompt,
+        prompt: sessionPrompt,
       };
       validationManager.attachContext(validationData.id, context);
     } else if (restoredPending) {
@@ -185,7 +201,7 @@ class AssistantModuleService extends MedusaService({}) {
           anpsStartedAt:
             restoredPending.context.anpsStartedAt ?? requestStartedAt,
           userWaitMs: restoredPending.context.userWaitMs ?? 0,
-          prompt: restoredPending.context.prompt ?? trimmedPrompt,
+          prompt: restoredPending.context.prompt ?? sessionPrompt,
         };
       }
       validationManager.restoreValidation(restoredPending);
@@ -206,7 +222,7 @@ class AssistantModuleService extends MedusaService({}) {
         durationMs: totalDurationMs,
         agentComputeMs: totalDurationMs,
         answer,
-        prompt: trimmedPrompt,
+        prompt: sessionPrompt,
       });
     }
 
@@ -322,6 +338,23 @@ class AssistantModuleService extends MedusaService({}) {
       actorId,
       sessionId
     );
+  }
+
+  /**
+   * Cancel an ongoing assistant request
+   * @returns true if a request was cancelled, false if no active request was found
+   */
+  cancelRequest(actorId: string, sessionId?: string): boolean {
+    const requestKey = sessionId ? `${actorId}:${sessionId}` : actorId;
+    const controller = this.activeRequests.get(requestKey);
+
+    if (controller) {
+      controller.abort();
+      this.activeRequests.delete(requestKey);
+      return true;
+    }
+
+    return false;
   }
 }
 

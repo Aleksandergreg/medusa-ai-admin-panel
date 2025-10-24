@@ -3,6 +3,28 @@ export const ANPS_TABLE = "agent_nps_response";
 export type AgentNpsToolUsage = Record<string, unknown>;
 export type AgentNpsClientMetadata = Record<string, unknown>;
 
+export type SchemaAdherenceEnumViolation = {
+  field: string;
+  allowed: unknown[];
+  received: unknown[];
+};
+
+export interface SchemaAdherenceReport {
+  operationId: string;
+  method?: string;
+  path?: string;
+  exampleUrl?: string;
+  missingPathParams: string[];
+  missingQueryParams: string[];
+  missingHeaders: string[];
+  missingBodyFields: string[];
+  enumViolations: SchemaAdherenceEnumViolation[];
+  unknownQueryParams: string[];
+  unknownHeaders: string[];
+  penalty: number;
+  notes: string[];
+}
+
 export interface AgentNpsInsertInput {
   agentId: string;
   agentVersion?: string | null;
@@ -27,6 +49,8 @@ export interface AgentNpsEvaluation {
   errors: number;
   durationMs: number | null;
   feedbackNote?: string;
+  schemaPenalty?: number;
+  schemaAdherence?: SchemaAdherenceReport | null;
 }
 
 export interface AgentNpsRow {

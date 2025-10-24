@@ -1,4 +1,4 @@
-import { AgentNpsEvaluation } from "./types";
+import type { AgentNpsEvaluation, SchemaAdherenceReport } from "./types";
 import { StatusDigest } from "./status-digest";
 import { truncateText } from "./feedback-formatting";
 
@@ -31,7 +31,9 @@ const formatStatusSection = (statusMessages: StatusDigest[]): string => {
   return statusMessages
     .map((item, idx) => {
       const code =
-        item.statusCode != null ? `status ${item.statusCode}` : "unknown status";
+        item.statusCode != null
+          ? `status ${item.statusCode}`
+          : "unknown status";
       const summary = item.operationSummary ?? "Unnamed call";
       const message = item.message ? ` — ${item.message}` : "";
       return `${idx + 1}. ${summary} (${code})${message}`;
@@ -53,7 +55,9 @@ const formatOtherOperations = (
     })
     .join("\n");
 
-  return ["Other operations executed in this assistant turn:", lines].join("\n");
+  return ["Other operations executed in this assistant turn:", lines].join(
+    "\n"
+  );
 };
 
 const buildQuantitativeSection = (evaluation: AgentNpsEvaluation): string => {
@@ -78,6 +82,69 @@ const buildQuantitativeSection = (evaluation: AgentNpsEvaluation): string => {
   return bullets.join("\n");
 };
 
+const MAX_SCHEMA_ITEMS = 4;
+
+const formatValue = (value: unknown): string => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 40 ? `${trimmed.slice(0, 37)}…` : trimmed;
+  }
+  return JSON.stringify(value);
+};
+
+const formatSchemaSection = (
+  schema: SchemaAdherenceReport | null | undefined
+): string | null => {
+  if (!schema) {
+    return null;
+  }
+
+  const lines: string[] = [];
+
+  lines.push(
+    `Penalty applied: ${schema.penalty > 0 ? `-${schema.penalty}` : "none"}`
+  );
+
+  const appendList = (label: string, values: string[]): void => {
+    if (!values.length) {
+      return;
+    }
+    const trimmed = values.slice(0, MAX_SCHEMA_ITEMS);
+    const suffix = values.length > MAX_SCHEMA_ITEMS ? "…" : "";
+    lines.push(`${label}: ${trimmed.join(", ")}${suffix}`);
+  };
+
+  appendList("Missing path params", schema.missingPathParams);
+  appendList("Missing query params", schema.missingQueryParams);
+  appendList("Missing headers", schema.missingHeaders);
+  appendList("Missing body fields", schema.missingBodyFields);
+  appendList("Unknown query params", schema.unknownQueryParams);
+  appendList("Unknown headers", schema.unknownHeaders);
+
+  if (schema.enumViolations.length) {
+    const enumNotes = schema.enumViolations.map((violation) => {
+      const received = violation.received
+        .slice(0, MAX_SCHEMA_ITEMS)
+        .map((value) => formatValue(value))
+        .join(", ");
+      return `${violation.field} (${received || "invalid value"})`;
+    });
+    appendList("Enum violations", enumNotes);
+  }
+
+  if (lines.length === 1) {
+    lines.push("All provided params match the schema.");
+  }
+
+  if (schema.exampleUrl) {
+    lines.push(`Example request: ${schema.exampleUrl}`);
+  } else if (schema.path) {
+    lines.push(`Operation path: ${schema.path}`);
+  }
+
+  return ["### Schema adherence", ...lines].join("\n");
+};
+
 export const buildOperationFeedbackPrompt = (params: {
   operationId: string;
   taskLabel: string | null;
@@ -85,6 +152,7 @@ export const buildOperationFeedbackPrompt = (params: {
   statusMessages: StatusDigest[];
   answer?: string | null;
   relatedOperations?: OperationDescriptor[];
+  schema: SchemaAdherenceReport | null;
 }): string => {
   const statusSection = formatStatusSection(params.statusMessages);
 
@@ -105,6 +173,7 @@ export const buildOperationFeedbackPrompt = (params: {
     buildQuantitativeSection(params.evaluation),
     "### HTTP interaction summary",
     statusSection,
+    formatSchemaSection(params.schema),
     otherOperationsSection,
     answerSnippet ? `### Assistant reply\n${answerSnippet}` : null,
     "Write a concise qualitative review highlighting what worked well and what should improve. Be specific about API usage or payload clarity when possible.",
@@ -132,7 +201,9 @@ const formatOperationSummary = (
     typeof evaln.durationMs === "number" && evaln.durationMs > 0
       ? `${(evaln.durationMs / 1000).toFixed(1)}s`
       : "n/a";
-  return `${index + 1}. ${label} — score ${evaln.score}/10, attempts ${evaln.attempts}, errors ${evaln.errors}, duration ${durationText}, ${statusText}`;
+  return `${index + 1}. ${label} — score ${evaln.score}/10, attempts ${
+    evaln.attempts
+  }, errors ${evaln.errors}, duration ${durationText}, ${statusText}`;
 };
 
 const formatStatusBreakdown = (operations: StatusAwareOperation[]): string => {
@@ -143,9 +214,9 @@ const formatStatusBreakdown = (operations: StatusAwareOperation[]): string => {
     }
     const notes = operation.statuses
       .map((status, idx) => {
-        const base = `${idx + 1}. status ${
-          status.statusCode ?? "unknown"
-        } — ${status.operationSummary ?? operation.operationId}`;
+        const base = `${idx + 1}. status ${status.statusCode ?? "unknown"} — ${
+          status.operationSummary ?? operation.operationId
+        }`;
         const message =
           status.message && status.message.trim()
             ? ` (message: ${status.message.trim()})`

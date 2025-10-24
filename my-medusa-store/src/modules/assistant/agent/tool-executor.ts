@@ -26,8 +26,8 @@ export type ExecuteOutcome = {
     path: string;
     args: Record<string, unknown>;
     bodyFieldEnums?: Record<string, string[]>;
-    bodyFieldReadOnly?: string[];
     resourcePreview?: Record<string, unknown>;
+    timestamp: Date;
   };
 };
 
@@ -251,9 +251,8 @@ export async function executeTool(
     let operationMethod = details.method;
     let operationPath = details.path;
 
-    // Fetch schema information including enums and readOnly fields
+    // Fetch schema information including enums
     let bodyFieldEnums: Record<string, string[]> | undefined;
-    let bodyFieldReadOnly: string[] | undefined;
     try {
       const schemaResult = await mcp.callTool("openapi.schema", {
         operationId: details.operationId,
@@ -262,7 +261,6 @@ export async function executeTool(
       if (schemaResult?.content?.[0]?.text) {
         const schemaData = JSON.parse(schemaResult.content[0].text);
         bodyFieldEnums = schemaData.bodyFieldEnums || {};
-        bodyFieldReadOnly = schemaData.bodyFieldReadOnly || [];
         if (typeof schemaData.method === "string" && schemaData.method.length) {
           operationMethod = schemaData.method.toUpperCase();
         }
@@ -289,7 +287,6 @@ export async function executeTool(
       operationPath,
       args,
       bodyFieldEnums,
-      bodyFieldReadOnly,
       resourcePreview
     );
 
@@ -302,8 +299,8 @@ export async function executeTool(
         path: request.path,
         args: request.args,
         bodyFieldEnums: request.bodyFieldEnums,
-        bodyFieldReadOnly: request.bodyFieldReadOnly,
         resourcePreview: request.resourcePreview,
+        timestamp: request.timestamp,
       },
     };
   }
@@ -375,6 +372,22 @@ export async function executeTool(
       error: true,
       message,
     };
+
+    const maybeStatus = (error as { status?: unknown })?.status;
+    if (typeof maybeStatus === "number" && Number.isFinite(maybeStatus)) {
+      toolError.statusCode = Math.trunc(maybeStatus);
+    } else if (
+      typeof maybeStatus === "string" &&
+      maybeStatus.trim().length &&
+      Number.isFinite(Number(maybeStatus.trim()))
+    ) {
+      toolError.statusCode = Math.trunc(Number(maybeStatus.trim()));
+    }
+
+    const maybeStatusText = (error as { statusText?: unknown })?.statusText;
+    if (typeof maybeStatusText === "string" && maybeStatusText.trim().length) {
+      toolError.statusText = maybeStatusText.trim();
+    }
 
     const maybeCode = (error as { code?: unknown })?.code;
     if (typeof maybeCode === "number" || typeof maybeCode === "string") {
