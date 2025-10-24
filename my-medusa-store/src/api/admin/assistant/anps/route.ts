@@ -42,16 +42,6 @@ export async function GET(
     ...(taskLabel ? { taskLabel } : {}),
   });
 
-  console.info(
-    JSON.stringify({
-      event: "agent_nps.admin_fetch",
-      actor: actorId.slice(0, 4) + "…",
-      limit,
-      task_label: taskLabel ?? null,
-      returned: rows.length,
-    })
-  );
-
   return res.json({
     rows: rows.map((row) => ({
       id: row.id,

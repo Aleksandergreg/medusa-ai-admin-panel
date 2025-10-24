@@ -237,19 +237,7 @@ export class AnpsService {
   ): Promise<AgentNpsRow[]> {
     const rows = await this.repository.getRecent(limit, filters);
 
-    return rows.map((row) => {
-      const parsed = AnpsMapper.mapAgentNpsRow(row);
-      console.debug(
-        JSON.stringify({
-          event: "agent_nps.row_debug",
-          id: parsed.id,
-          score: parsed.score,
-          created_at: parsed.created_at.toISOString(),
-          task_label: parsed.task_label,
-        })
-      );
-      return parsed;
-    });
+    return rows.map((row) => AnpsMapper.mapAgentNpsRow(row));
   }
 
   /**

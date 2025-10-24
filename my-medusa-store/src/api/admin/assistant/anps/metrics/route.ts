@@ -19,13 +19,5 @@ export async function GET(
 
   const metrics = await assistantService.getAgentNpsMetrics();
 
-  console.info(
-    JSON.stringify({
-      event: "agent_nps.metrics_fetch",
-      actor: actorId.slice(0, 4) + "…",
-      responses: metrics.last30Days.responses,
-    })
-  );
-
   return res.json(metrics);
 }
