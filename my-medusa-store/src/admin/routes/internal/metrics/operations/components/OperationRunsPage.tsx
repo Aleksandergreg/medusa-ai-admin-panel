@@ -162,8 +162,7 @@ export function OperationRunsPage() {
     <Container className="divide-y p-0">
       <div className="px-6 py-4">
         <Link
-          to=".."
-          relative="path"
+          to="/internal/metrics"
           className="text-sm font-medium text-ui-fg-interactive hover:underline"
         >
           ← Back to Metrics
